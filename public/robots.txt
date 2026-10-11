@@ -1,0 +1,13 @@
+User-agent: *
+Disallow: /login
+Disallow: /painel
+Disallow: /estoque
+Disallow: /metas
+Disallow: /fichas
+Disallow: /tarefas
+Disallow: /processos
+Disallow: /chat
+Disallow: /novo-lead
+Allow: /
+
+Sitemap: /sitemap.xml

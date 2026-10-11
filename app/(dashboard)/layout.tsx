@@ -1,0 +1,28 @@
+'use client';
+import { useState } from 'react';
+import { ProtectedRoute } from '@/components/protected-route';
+import { SidebarNav } from '@/components/sidebar-nav';
+import { Menu, X } from 'lucide-react';
+import type { ReactNode } from 'react';
+
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <ProtectedRoute>
+      <div className="flex min-h-screen w-full bg-background">
+        <button
+          className="fixed left-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-card"
+          onClick={() => setOpen((o) => !o)}
+          aria-label="Menu"
+        >
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
+        {open && <div className="fixed inset-0 z-30 bg-black/50" onClick={() => setOpen(false)} />}
+        <div className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+          <SidebarNav onNavigate={() => setOpen(false)} />
+        </div>
+        <main className="flex-1 overflow-x-hidden px-4 py-16 md:px-8">{children}</main>
+      </div>
+    </ProtectedRoute>
+  );
+}
