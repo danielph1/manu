@@ -67,12 +67,15 @@ export function LeadEditDialog({ lead, onClose }: { lead: Lead | null; onClose: 
 
         <form onSubmit={save} className="space-y-5">
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Nome" value={form.nome_lead} onChange={(v) => setForm({ ...form, nome_lead: v })} disabled={!canEdit} />
+            <Field label="Nome completo" value={form.nome_completo || form.nome_lead} onChange={(v) => setForm({ ...form, nome_completo: v, nome_lead: v })} disabled={!canEdit} />
             <Field label="Telefone" value={form.telefone} onChange={(v) => setForm({ ...form, telefone: v })} disabled={!canEdit} />
             <Field label="CPF" value={form.cpf} onChange={(v) => setForm({ ...form, cpf: v })} disabled={!canEdit} />
             <Field label="Data do lead" type="date" value={form.data_lead} onChange={(v) => setForm({ ...form, data_lead: v })} disabled={!canEdit} />
-            <Field label="Produto de interesse" value={form.produto_interesse} onChange={(v) => setForm({ ...form, produto_interesse: v })} disabled={!canEdit} />
-            <Field label="Nome completo" value={form.nome_completo} onChange={(v) => setForm({ ...form, nome_completo: v })} disabled={!canEdit} />
+            <Field label="Marca" value={form.marca_carro} onChange={(v) => setForm({ ...form, marca_carro: v })} disabled={!canEdit} />
+            <Field label="Modelo" value={form.carro_selecionado} onChange={(v) => setForm({ ...form, carro_selecionado: v })} disabled={!canEdit} />
+            <Field label="Ano/modelo" value={form.ano_carro} onChange={(v) => setForm({ ...form, ano_carro: v })} disabled={!canEdit} />
+            <Field label="Placa" value={form.placa_carro} onChange={(v) => setForm({ ...form, placa_carro: v })} disabled={!canEdit} />
+            <Field label="Valor do veículo" value={form.valor_carro} onChange={(v) => setForm({ ...form, valor_carro: v })} disabled={!canEdit} />
           </div>
 
           <div className="flex flex-wrap gap-5">
@@ -91,15 +94,9 @@ export function LeadEditDialog({ lead, onClose }: { lead: Lead | null; onClose: 
               <Separator />
               <div className="text-sm font-medium text-muted-foreground">Dados da ficha</div>
               <div className="grid gap-3 md:grid-cols-2">
-                <Field label="Nome completo" value={form.nome_completo} onChange={(v) => setForm({ ...form, nome_completo: v })} disabled={!canEdit} />
-                <Field label="CPF" value={form.cpf} onChange={(v) => setForm({ ...form, cpf: v })} disabled={!canEdit} />
                 <Field label="Data de nascimento" type="date" value={form.data_nascimento} onChange={(v) => setForm({ ...form, data_nascimento: v })} disabled={!canEdit} />
                 <CheckField label="Habilitado" checked={!!form.habilitado} onChange={(v) => setForm({ ...form, habilitado: v })} disabled={!canEdit} />
-                <Field label="Marca" value={form.marca_carro} onChange={(v) => setForm({ ...form, marca_carro: v })} disabled={!canEdit} />
-                <Field label="Modelo" value={form.carro_selecionado} onChange={(v) => setForm({ ...form, carro_selecionado: v })} disabled={!canEdit} />
-                <Field label="Ano" value={form.ano_carro} onChange={(v) => setForm({ ...form, ano_carro: v })} disabled={!canEdit} />
-                <Field label="Placa" value={form.placa_carro} onChange={(v) => setForm({ ...form, placa_carro: v })} disabled={!canEdit} />
-                <Field label="Valor do carro" value={form.valor_carro} onChange={(v) => setForm({ ...form, valor_carro: v })} disabled={!canEdit} />
+                <Field label="Cor" value={form.cor_carro} onChange={(v) => setForm({ ...form, cor_carro: v })} disabled={!canEdit} />
                 <Field label="Valor de entrada" value={form.valor_entrada} onChange={(v) => setForm({ ...form, valor_entrada: v })} disabled={!canEdit} />
               </div>
             </>

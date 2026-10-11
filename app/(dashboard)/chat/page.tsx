@@ -208,8 +208,8 @@ export default function ChatPage() {
           <div className="space-y-3">
             <video ref={videoRef} autoPlay playsInline className="max-h-[70vh] rounded-lg" />
             <div className="flex justify-center gap-3">
-              <Button onClick={tirarFoto}>Tirar foto</Button>
-              <Button variant="outline" onClick={fecharCamera}>Cancelar</Button>
+              <Button onClick={() => tirarFoto()}>Tirar foto</Button>
+              <Button variant="outline" onClick={() => fecharCamera()}>Cancelar</Button>
             </div>
           </div>
         </div>
