@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Car, LayoutDashboard, MessageSquare, Target, FileText,
   CheckSquare, ArrowRightLeft, PlusCircle, LogOut, UserCircle2,
-  FileSearch, BarChart3, Users, Wrench, Receipt,
+  FileSearch, BarChart3, Users, Wrench, Receipt, Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Role } from '@/lib/roles';
@@ -32,6 +32,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     { href: '/oficina', label: 'Oficina', icon: Wrench, show: !!user },
     { href: '/faturamento', label: 'Faturamento', icon: Receipt, show: !!user },
     { href: '/chat', label: 'Central de Chat', icon: MessageSquare, show: !!user },
+    { href: '/configuracoes', label: 'Configurações', icon: Settings, show: !!user },
   ];
 
   return (

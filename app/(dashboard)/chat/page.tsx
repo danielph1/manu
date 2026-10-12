@@ -6,11 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Camera, Mic, Paperclip, Smile } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/auth-context';
 
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
 
 export default function ChatPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [texto, setTexto] = useState('');
   const [picker, setPicker] = useState<number | null>(null);
   const [camOpen, setCamOpen] = useState(false);
@@ -158,10 +160,15 @@ export default function ChatPage() {
   return (
     <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-2xl flex-col">
       <h1 className="mb-3 text-3xl font-bold">Chat</h1>
-      <div className="flex-1 space-y-3 overflow-y-auto rounded-xl border border-border bg-card/40 p-4">
-        {(Array.isArray(data) ? data : []).map((m: any) => (
-          <div key={m.id} className="group relative max-w-[85%] rounded-2xl bg-muted/60 px-3 py-2">
-            <div className="text-xs font-medium text-primary">{m.remetente_nome || 'alguém'}</div>
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-card/30 p-3">
+        {(Array.isArray(data) ? data : []).map((m: any) => {
+          const meu = Number(m.remetente_id) === Number(user?.id);
+          const inicial = String(m.remetente_nome || '?').trim().charAt(0).toUpperCase();
+          return (
+          <div key={m.id} className={`group flex items-end gap-2 ${meu ? 'flex-row-reverse' : ''}`}>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">{inicial}</div>
+            <div className={`relative max-w-[78%] rounded-2xl px-3 py-2 ${meu ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-muted'}`}>
+            {!meu && <div className="text-xs font-medium opacity-70">{m.remetente_nome || 'alguém'}</div>}
             {m.mensagem && <div className="mt-0.5">{m.mensagem}</div>}
             {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('image') && (
               <img alt="" className="mt-2 max-h-52 rounded-lg" src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} />
@@ -199,8 +206,10 @@ export default function ChatPage() {
                 ))}
               </div>
             )}
+            </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {camOpen && (
