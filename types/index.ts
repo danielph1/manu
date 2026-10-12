@@ -69,6 +69,8 @@ export interface Lead {
 }
 
 export interface LeadFiltros {
+  loja?: string;
+  vendedor_id?: string;
   filtro?: 'todos' | 'responderam' | 'nao_responderam' | 'fichas' | 'aprovados' | 'vendidos';
   periodo?: 'hoje' | 'semana' | 'mes' | 'todas';
   busca?: string;

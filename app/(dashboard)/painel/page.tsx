@@ -1,6 +1,7 @@
 'use client';
 // Painel de Leads - integrado com API real
 import { useMemo, useState } from 'react';
+import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { PlusCircle, Search, Phone, UserCircle2, CheckCircle2, XCircle, Loader2, Edit, Store } from 'lucide-react';
+import { api } from '@/lib/api';
 import { leadsService } from '@/lib/services';
 import type { Lead, LeadFiltros } from '@/types';
 import { LeadEditDialog } from '@/components/lead-edit-dialog';
@@ -31,10 +33,13 @@ export default function PainelPage() {
   const [periodo, setPeriodo] = useState<LeadFiltros['periodo']>('mes');
   const [busca, setBusca] = useState('');
   const [selected, setSelected] = useState<Lead | null>(null);
+  const [loja, setLoja] = useState('');
+  const [vendedorId, setVendedorId] = useState('');
+  const { user } = useAuth();
 
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['leads', filtro, periodo],
-    queryFn: () => leadsService.list({ filtro, periodo }),
+    queryKey: ['leads', filtro, periodo, loja, vendedorId],
+    queryFn: () => leadsService.list({ filtro, periodo, loja: loja || undefined, vendedor_id: vendedorId || undefined }),
   });
 
   const { data: stats } = useQuery({
@@ -94,6 +99,25 @@ export default function PainelPage() {
           </RadioGroup>
         </div>
 
+        {(user?.tipo === 'admin' || user?.tipo === 'gerente' || user?.tipo === 'marketing') && (
+          <div className="flex flex-wrap gap-3">
+            {(user?.tipo === 'admin' || user?.tipo === 'marketing') && (
+              <div>
+                <Label className="text-sm">Loja</Label>
+                <select className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm" value={loja} onChange={(e) => setLoja(e.target.value)}>
+                  <option value="">Todas</option>
+                  <option value="381">381</option>
+                  <option value="764">764</option>
+                  <option value="NINA">NINA</option>
+                </select>
+              </div>
+            )}
+            <div>
+              <Label className="text-sm">Vendedor</Label>
+              <VendedorSelect loja={user?.tipo === 'gerente' ? user.loja : loja} value={vendedorId} onChange={setVendedorId} />
+            </div>
+          </div>
+        )}
         <div className="max-w-xs">
           <Label className="text-sm">Periodo</Label>
           <Select value={periodo} onValueChange={(v) => setPeriodo(v as any)}>
@@ -188,5 +212,19 @@ function StatusChip({ label, ok }: { label: string; ok: boolean }) {
     <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
       <Icon className="h-3 w-3" />{label}
     </div>
+  );
+}
+
+function VendedorSelect({ loja, value, onChange }: { loja?: string; value: string; onChange: (v: string) => void }) {
+  const { data } = useQuery({
+    queryKey: ['vendedores-filtro', loja],
+    queryFn: async () => (await api.get('/equipe')).data,
+  });
+  const lista = (Array.isArray(data) ? data : data?.vendedores || data?.equipe || []).filter((v: any) => !loja || String(v.loja || '').toUpperCase() === String(loja).toUpperCase());
+  return (
+    <select className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Todos</option>
+      {lista.map((v: any) => <option key={v.id} value={v.id}>{v.nome}</option>)}
+    </select>
   );
 }

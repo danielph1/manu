@@ -3,6 +3,8 @@ import { useState } from 'react';
 import { ProtectedRoute } from '@/components/protected-route';
 import { SidebarNav } from '@/components/sidebar-nav';
 import { Menu, X } from 'lucide-react';
+import { AvisosFlutuante } from '@/components/avisos-flutuante';
+import { BottomNav } from '@/components/bottom-nav';
 import type { ReactNode } from 'react';
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
@@ -21,7 +23,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform ${open ? 'translate-x-0' : '-translate-x-full'}`}>
           <SidebarNav onNavigate={() => setOpen(false)} />
         </div>
-        <main className="flex-1 overflow-x-hidden px-4 py-16 md:px-8">{children}</main>
+        <main className="flex-1 overflow-x-hidden px-4 py-16 pb-24 md:px-8">{children}</main>
+        <BottomNav />
+        <AvisosFlutuante />
       </div>
     </ProtectedRoute>
   );

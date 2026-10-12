@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
     const periodo = searchParams.get('periodo') || 'mes';
     const busca = (searchParams.get('busca') || '').trim();
     const vendedorIdParam = searchParams.get('vendedor_id');
+    const lojaParam = searchParams.get('loja');
     const limit = Math.min(parseInt(searchParams.get('limit') || '200', 10) || 200, 500);
 
     const where: string[] = ['1=1'];
@@ -50,6 +51,12 @@ export async function GET(req: NextRequest) {
       add(
         `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER(?))`,
         u.loja,
+      );
+    }
+    if (lojaParam && ['admin', 'marketing'].includes(u.tipo)) {
+      add(
+        `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER(?))`,
+        lojaParam,
       );
     }
     if (vendedorIdParam && ['admin', 'gerente', 'marketing'].includes(u.tipo)) {
