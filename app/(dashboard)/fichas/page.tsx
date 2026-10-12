@@ -1,4 +1,5 @@
 'use client';
+import { CarLoader } from '@/components/car-loader';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -74,7 +75,7 @@ export default function FichasPage() {
         </button>
       </div>
 
-      {isLoading && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}
+      {isLoading && <CarLoader compact />}
       {error && <p className="text-rose-400">Erro ao carregar fichas.</p>}
 
       <div className="grid gap-4 md:grid-cols-2">

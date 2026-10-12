@@ -36,7 +36,7 @@ export function BottomNav() {
   return (
     <>
       {avisos && (
-        <div className="fixed bottom-16 left-3 right-3 z-40 max-h-72 overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-xl md:hidden">
+        <div className="fixed bottom-16 left-3 right-3 z-40 max-h-72 overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-xl ">
           <div className="mb-2 flex justify-between text-sm">
             <span className="font-medium">Últimos avisos</span>
             <button className="text-xs underline" onClick={async () => { await api.post('/notificacoes'); qc.invalidateQueries({ queryKey: ['avisos'] }); }}>lido</button>
@@ -49,7 +49,7 @@ export function BottomNav() {
           ))}
         </div>
       )}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-border bg-card px-1 py-2 md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-border bg-card px-1 py-2 ">
         {item('/painel', LayoutDashboard, 'Leads')}
         {item('/estoque', Car, 'Estoque')}
         {item('/fichas', FileText, 'Fichas')}

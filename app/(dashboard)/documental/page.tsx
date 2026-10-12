@@ -1,4 +1,5 @@
 'use client';
+import { CarLoader } from '@/components/car-loader';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -43,7 +44,7 @@ export default function DocumentalPage() {
         <p className="mt-1 text-sm text-muted-foreground">Progresso de transferencia dos veiculos vendidos.</p>
       </header>
 
-      {isLoading && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}
+      {isLoading && <CarLoader compact />}
 
       <div className="grid gap-4">
         {items.map((f: any) => {

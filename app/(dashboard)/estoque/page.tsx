@@ -1,4 +1,5 @@
 'use client';
+import { CarLoader } from '@/components/car-loader';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -62,7 +63,7 @@ export default function EstoquePage() {
         </select>
       </div>
 
-      {isLoading && <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin" /></div>}
+      {isLoading && <CarLoader compact />}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {lista.map((c) => (

@@ -1,4 +1,5 @@
 'use client';
+import { CarLoader } from '@/components/car-loader';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -101,7 +102,7 @@ export default function FaturamentoPage() {
         <Button onClick={() => setQ(busca.trim())}><Search className="h-4 w-4 mr-1" /> Buscar</Button>
       </div>
 
-      {isLoading && <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin" /></div>}
+      {isLoading && <CarLoader compact />}
 
       <div className="space-y-3">
         {(Array.isArray(rows) ? rows : []).map((f: any) => (

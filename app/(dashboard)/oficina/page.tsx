@@ -1,4 +1,5 @@
 'use client';
+import { CarLoader } from '@/components/car-loader';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -105,7 +106,7 @@ export default function OficinaPage() {
 
       {isLoading && (
         <div className="flex justify-center py-10">
-          <Loader2 className="animate-spin h-6 w-6" />
+          <CarLoader compact />
         </div>
       )}
 

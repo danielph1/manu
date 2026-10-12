@@ -1,4 +1,5 @@
 'use client';
+import { CarLoader } from '@/components/car-loader';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
@@ -13,7 +14,7 @@ export default function RootPage() {
   }, [isAuthenticated, isLoading, router]);
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <CarLoader />
     </div>
   );
 }

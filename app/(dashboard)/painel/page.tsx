@@ -1,5 +1,6 @@
 'use client';
 // Painel de Leads - integrado com API real
+import { CarLoader } from '@/components/car-loader';
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import Link from 'next/link';
@@ -154,7 +155,7 @@ export default function PainelPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           {isLoading ? 'Carregando...' : `Exibindo ${filteredLeads.length} de ${leads.length} leads.`}
         </p>
-        {isLoading && <div className="mt-10 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}
+        {isLoading && <CarLoader compact />}
         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredLeads.map((lead) => (
             <LeadCard key={lead.id} lead={lead} onClick={() => setSelected(lead)} />

@@ -1,4 +1,5 @@
 'use client';
+import { CarLoader } from '@/components/car-loader';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { api } from '@/lib/api';
@@ -13,7 +14,7 @@ export default function MetricasPage() {
     queryFn: async () => (await api.get('/metricas')).data,
   });
 
-  if (isLoading) return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+  if (isLoading) return <CarLoader compact />;
   if (error) return <p className="text-rose-400">Não foi possível carregar as métricas.</p>;
   if (!data?.funil) return <p className="text-muted-foreground">Sem dados de métricas.</p>;
 

@@ -1,6 +1,6 @@
-export function CarLoader() {
+export function CarLoader({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background">
+    <div className={`flex flex-col items-center justify-center gap-4 ${compact ? 'py-10' : 'min-h-screen'} bg-background`}>
       <div className="flex items-end gap-3">
         {[0, 1, 2].map((i) => (
           <div key={i} className="car-front" style={{ animationDelay: `${i * 0.2}s` }}>
@@ -14,9 +14,9 @@ export function CarLoader() {
       <style>{`
         .car-front {
           width: 72px; height: 36px; border-radius: 18px 18px 8px 8px;
-          background: hsl(var(--primary)); opacity: 0.85;
+          background: hsl(var(--primary)); opacity: 0.9;
           display: flex; align-items: center; justify-content: space-between;
-          padding: 0 8px; position: relative;
+          padding: 0 8px;
           animation: pulseCar 1.4s ease-in-out infinite;
         }
         .car-front .grade {
@@ -28,8 +28,8 @@ export function CarLoader() {
           background: #fff; box-shadow: 0 0 8px #fff;
         }
         @keyframes pulseCar {
-          0%, 100% { transform: translateY(0); opacity: 0.5; }
-          50% { transform: translateY(-6px); opacity: 1; }
+          0%, 100% { transform: translateY(0); opacity: 0.45; }
+          50% { transform: translateY(-8px); opacity: 1; }
         }
       `}</style>
     </div>
