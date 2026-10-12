@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
 export function BottomNav() {
-  const path = usePathname();
+  const path = usePathname() || '';
   const { user } = useAuth();
   const inicial = String(user?.login || '?').charAt(0).toUpperCase();
   const [avisos, setAvisos] = useState(false);
@@ -23,12 +23,11 @@ export function BottomNav() {
     return !['chat', 'mensagem', 'estoque', 'oficina'].some((i) => t.includes(i));
   }).slice(0, 15);
 
-  const item = (href: string, Icon: any, label: string) => {
-    const ativo = path?.startsWith(href);
+  const Item = ({ href, Icon, label }: { href: string; Icon: any; label: string }) => {
+    const ativo = path.startsWith(href);
     return (
-      <Link href={href} className={`flex flex-col items-center text-[10px] ${ativo ? 'text-primary' : 'text-muted-foreground'}`}>
+      <Link href={href} title={label} className={`flex h-10 w-10 items-center justify-center rounded-full ${ativo ? 'bg-primary text-primary-foreground' : 'text-foreground/70 hover:bg-muted'}`}>
         <Icon className="h-5 w-5" />
-        {label}
       </Link>
     );
   };
@@ -36,10 +35,10 @@ export function BottomNav() {
   return (
     <>
       {avisos && (
-        <div className="fixed bottom-16 left-3 right-3 z-40 max-h-72 overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-xl ">
+        <div className="fixed bottom-24 left-1/2 z-50 w-[min(92vw,380px)] -translate-x-1/2 max-h-72 overflow-y-auto rounded-2xl border border-border bg-card p-3 shadow-2xl">
           <div className="mb-2 flex justify-between text-sm">
             <span className="font-medium">Últimos avisos</span>
-            <button className="text-xs underline" onClick={async () => { await api.post('/notificacoes'); qc.invalidateQueries({ queryKey: ['avisos'] }); }}>lido</button>
+            <button className="text-xs underline" onClick={async () => { await api.post('/notificacoes'); qc.invalidateQueries({ queryKey: ['avisos'] }); setAvisos(false); }}>lido</button>
           </div>
           {lista.length === 0 && <p className="text-xs text-muted-foreground">Nenhum aviso.</p>}
           {lista.map((n: any) => (
@@ -49,17 +48,16 @@ export function BottomNav() {
           ))}
         </div>
       )}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-border bg-card px-1 py-2 ">
-        {item('/painel', LayoutDashboard, 'Leads')}
-        {item('/estoque', Car, 'Estoque')}
-        {item('/fichas', FileText, 'Fichas')}
-        <button onClick={() => setAvisos((o) => !o)} className="flex flex-col items-center text-[10px] text-muted-foreground">
+      <nav className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-card/95 px-3 py-2 shadow-2xl backdrop-blur">
+        <Item href="/painel" Icon={LayoutDashboard} label="Leads" />
+        <Item href="/estoque" Icon={Car} label="Estoque" />
+        <Item href="/fichas" Icon={FileText} label="Fichas" />
+        <button onClick={() => setAvisos((o) => !o)} title="Avisos" className={`flex h-10 w-10 items-center justify-center rounded-full ${avisos ? 'bg-primary text-primary-foreground' : 'text-foreground/70 hover:bg-muted'}`}>
           <Bell className="h-5 w-5" />
-          Avisos
         </button>
-        {item('/chat', MessageSquare, 'Chat')}
-        <Link href="/configuracoes" className="flex flex-col items-center">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{inicial}</span>
+        <Item href="/chat" Icon={MessageSquare} label="Chat" />
+        <Link href="/configuracoes" title="Eu" className="flex h-10 w-10 items-center justify-center">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">{inicial}</span>
         </Link>
       </nav>
     </>
