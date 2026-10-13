@@ -17,6 +17,7 @@ import { api } from '@/lib/api';
 import { leadsService } from '@/lib/services';
 import type { Lead, LeadFiltros } from '@/types';
 import { LeadEditDialog } from '@/components/lead-edit-dialog';
+import { useFavoritos } from '@/contexts/favoritos-context';
 import { useAuth } from '@/contexts/auth-context';
 
 const FILTROS = [
@@ -178,6 +179,8 @@ function StatCard({ label, value }: { label: string; value: number }) {
 }
 
 function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
+  const fav = useFavoritos();
+  const marcado = fav.tem(Number(lead.id));
   return (
     <Card className="cursor-pointer transition hover:border-primary/60 hover:shadow-lg" onClick={onClick}>
       <CardContent className="space-y-3 p-5">
@@ -186,7 +189,16 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
             <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
             <span className="truncate">{lead.nome_lead}</span>
           </div>
-          <Edit className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <button
+            type="button"
+            aria-label="Favoritar"
+            onClick={(e) => { e.stopPropagation(); fav.toggle(Number(lead.id)); }}
+            className="shrink-0 rounded-full p-1"
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6" style={{ fill: marcado ? 'rgb(220,72,127)' : 'rgb(167,167,167)', transform: marcado ? 'scale(1.15)' : 'scale(1)', transition: 'all 200ms' }}>
+              <path d="M12 21.35l-1.45-1.32c-5.15-4.67-8.55-7.75-8.55-11.53 0-3.08 2.42-5.5 5.5-5.5 1.74 0 3.41.81 4.5 2.09 1.09-1.28 2.76-2.09 4.5-2.09 3.08 0 5.5 2.42 5.5 5.5 0 3.78-3.4 6.86-8.55 11.54l-1.45 1.31z"/>
+            </svg>
+          </button>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {lead.venda_concluida && <Badge className="bg-emerald-600 hover:bg-emerald-600">VENDA CONCLUIDA</Badge>}
