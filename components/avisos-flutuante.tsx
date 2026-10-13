@@ -22,11 +22,12 @@ export function AvisosFlutuante() {
   const novos = lista.filter((n: any) => !n.lida).length;
 
   return (
-    <div className="fixed bottom-5 right-5 z-50">
+    <div className="fixed bottom-24 right-4 z-[10000]">
       {aberto && (
         <div className="mb-3 w-80 rounded-2xl border border-border bg-card p-3 shadow-xl">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-medium">Avisos</span>
+            <button onClick={() => setAberto(false)} className="text-muted-foreground"><X className="h-4 w-4" /></button>
             <button className="text-xs text-muted-foreground underline" onClick={async () => {
               await api.post('/notificacoes');
               qc.invalidateQueries({ queryKey: ['avisos'] });
