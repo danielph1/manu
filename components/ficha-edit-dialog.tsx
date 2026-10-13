@@ -16,7 +16,7 @@ import { Role } from '@/lib/roles';
 import { useAuth } from '@/contexts/auth-context';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 
-const BANCOS = ['Itau', 'BV', 'Creditas', 'Bradesco', 'Pan', 'Safra', 'Santander'];
+const BANCOS = ['Itau', 'BV', 'Creditas', 'Bradesco', 'Pan', 'Safra', 'Santander', 'Volkswagen'];
 const STATUS = [
   { v: 'pendente', l: 'Pendente' },
   { v: 'aprovada', l: 'Aprovada' },

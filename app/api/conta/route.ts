@@ -25,7 +25,12 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json();
   const telefone = String(body.telefone || '').trim();
   const email = String(body.email || '').trim();
-  await query('UPDATE public.usuarios SET telefone = $1, email = $2 WHERE id = $3', [telefone, email, u.id]);
+  const login = body.login ? String(body.login).trim().toLowerCase() : '';
+  if (login) {
+    await query('UPDATE public.usuarios SET telefone = $1, email = $2, login = $3 WHERE id = $4', [telefone, email, login, u.id]);
+  } else {
+    await query('UPDATE public.usuarios SET telefone = $1, email = $2 WHERE id = $3', [telefone, email, u.id]);
+  }
   return NextResponse.json({ ok: true });
 }
 

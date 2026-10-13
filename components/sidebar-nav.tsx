@@ -33,9 +33,9 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <aside className="flex h-screen w-72 flex-col border-r border-border bg-card px-4 py-6 sticky top-0 overflow-y-auto">
       <div className="mt-10 flex items-center gap-3 px-2">
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground">
+        <a href="/minha-conta" className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground">
           {String(user?.login || '?').charAt(0).toUpperCase()}
-        </div>
+        </a>
         <div>
           <div className="text-xs text-muted-foreground">Logado como</div>
           <div className="text-lg font-semibold capitalize leading-tight">{user?.login ?? '-'}</div>

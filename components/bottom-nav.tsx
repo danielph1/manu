@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import { LayoutDashboard, Car, FileText, PlusCircle, CheckSquare, MessageSquare, Heart } from 'lucide-react';
+import { LayoutDashboard, Car, FileText, PlusCircle, CheckSquare, MessageSquare } from 'lucide-react';
 
 export function BottomNav() {
   const path = usePathname() || '';
@@ -29,8 +29,7 @@ export function BottomNav() {
         {path.startsWith('/painel') && <Item href="/novo-lead" Icon={PlusCircle} />}
         <Item href="/tarefas" Icon={CheckSquare} />
         <Item href="/chat" Icon={MessageSquare} />
-        <Item href="/favoritos" Icon={Heart} />
-        <Link href="/configuracoes" style={{ display: 'flex', width: 40, height: 40, alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
+        <Link href="/minha-conta" style={{ display: 'flex', width: 40, height: 40, alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
           <span style={{ width: 32, height: 32, borderRadius: 999, background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{inicial}</span>
         </Link>
       </nav>
