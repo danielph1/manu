@@ -38,7 +38,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         </a>
         <div>
           <div className="text-xs text-muted-foreground">Logado como</div>
-          <div className="text-lg font-semibold capitalize leading-tight">{user?.login ?? '-'}</div>
+          <a href="/minha-conta" className="text-lg font-semibold capitalize leading-tight">{user?.login ?? '-'}</a>
         </div>
       </div>
       <div className="mt-2 px-2">
