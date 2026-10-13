@@ -18,7 +18,6 @@ import { leadsService } from '@/lib/services';
 import type { Lead, LeadFiltros } from '@/types';
 import { LeadEditDialog } from '@/components/lead-edit-dialog';
 import { useFavoritos } from '@/contexts/favoritos-context';
-import { useAuth } from '@/contexts/auth-context';
 
 const FILTROS = [
   { value: 'todos', label: 'Todos' },
@@ -37,7 +36,6 @@ export default function PainelPage() {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [loja, setLoja] = useState('');
   const [vendedorId, setVendedorId] = useState('');
-  const { user } = useAuth();
 
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads', filtro, periodo, loja, vendedorId],
