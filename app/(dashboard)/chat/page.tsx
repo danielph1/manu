@@ -125,20 +125,22 @@ export default function ChatPage() {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
+      const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].find((m) => (window as any).MediaRecorder?.isTypeSupported?.(m)) || '';
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
       chunks.current = [];
       rec.ondataavailable = (e) => { if (e.data.size) chunks.current.push(e.data); };
       rec.onstop = () => {
-        const blob = new Blob(chunks.current, { type: 'audio/webm' });
+        const tipo = rec.mimeType || mime || 'audio/webm';
+        const blob = new Blob(chunks.current, { type: tipo });
         setAudioPendente(blob);
         stream.getTracks().forEach((t) => t.stop());
         setRecording(false);
       };
-      rec.start();
+      rec.start(200);
       recRef.current = rec;
       setRecording(true);
-    } catch {
-      toast.error('Microfone bloqueado. Autorize no navegador.');
+    } catch (e: any) {
+      toast.error(e?.name === 'NotAllowedError' ? 'Microfone bloqueado. Autorize no navegador.' : 'Não foi possível gravar o áudio.');
     }
   }
 

@@ -19,19 +19,14 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
 
   const items: Array<{ href: string; label: string; icon: any; show: boolean }> = [
-    { href: '/estoque', label: 'Estoque', icon: Car, show: Role.verLeads(user) },
     { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) },
-    { href: '/novo-lead', label: 'Adicionar novo lead', icon: PlusCircle, show: Role.verLeads(user) },
-    { href: '/fichas', label: 'Fichas de Credito', icon: FileText, show: Role.verFichas(user) },
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) },
     { href: '/metricas', label: 'Metricas', icon: BarChart3, show: Role.verMetricas(user) },
     { href: '/equipe', label: 'Equipe', icon: Users, show: Role.isGerente(user) },
     { href: '/metas', label: 'Metas', icon: Target, show: Role.verLeads(user) },
-    { href: '/tarefas', label: 'Tarefas', icon: CheckSquare, show: Role.verLeads(user) },
     { href: '/processos', label: 'Transferencias', icon: ArrowRightLeft, show: Role.verDocumental(user) },
     { href: '/oficina', label: 'Oficina', icon: Wrench, show: !!user },
     { href: '/faturamento', label: 'Faturamento', icon: Receipt, show: !!user },
-    { href: '/chat', label: 'Central de Chat', icon: MessageSquare, show: !!user },
     { href: '/configuracoes', label: 'Configurações', icon: Settings, show: !!user },
   ];
 
