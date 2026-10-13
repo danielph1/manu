@@ -57,7 +57,7 @@ export default function LoginPage() {
               <Label htmlFor="login">Login</Label>
               <Input
                 id="login"
-                placeholder="login"
+                placeholder="ex.: josuel"
                 value={form.login}
                 onChange={(e) => setForm({ ...form, login: e.target.value })}
                 autoComplete="username"
