@@ -9,7 +9,7 @@ import { LayoutDashboard, Car, FileText, PlusCircle, CheckSquare, MessageSquare 
 export function BottomNav() {
   const path = usePathname() || '';
   const { user } = useAuth();
-  const inicial = String(user?.login || '?').charAt(0).toUpperCase();
+  const inicial = String(user?.nome || user?.login || '?').charAt(0).toUpperCase();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   if (!mounted) return null;

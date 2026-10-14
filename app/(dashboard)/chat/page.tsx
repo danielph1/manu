@@ -169,7 +169,12 @@ export default function ChatPage() {
           return (
           <div key={m.id} className={`group flex items-end gap-2 ${meu ? 'flex-row-reverse' : ''}`}>
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">{inicial}</div>
-            <div className={`relative max-w-[78%] rounded-2xl px-3 py-2 ${meu ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-muted'}`}>
+            <div
+              className={`relative max-w-[78%] rounded-2xl px-3 py-2 ${meu ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-muted'}`}
+              onContextMenu={(e) => { e.preventDefault(); setPicker(picker === m.id ? null : m.id); }}
+              onTouchStart={() => { (window as any).__hold = setTimeout(() => setPicker(m.id), 400); }}
+              onTouchEnd={() => clearTimeout((window as any).__hold)}
+            >
             {!meu && <div className="text-xs font-medium opacity-70">{m.remetente_nome || 'alguém'}</div>}
             {m.mensagem && <div className="mt-0.5">{m.mensagem}</div>}
             {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('image') && (
@@ -190,8 +195,7 @@ export default function ChatPage() {
                 ))}
               </div>
             )}
-            <div className="absolute -right-2 -top-2 hidden gap-1 group-hover:flex">
-              <button className="rounded-full border bg-card p-1" onClick={() => setPicker(picker === m.id ? null : m.id)}><Smile className="h-4 w-4" /></button>
+            <div className={`absolute -top-2 hidden gap-1 group-hover:flex ${meu ? 'right-0' : 'left-0'}`}>
               <button className="rounded-full border bg-card px-1 text-xs" onClick={() => setEditando({ id: m.id, texto: m.mensagem || '' })}>editar</button>
               <button className="rounded-full border bg-card px-1 text-xs" onClick={() => apagar(m.id)}>apagar</button>
             </div>
@@ -202,10 +206,15 @@ export default function ChatPage() {
               </div>
             )}
             {picker === m.id && (
-              <div className="absolute -top-10 left-0 z-10 flex gap-1 rounded-full border bg-card px-2 py-1 shadow-lg">
+              <div className={`absolute -top-12 z-20 flex items-center gap-1 rounded-full border bg-card px-2 py-1 shadow-lg ${meu ? 'right-0' : 'left-0'}`}>
                 {EMOJIS.map((e) => (
-                  <button key={e} className="text-lg hover:scale-125" onClick={() => reagir(m.id, e)}>{e}</button>
+                  <button key={e} className="text-xl" onClick={() => reagir(m.id, e)}>{e}</button>
                 ))}
+                <input
+                  className="w-8 bg-transparent text-center text-lg outline-none"
+                  placeholder="+"
+                  onChange={(e) => { const v = e.target.value; if (v) { reagir(m.id, [...v][0]); e.target.value = ''; } }}
+                />
               </div>
             )}
             </div>

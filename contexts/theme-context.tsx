@@ -2,11 +2,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 export const TEMAS = [
-  { id: 'escuro', nome: 'Escuro', desc: 'O padrão atual, fundo preto' },
-  { id: 'claro', nome: 'Claro Manu', desc: 'Fundo claro com azul da Manu' },
+  { id: 'escuro', nome: 'Escuro', desc: 'O padrão atual' },
+  { id: 'preto', nome: 'Preto', desc: 'Quase tudo preto, minimalista' },
+  { id: 'claro', nome: 'Claro Manu', desc: 'Fundo claro com azul' },
   { id: 'azul', nome: 'Azul escuro', desc: 'Fundo azul marinho' },
-  { id: 'rosa', nome: 'Rosa', desc: 'Fundo escuro com destaque rosa' },
-  { id: 'verde', nome: 'Verde', desc: 'Fundo escuro com destaque verde' },
+  { id: 'rosa', nome: 'Rosa', desc: 'Escuro com rosa' },
+  { id: 'verde', nome: 'Verde', desc: 'Escuro com verde' },
+  { id: 'ambar', nome: 'Âmbar', desc: 'Escuro com dourado' },
+  { id: 'grafite', nome: 'Grafite', desc: 'Cinza chumbo, sóbrio' },
 ] as const;
 
 export type TemaId = (typeof TEMAS)[number]['id'];

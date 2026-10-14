@@ -8,6 +8,7 @@ export type UserTipo = 'admin' | 'vendedor' | 'documento' | 'elfenai';
 export interface User {
   id: number;
   login: string;
+  nome?: string | null;
   tipo: UserTipo;
   vendedor_id?: number | null;
   ativo: boolean;

@@ -216,3 +216,61 @@ html[data-theme="verde"] {
   --input: 160 15% 20%;
   --ring: 152 60% 42%;
 }
+
+html[data-theme="preto"] {
+  --background: 0 0% 2%;
+  --foreground: 0 0% 92%;
+  --card: 0 0% 4%;
+  --card-foreground: 0 0% 92%;
+  --popover: 0 0% 4%;
+  --popover-foreground: 0 0% 92%;
+  --primary: 0 0% 90%;
+  --primary-foreground: 0 0% 4%;
+  --secondary: 0 0% 10%;
+  --secondary-foreground: 0 0% 92%;
+  --muted: 0 0% 10%;
+  --muted-foreground: 0 0% 60%;
+  --accent: 0 0% 12%;
+  --accent-foreground: 0 0% 92%;
+  --border: 0 0% 14%;
+  --input: 0 0% 14%;
+  --ring: 0 0% 80%;
+}
+html[data-theme="ambar"] {
+  --background: 30 10% 6%;
+  --foreground: 40 20% 95%;
+  --card: 30 10% 9%;
+  --card-foreground: 40 20% 95%;
+  --popover: 30 10% 9%;
+  --popover-foreground: 40 20% 95%;
+  --primary: 38 92% 50%;
+  --primary-foreground: 30 10% 6%;
+  --secondary: 30 8% 16%;
+  --secondary-foreground: 40 20% 95%;
+  --muted: 30 8% 16%;
+  --muted-foreground: 35 10% 65%;
+  --accent: 30 8% 16%;
+  --accent-foreground: 40 20% 95%;
+  --border: 30 8% 18%;
+  --input: 30 8% 18%;
+  --ring: 38 92% 50%;
+}
+html[data-theme="grafite"] {
+  --background: 220 6% 10%;
+  --foreground: 220 10% 92%;
+  --card: 220 6% 13%;
+  --card-foreground: 220 10% 92%;
+  --popover: 220 6% 13%;
+  --popover-foreground: 220 10% 92%;
+  --primary: 220 8% 78%;
+  --primary-foreground: 220 6% 10%;
+  --secondary: 220 5% 18%;
+  --secondary-foreground: 220 10% 92%;
+  --muted: 220 5% 18%;
+  --muted-foreground: 220 5% 62%;
+  --accent: 220 5% 18%;
+  --accent-foreground: 220 10% 92%;
+  --border: 220 5% 20%;
+  --input: 220 5% 20%;
+  --ring: 220 8% 78%;
+}
