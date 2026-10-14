@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
-import { PlusCircle, Search, Phone, UserCircle2, CheckCircle2, XCircle, Loader2, Edit, Store } from 'lucide-react';
+import { PlusCircle, Search, Phone, MessageSquare, UserCircle2, CheckCircle2, XCircle, Loader2, Edit, Store } from 'lucide-react';
 import { api } from '@/lib/api';
 import { leadsService } from '@/lib/services';
 import type { Lead, LeadFiltros } from '@/types';
@@ -187,6 +187,9 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
             <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
             <span className="truncate">{lead.nome_lead}</span>
           </div>
+          <a href={`/chat?lead=${lead.id}`} onClick={(e) => e.stopPropagation()} className="shrink-0 rounded-full p-1 text-muted-foreground" aria-label="Chat">
+            <MessageSquare className="h-5 w-5" />
+          </a>
           <button
             type="button"
             aria-label="Favoritar"

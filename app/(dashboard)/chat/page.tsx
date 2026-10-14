@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,16 @@ const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'
 export default function ChatPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const sp = useSearchParams();
+  const router = useRouter();
+  const leadId = sp.get('lead');
+  const [info, setInfo] = useState(false);
+  useEffect(() => {
+    if (!leadId || !Array.isArray(data) || !data.length) return;
+    const lidos = JSON.parse(localStorage.getItem('manu.lidos') || '{}');
+    lidos[leadId] = data.length;
+    localStorage.setItem('manu.lidos', JSON.stringify(lidos));
+  }, [leadId, Array.isArray(data) ? data.length : 0]);
   const [texto, setTexto] = useState('');
   const [picker, setPicker] = useState<number | null>(null);
   const [camOpen, setCamOpen] = useState(false);
@@ -39,7 +50,7 @@ export default function ChatPage() {
         reader.onload = async () => {
           const data = String(reader.result || '');
           const b64 = data.includes(',') ? data.split(',')[1] : data;
-          await api.post('/chat', { mensagem: texto || 'Áudio', arquivo_b64: b64, arquivo_nome: 'audio.webm', arquivo_mime: 'audio/webm' });
+          await api.post('/chat', { mensagem: texto || 'Áudio', arquivo_b64: b64, arquivo_nome: 'audio.webm', arquivo_mime: 'audio/webm', lead_id: leadId });
           setTexto('');
           setAudioPendente(null);
           qc.invalidateQueries({ queryKey: ['chat'] });
@@ -159,9 +170,45 @@ export default function ChatPage() {
     }
   }
 
+  if (!leadId) {
+    const lidos = (() => { try { return JSON.parse(localStorage.getItem('manu.lidos') || '{}'); } catch { return {}; } })();
+    return (
+      <div className="mx-auto max-w-2xl space-y-3">
+        <h1 className="text-2xl font-bold">Conversas</h1>
+        {(Array.isArray(conversas) ? conversas : []).map((c: any) => {
+          const nao = Math.max(0, Number(c.total || 0) - Number(lidos[c.id] || 0));
+          return (
+            <button key={c.id} onClick={() => router.push(`/chat?lead=${c.id}`)} className="flex w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left">
+              <div>
+                <div className="font-medium">{c.nome || 'Sem nome'}</div>
+                <div className="text-xs text-muted-foreground">{c.ultima || c.telefone || 'nova conversa'}</div>
+              </div>
+              {nao > 0 && <span className="rounded-full bg-primary px-2 text-xs text-primary-foreground">{nao}</span>}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const conv = (Array.isArray(conversas) ? conversas : []).find((c: any) => String(c.id) === String(leadId));
+
   return (
-    <div className="mx-auto flex h-[calc(100vh-4rem)] max-w-2xl flex-col">
-      <h1 className="mb-3 text-3xl font-bold">Chat</h1>
+    <div className="mx-auto flex h-[calc(100vh-9rem)] max-w-2xl flex-col">
+      <button className="mb-2 text-left text-lg font-semibold" onClick={() => setInfo(true)}>{conv?.nome || 'Conversa'}</button>
+      {info && (
+        <div className="mb-2 space-y-2 rounded-xl border border-border bg-card p-3 text-sm">
+          <div>Nome: {conv?.nome || '—'}</div>
+          <div>Telefone: {conv?.telefone || '—'}</div>
+          <div>E-mail: {conv?.email || '—'}</div>
+          <div>Interesse: {conv?.interesse || '—'}</div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button className="rounded border px-2 py-1" onClick={async () => { await api.post('/chat', { mensagem: '[observação interna]', lead_id: leadId }); qc.invalidateQueries({ queryKey: ['chat'] }); setInfo(false); }}>Observação</button>
+            <button className="rounded border px-2 py-1" onClick={async () => { await api.post(`/leads/${leadId}/passar`); router.push('/chat'); }}>Passar</button>
+            <button className="rounded border border-red-500 px-2 py-1 text-red-400" onClick={async () => { await api.delete(`/leads/${leadId}`); router.push('/chat'); }}>Apagar lead</button>
+          </div>
+        </div>
+      )}
       <div className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-card/30 p-3">
         {(Array.isArray(data) ? data : []).map((m: any) => {
           const meu = Number(m.remetente_id) === Number(user?.id);

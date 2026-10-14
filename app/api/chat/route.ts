@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   try {
+    const leadId = new URL(req.url).searchParams.get('lead_id');
     const { rows } = await query(
       `SELECT m.id, m.mensagem, m.created_at, m.remetente_id,
               u.nome AS remetente_nome,
@@ -16,8 +17,10 @@ export async function GET(req: NextRequest) {
               CASE WHEN m.arquivo_bytes IS NOT NULL THEN encode(m.arquivo_bytes, 'base64') ELSE NULL END AS arquivo_b64
        FROM public.chat_geral_mensagens m
        LEFT JOIN public.usuarios u ON u.id = m.remetente_id
+       ${leadId ? 'WHERE m.lead_id = $1' : ''}
        ORDER BY m.created_at DESC
-       LIMIT 60`,
+       LIMIT 80`,
+      leadId ? [Number(leadId)] : [],
     );
     let reacoes: any[] = [];
     try {
@@ -51,12 +54,13 @@ export async function POST(req: NextRequest) {
     const nome = b.arquivo_nome || null;
     const mime = b.arquivo_mime || null;
     if (!msg && !b64) return NextResponse.json({ error: 'mensagem vazia' }, { status: 400 });
+    const leadId = b.lead_id ? Number(b.lead_id) : null;
     const row = await queryOne(
       `INSERT INTO public.chat_geral_mensagens
-         (remetente_id, mensagem, arquivo_nome, arquivo_mime, arquivo_bytes)
-       VALUES ($1, $2, $3, $4, CASE WHEN $5::text IS NULL THEN NULL ELSE decode($5::text, 'base64') END)
+         (remetente_id, mensagem, arquivo_nome, arquivo_mime, arquivo_bytes, lead_id)
+       VALUES ($1, $2, $3, $4, CASE WHEN $5::text IS NULL THEN NULL ELSE decode($5::text, 'base64') END, $6)
        RETURNING id, mensagem, created_at, remetente_id, arquivo_nome, arquivo_mime`,
-      [u.id, msg || (mime?.startsWith('audio') ? 'Áudio' : 'Mídia'), nome, mime, b64],
+      [u.id, msg || (mime?.startsWith('audio') ? 'Áudio' : 'Mídia'), nome, mime, b64, leadId],
     );
     await notificar({
       titulo: 'Nova mensagem no chat',
