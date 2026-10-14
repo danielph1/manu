@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Bell, X } from 'lucide-react';
@@ -8,7 +9,6 @@ const IGNORAR = ['chat', 'mensagem', 'estoque', 'oficina'];
 
 export function AvisosFlutuante() {
   const path = usePathname() || '';
-  if (path.startsWith('/chat')) return null;
   const qc = useQueryClient();
   const [aberto, setAberto] = useState(false);
   const { data = [] } = useQuery({
@@ -23,6 +23,7 @@ export function AvisosFlutuante() {
   const ultimas = lista.slice(0, 5);
   const novos = lista.filter((n: any) => !n.lida).length;
 
+  if (path.startsWith('/chat')) return null;
   return (
     <div className="fixed bottom-24 right-4 z-[10000]">
       {aberto && (
