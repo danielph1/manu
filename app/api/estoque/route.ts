@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     if (busca) {
       params.push(`%${busca}%`);
       const p = `$${params.length}`;
-      where = `(marca ILIKE ${p} OR modelo ILIKE ${p} OR placa ILIKE ${p} OR COALESCE(carro,'') ILIKE ${p})`;
+      where = `(marca ILIKE ${p} OR modelo ILIKE ${p} OR placa ILIKE ${p} OR COALESCE(carro,'') ILIKE ${p} OR COALESCE(cor,'') ILIKE ${p})`;
     }
     const { rows } = await query(
       `SELECT * FROM public.estoque_carros WHERE ${where} ORDER BY id DESC LIMIT 200`,

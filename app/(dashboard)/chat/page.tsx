@@ -214,7 +214,7 @@ function ChatPageInner() {
           <div>Interesse: {conv?.interesse || '—'}</div>
           <div className="flex gap-2">
             <input className="flex-1 rounded border bg-background px-2 py-1" placeholder="Observação interna" value={obs} onChange={(e) => setObs(e.target.value)} />
-            <button className="rounded border px-2 py-1" onClick={async () => { if (!obs.trim()) return; await api.post('/chat', { mensagem: obs.trim(), lead_id: leadId }); setObs(''); qc.invalidateQueries({ queryKey: ['chat'] }); }}>Enviar</button>
+            <button className="rounded border px-2 py-1" onClick={async () => { if (!obs.trim()) return; await api.post('/chat', { mensagem: '[interno] ' + obs.trim(), lead_id: leadId }); setObs(''); qc.invalidateQueries({ queryKey: ['chat'] }); }}>Enviar</button>
           </div>
           <div className="flex flex-wrap gap-2 pt-1">
             <button className="rounded border px-2 py-1" onClick={async () => { await api.post(`/leads/${leadId}/passar`); router.push('/chat'); }}>Passar</button>

@@ -39,7 +39,8 @@ export default function TriagemPage() {
 function Item({ t, vendedores, onOk }: { t: any; vendedores: any; onOk: () => void }) {
   const [vendedor, setVendedor] = useState('');
   const [loja, setLoja] = useState('');
-  const lista = Array.isArray(vendedores) ? vendedores : vendedores?.vendedores || [];
+  const todos = Array.isArray(vendedores) ? vendedores : vendedores?.vendedores || [];
+  const lista = loja ? todos.filter((v: any) => String(v.loja || '').toUpperCase() === loja.toUpperCase()) : todos;
 
   async function atribuir() {
     await api.post('/triagem', { id: t.id, vendedor_id: vendedor || undefined, loja: loja || undefined });
@@ -62,9 +63,10 @@ function Item({ t, vendedores, onOk }: { t: any; vendedores: any; onOk: () => vo
             {lista.map((v: any) => <SelectItem key={v.id} value={String(v.id)}>{v.nome}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Select value={loja} onValueChange={setLoja}>
+        <Select value={loja} onValueChange={(v) => { setLoja(v === 'todos' ? '' : v); setVendedor(''); }}>
           <SelectTrigger className="w-32"><SelectValue placeholder="Loja" /></SelectTrigger>
           <SelectContent>
+            <SelectItem value="todos">Todos</SelectItem>
             {['381', '764', 'NINA'].map((l) => <SelectItem key={l} value={l}>{l}</SelectItem>)}
           </SelectContent>
         </Select>

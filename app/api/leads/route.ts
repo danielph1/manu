@@ -24,9 +24,36 @@ function inicioPeriodo(periodo: string): { di: string | null; df: string | null 
   return { di: null, df: null };
 }
 
+async function rotacionar() {
+  try {
+    const vencidos = await query(
+      `SELECT id, vendedor_id FROM public.leads
+       WHERE vendedor_id IS NOT NULL
+         AND COALESCE(rotacionar, FALSE) = TRUE
+         AND COALESCE(atribuido_em, data_lead, created_at) < now() - interval '10 minutes'
+         AND NOT EXISTS (
+           SELECT 1 FROM public.chat_geral_mensagens m
+           WHERE m.lead_id = leads.id AND m.mensagem LIKE '[interno]%'
+         )`,
+    );
+    for (const l of vencidos.rows) {
+      const outro = await queryOne(
+        `SELECT id FROM public.vendedores
+         WHERE id <> $1 AND LOWER(COALESCE(nome,'')) <> 'matheus'
+         ORDER BY random() LIMIT 1`,
+        [l.vendedor_id],
+      );
+      if (outro) {
+        await query(`UPDATE public.leads SET vendedor_id = $1, atribuido_em = now() WHERE id = $2`, [outro.id, l.id]);
+      }
+    }
+  } catch { /* colunas podem nao existir ainda */ }
+}
+
 export async function GET(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
+  await rotacionar();
 
   try {
     const { searchParams } = new URL(req.url);

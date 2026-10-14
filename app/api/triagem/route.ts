@@ -24,14 +24,21 @@ async function virarLead(triagemId: number, vendedorId: number) {
   const t = await queryOne(`SELECT * FROM public.triagem WHERE id = $1`, [triagemId]);
   if (!t || t.status !== 'aguardando') return;
   const lead = await queryOne(
-    `INSERT INTO public.leads (nome_lead, telefone, email, produto_interesse, observacao, vendedor_id, data_lead)
-     VALUES ($1,$2,$3,$4,$5,$6, now()) RETURNING id`,
+    `INSERT INTO public.leads (nome_lead, telefone, email, produto_interesse, observacao, vendedor_id, data_lead, atribuido_em, rotacionar)
+     VALUES ($1,$2,$3,$4,$5,$6, now(), now(), TRUE) RETURNING id`,
     [t.nome, t.telefone, t.email, t.interesse, `[${t.origem}] ${t.mensagem || ''}`.trim(), vendedorId],
   );
   await query(
     `UPDATE public.triagem SET status = 'atribuido', vendedor_id = $1, lead_id = $2 WHERE id = $3`,
     [vendedorId, lead?.id, triagemId],
   );
+  if (lead?.id && t.mensagem) {
+    await query(
+      `INSERT INTO public.chat_geral_mensagens (remetente_id, mensagem, lead_id)
+       VALUES (NULL, $1, $2)`,
+      [`[${t.origem}] ${t.mensagem}`, lead.id],
+    );
+  }
 }
 
 export async function GET(req: NextRequest) {

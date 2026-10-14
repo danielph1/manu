@@ -11,6 +11,7 @@ export const TEMAS = [
   { id: 'ambar', nome: 'Âmbar', desc: '3 vendas no mês' },
   { id: 'vinho', nome: 'Vinho', desc: '4 vendas no mês' },
   { id: 'grafite', nome: 'Grafite', desc: 'Cinza chumbo, sóbrio' },
+  { id: 'platinum', nome: 'Platinum', desc: 'Escuro com platina' },
 ] as const;
 
 export type TemaId = (typeof TEMAS)[number]['id'];
