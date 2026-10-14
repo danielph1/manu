@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Car, LayoutDashboard, MessageSquare, Target, FileText,
   CheckSquare, ArrowRightLeft, PlusCircle, LogOut, UserCircle2,
-  FileSearch, BarChart3, Users, Wrench, Receipt, Settings,
+  FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Role } from '@/lib/roles';
