@@ -19,6 +19,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout } = useAuth();
 
   const items: Array<{ href: string; label: string; icon: any; show: boolean }> = [
+    { href: '/triagem', label: 'Triagem', icon: Inbox, show: Role.isAdmin(user) },
     { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) },
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) },
     { href: '/metricas', label: 'Metricas', icon: BarChart3, show: Role.verMetricas(user) },
