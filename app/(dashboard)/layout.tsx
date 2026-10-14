@@ -1,6 +1,6 @@
 'use client';
-import { useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { ProtectedRoute } from '@/components/protected-route';
 import { SidebarNav } from '@/components/sidebar-nav';
@@ -12,8 +12,8 @@ import type { ReactNode } from 'react';
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const path = usePathname() || '';
-  const sp = useSearchParams();
-  const noChat = path.startsWith('/chat') && !!sp.get('lead');
+  const [noChat, setNoChat] = useState(false);
+  useEffect(() => { setNoChat(path.startsWith('/chat') && new URLSearchParams(window.location.search).get('lead') !== null); }, [path]);
   const router = useRouter();
   const voltar = noChat || ['/minha-conta','/favoritos','/temas','/sobre','/privacidade'].some((p) => path.startsWith(p));
   return (

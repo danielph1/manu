@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -11,7 +11,7 @@ import { useAuth } from '@/contexts/auth-context';
 
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
 
-export default function ChatPage() {
+function ChatPageInner() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const sp = useSearchParams();
@@ -300,5 +300,13 @@ export default function ChatPage() {
         <Button className="rounded-full" onClick={() => enviar()}>Enviar</Button>
       </div>
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChatPageInner />
+    </Suspense>
   );
 }
