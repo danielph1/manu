@@ -274,3 +274,23 @@ html[data-theme="grafite"] {
   --input: 220 5% 20%;
   --ring: 220 8% 78%;
 }
+
+html[data-theme="vinho"] {
+  --background: 350 20% 6%;
+  --foreground: 350 15% 94%;
+  --card: 350 18% 9%;
+  --card-foreground: 350 15% 94%;
+  --popover: 350 18% 9%;
+  --popover-foreground: 350 15% 94%;
+  --primary: 350 55% 42%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 350 12% 16%;
+  --secondary-foreground: 350 15% 94%;
+  --muted: 350 12% 16%;
+  --muted-foreground: 350 8% 65%;
+  --accent: 350 12% 16%;
+  --accent-foreground: 350 15% 94%;
+  --border: 350 12% 18%;
+  --input: 350 12% 18%;
+  --ring: 350 55% 42%;
+}

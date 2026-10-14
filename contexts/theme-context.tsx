@@ -8,7 +8,8 @@ export const TEMAS = [
   { id: 'azul', nome: 'Azul escuro', desc: 'Fundo azul marinho' },
   { id: 'rosa', nome: 'Rosa', desc: 'Escuro com rosa' },
   { id: 'verde', nome: 'Verde', desc: 'Escuro com verde' },
-  { id: 'ambar', nome: 'Âmbar', desc: 'Escuro com dourado' },
+  { id: 'ambar', nome: 'Âmbar', desc: '3 vendas no mês' },
+  { id: 'vinho', nome: 'Vinho', desc: '4 vendas no mês' },
   { id: 'grafite', nome: 'Grafite', desc: 'Cinza chumbo, sóbrio' },
 ] as const;
 
