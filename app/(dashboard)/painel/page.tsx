@@ -208,7 +208,7 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
         <div className="space-y-1 text-sm text-muted-foreground">
           <div>Vendedor: <span className="text-foreground capitalize">{lead.vendedor_nome ?? '-'}</span></div>
           {lead.produto_interesse && <div>Interesse: <span className="text-foreground">{lead.produto_interesse}</span></div>}
-          {lead.telefone && <div className="flex items-center gap-1"><Phone className="h-3 w-3" />{lead.telefone}</div>}
+          {lead.telefone && <a href={`https://wa.me/55${String(lead.telefone).replace(/\D/g,'')}`} target="_blank" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-primary"><Phone className="h-3 w-3" />{lead.telefone}</a>}
         </div>
         <div className="flex flex-wrap gap-2 pt-1">
           <StatusChip label="Respondeu" ok={!!lead.respondeu} />

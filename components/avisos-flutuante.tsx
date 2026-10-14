@@ -7,6 +7,8 @@ import { Bell, X } from 'lucide-react';
 const IGNORAR = ['chat', 'mensagem', 'estoque', 'oficina'];
 
 export function AvisosFlutuante() {
+  const path = usePathname() || '';
+  if (path.startsWith('/chat')) return null;
   const qc = useQueryClient();
   const [aberto, setAberto] = useState(false);
   const { data = [] } = useQuery({

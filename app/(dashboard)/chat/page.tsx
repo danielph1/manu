@@ -18,6 +18,7 @@ function ChatPageInner() {
   const router = useRouter();
   const leadId = sp.get('lead');
   const [info, setInfo] = useState(false);
+  const [obs, setObs] = useState('');
   const [texto, setTexto] = useState('');
   const [picker, setPicker] = useState<number | null>(null);
   const [camOpen, setCamOpen] = useState(false);
@@ -201,15 +202,21 @@ function ChatPageInner() {
 
   return (
     <div className="mx-auto flex h-[calc(100vh-9rem)] max-w-2xl flex-col">
-      <button className="mb-2 text-left text-lg font-semibold" onClick={() => setInfo(true)}>{conv?.nome || 'Conversa'}</button>
+      <div className="mb-2 flex items-center gap-2">
+        <button onClick={() => router.push('/chat')} className="text-sm text-muted-foreground">← voltar</button>
+        <button className="text-lg font-semibold" onClick={() => setInfo((v) => !v)}>{conv?.nome || 'Conversa'}</button>
+      </div>
       {info && (
-        <div className="mb-2 space-y-2 rounded-xl border border-border bg-card p-3 text-sm">
+        <div className="mb-2 space-y-2 rounded-xl border border-border bg-card p-3 text-sm" onClick={(e) => e.stopPropagation()}>
           <div>Nome: {conv?.nome || '—'}</div>
-          <div>Telefone: {conv?.telefone || '—'}</div>
+          <div>Telefone: {conv?.telefone ? <a className="text-primary underline" href={`https://wa.me/55${String(conv.telefone).replace(/\D/g,'')}`} target="_blank">{conv.telefone}</a> : '—'}</div>
           <div>E-mail: {conv?.email || '—'}</div>
           <div>Interesse: {conv?.interesse || '—'}</div>
+          <div className="flex gap-2">
+            <input className="flex-1 rounded border bg-background px-2 py-1" placeholder="Observação interna" value={obs} onChange={(e) => setObs(e.target.value)} />
+            <button className="rounded border px-2 py-1" onClick={async () => { if (!obs.trim()) return; await api.post('/chat', { mensagem: obs.trim(), lead_id: leadId }); setObs(''); qc.invalidateQueries({ queryKey: ['chat'] }); }}>Enviar</button>
+          </div>
           <div className="flex flex-wrap gap-2 pt-1">
-            <button className="rounded border px-2 py-1" onClick={async () => { await api.post('/chat', { mensagem: '[observação interna]', lead_id: leadId }); qc.invalidateQueries({ queryKey: ['chat'] }); setInfo(false); }}>Observação</button>
             <button className="rounded border px-2 py-1" onClick={async () => { await api.post(`/leads/${leadId}/passar`); router.push('/chat'); }}>Passar</button>
             <button className="rounded border border-red-500 px-2 py-1 text-red-400" onClick={async () => { await api.delete(`/leads/${leadId}`); router.push('/chat'); }}>Apagar lead</button>
           </div>
