@@ -18,12 +18,6 @@ function ChatPageInner() {
   const router = useRouter();
   const leadId = sp.get('lead');
   const [info, setInfo] = useState(false);
-  useEffect(() => {
-    if (!leadId || !Array.isArray(data) || !data.length) return;
-    const lidos = JSON.parse(localStorage.getItem('manu.lidos') || '{}');
-    lidos[leadId] = data.length;
-    localStorage.setItem('manu.lidos', JSON.stringify(lidos));
-  }, [leadId, Array.isArray(data) ? data.length : 0]);
   const [texto, setTexto] = useState('');
   const [picker, setPicker] = useState<number | null>(null);
   const [camOpen, setCamOpen] = useState(false);
@@ -37,10 +31,22 @@ function ChatPageInner() {
   const chunks = useRef<Blob[]>([]);
 
   const { data = [] } = useQuery({
-    queryKey: ['chat'],
-    queryFn: async () => (await api.get('/chat')).data,
+    queryKey: ['chat', leadId],
+    queryFn: async () => (await api.get('/chat', { params: leadId ? { lead_id: leadId } : {} })).data,
+    refetchInterval: 8000,
+    enabled: !!leadId,
+  });
+  const { data: conversas = [] } = useQuery({
+    queryKey: ['conversas'],
+    queryFn: async () => (await api.get('/chat/conversas')).data,
     refetchInterval: 8000,
   });
+  useEffect(() => {
+    if (!leadId || !Array.isArray(data) || !data.length) return;
+    const lidos = JSON.parse(localStorage.getItem('manu.lidos') || '{}');
+    lidos[leadId] = data.length;
+    localStorage.setItem('manu.lidos', JSON.stringify(lidos));
+  }, [leadId, Array.isArray(data) ? data.length : 0]);
 
   async function enviar(extra?: { arquivo_b64: string; arquivo_nome: string; arquivo_mime: string }) {
     try {

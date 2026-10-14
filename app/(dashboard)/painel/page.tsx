@@ -187,8 +187,8 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
             <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
             <span className="truncate">{lead.nome_lead}</span>
           </div>
-          <a href={`/chat?lead=${lead.id}`} onClick={(e) => e.stopPropagation()} className="shrink-0 rounded-full p-1 text-muted-foreground" aria-label="Chat">
-            <MessageSquare className="h-5 w-5" />
+          <a href={`/chat?lead=${lead.id}`} onClick={(e) => e.stopPropagation()} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-foreground" aria-label="Chat">
+            <MessageSquare className="h-4 w-4" />
           </a>
           <button
             type="button"
