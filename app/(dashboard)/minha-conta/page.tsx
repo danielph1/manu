@@ -80,14 +80,15 @@ export default function MinhaContaPage() {
       </div>
       <div className="space-y-3 rounded-xl border border-border bg-card p-4">
         <div>
-          <Label>Login</Label>
-          <div className="flex gap-+2">
-            <Input value={login} onChange={(e) => setLogin(e.target.value)} disabled={!editLogin} />
+          <Label>Nome</Label>
+          <div className="flex gap-2">
+            <Input value={nome} onChange={(e) => setNome(e.target.value)} disabled={!editLogin} />
             <Button type="button" variant="outline" onClick={() => setEditLogin((v) => !v)}>{editLogin ? 'Cancelar' : 'Alterar'}</Button>
           </div>
+          <div className="mt-1 text-xs text-muted-foreground">Login: {login}</div>
         </div>
         <div><Label>Perfil</Label><Input value={dados.tipo || ''} disabled className="capitalize" /></div>
-        <div><Label>Telefone</Label><Input value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="(21) 99999-9999" /></div>
+        <div><Label>Telefone</Label><Input value={telefone} onChange={(e) => setTelefone(e.target.value)} disabled={!editLogin} /></div>
         <div><Label>E-mail</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editLogin} /></div>
         <Button onClick={salvar} disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar'}</Button>
       </div>
