@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         b.modelo || null,
         b.ano_modelo || null,
         b.placa,
-        b.cor || null,
+        b.cor || b.cor_carro || b.cor_veiculo || null,
         b.kilometragem || null,
         Number(b.entrada_dinheiro || 0),
         Number(b.entrada_debito || 0),
@@ -136,6 +136,15 @@ export async function POST(req: NextRequest) {
         tipos: dest.length ? ['admin', 'gerente'] : ['admin', 'gerente'],
       });
     } catch { /* aviso nao bloqueia */ }
+    if (row?.id) {
+      try {
+        await query(
+          `INSERT INTO public.processos_transferencia (ficha_id, lead_id, placa, nome_lead, status, observacao)
+           VALUES ($1,$2,$3,$4,'nao iniciado',$5)`,
+          [b.ficha_id || null, b.lead_id || null, b.placa, b.nome, 'venda gerada'],
+        );
+      } catch { /* tabela pode nao existir */ }
+    }
     return NextResponse.json(row);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message }, { status: 500 });

@@ -59,17 +59,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
     if (Array.isArray(body.bancos)) {
       for (const b of body.bancos) {
+        const st = String(b.status || 'pendente').toLowerCase();
+        const ok = st.startsWith('aprov') ? 'aprovado' : (st.startsWith('neg') || st.startsWith('recus')) ? 'negado' : 'pendente';
         if (b.id) {
           await query(
             `UPDATE public.ficha_bancos
              SET banco = $1, status = $2, valor_financiado = $3, parcela_48 = $4, parcela_60 = $5,
                  valor_entrada = $6, observacao = $7
              WHERE id = $8`,
-            [b.banco, b.status, b.valor_financiado || 0, b.parcela_48 || 0, b.parcela_60 || 0, b.valor_entrada || 0, b.observacao || null, b.id],
+            [b.banco, ok, b.valor_financiado || 0, b.parcela_48 || 0, b.parcela_60 || 0, b.valor_entrada || 0, b.observacao || null, b.id],
           );
         } else {
-          const st = String(b.status || 'pendente').toLowerCase();
-          const ok = ['pendente','aprovado','aprovada','negado','negada','recusado','recusada'].includes(st) ? st : 'pendente';
           await query(
             `INSERT INTO public.ficha_bancos (ficha_id, banco, status, valor_financiado, parcela_48, parcela_60, valor_entrada, observacao)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
