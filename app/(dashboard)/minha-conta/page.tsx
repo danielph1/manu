@@ -25,6 +25,7 @@ function comprimir(file: File): Promise<Blob> {
 export default function MinhaContaPage() {
   const [dados, setDados] = useState<any>({});
   const [login, setLogin] = useState('');
+  const [nome, setNome] = useState('');
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
   const [editLogin, setEditLogin] = useState(false);
@@ -34,6 +35,7 @@ export default function MinhaContaPage() {
     api.get('/conta').then((r) => {
       setDados(r.data || {});
       setLogin(r.data?.login || '');
+      setNome(r.data?.nome || '');
       setTelefone(r.data?.telefone || '');
       setEmail(r.data?.email || '');
     }).catch(() => {});
@@ -42,7 +44,7 @@ export default function MinhaContaPage() {
   async function salvar() {
     setSalvando(true);
     try {
-      await api.patch('/conta', { telefone, email, login: editLogin ? login : undefined });
+      await api.patch('/conta', { telefone, email, nome });
       toast.success('Salvo');
       setEditLogin(false);
     } catch (e: any) {
@@ -86,7 +88,7 @@ export default function MinhaContaPage() {
         </div>
         <div><Label>Perfil</Label><Input value={dados.tipo || ''} disabled className="capitalize" /></div>
         <div><Label>Telefone</Label><Input value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="(21) 99999-9999" /></div>
-        <div><Label>E-mail</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com" /></div>
+        <div><Label>E-mail</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editLogin} /></div>
         <Button onClick={salvar} disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar'}</Button>
       </div>
     </div>

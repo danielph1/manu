@@ -35,8 +35,8 @@ async function virarLead(triagemId: number, vendedorId: number) {
   if (lead?.id && t.mensagem) {
     await query(
       `INSERT INTO public.chat_geral_mensagens (remetente_id, mensagem, lead_id)
-       VALUES (NULL, $1, $2)`,
-      [`[${t.origem}] ${t.mensagem}`, lead.id],
+       VALUES ($1, $2, $3)`,
+      [(await queryOne(`SELECT id FROM public.usuarios ORDER BY id LIMIT 1`))?.id || 1, `[cliente] ${t.mensagem}`, lead.id],
     );
   }
 }

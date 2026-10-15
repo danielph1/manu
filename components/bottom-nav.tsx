@@ -3,10 +3,22 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { LayoutDashboard, Car, FileText, PlusCircle, CheckSquare, MessageSquare } from 'lucide-react';
 
 export function BottomNav() {
+  const [escondido, setEscondido] = useState(false);
+  useEffect(() => {
+    let y = window.scrollY;
+    const on = () => {
+      const n = window.scrollY;
+      setEscondido(n > y && n > 40);
+      y = n;
+    };
+    window.addEventListener('scroll', on, { passive: true });
+    return () => window.removeEventListener('scroll', on);
+  }, []);
   const path = usePathname() || '';
   const { user } = useAuth();
   const inicial = String(user?.nome || user?.login || '?').charAt(0).toUpperCase();

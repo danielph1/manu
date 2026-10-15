@@ -187,6 +187,21 @@ export async function PATCH(req: NextRequest) {
       ],
     );
 
+    // pronto vai para o estoque, exceto vendido
+    if (row?.placa && (b.pronto === true || row.pronto === true)) {
+      try {
+        const placa = String(row.placa).replace(/[- ]/g, '').toUpperCase();
+        const est = await queryOne(`SELECT id, status FROM public.estoque_carros
+          WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1 LIMIT 1`, [placa]);
+        const vendido = est && String(est.status || '').toLowerCase().includes('vend');
+        if (!est && !vendido) {
+          await query(`INSERT INTO public.estoque_carros (marca, carro, modelo, ano, placa, patio, status)
+            VALUES ($1,$2,$3,$4,$5,'Pátio','Disponível')`,
+            [row.marca, `${row.marca} ${row.modelo}`, row.modelo, row.ano_modelo, row.placa]);
+        }
+      } catch { /* ok */ }
+    }
+
     // sync pátio estoque
     if (row?.placa && b.onde_esta) {
       try {
