@@ -136,17 +136,7 @@ export async function POST(req: NextRequest) {
         tipos: dest.length ? ['admin', 'gerente'] : ['admin', 'gerente'],
       });
     } catch { /* aviso nao bloqueia */ }
-    if (row?.id) {
-      try {
-        if (b.lead_id) await query(`UPDATE public.leads SET venda_concluida = TRUE, data_venda = COALESCE(data_venda, now()) WHERE id = $1`, [b.lead_id]);
-        if (b.ficha_id) await query(`UPDATE public.fichas_credito SET comprou = TRUE WHERE id = $1`, [b.ficha_id]);
-        await query(
-          `INSERT INTO public.processos_transferencia (ficha_id, lead_id, placa, nome_lead, status, observacao)
-           VALUES ($1,$2,$3,$4,'nao iniciado',$5)`,
-          [b.ficha_id || null, b.lead_id || null, b.placa, b.nome, 'venda gerada'],
-        );
-      } catch { /* ok */ }
-    }
+    /* vai para o documental só quando liberar o carro */
     return NextResponse.json(row);
   } catch (e: any) {
     return NextResponse.json({ error: e?.message }, { status: 500 });

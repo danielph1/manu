@@ -161,7 +161,7 @@ export default function FaturamentoPage() {
                 <Button onClick={() => baixar(aberto.id, aberto.placa)}><Download className="mr-1 h-4 w-4" /> Baixar HTML</Button>
                 <Button variant="outline" onClick={async () => {
                   try {
-                    await api.post('/faturamento/liberar', { placa: aberto.placa, marca: aberto.marca, modelo: aberto.modelo, ano: aberto.ano_modelo });
+                    await api.post('/faturamento/liberar', { placa: aberto.placa, marca: aberto.marca, modelo: aberto.modelo, ano: aberto.ano_modelo, ficha_id: aberto.ficha_id, lead_id: aberto.lead_id, nome: aberto.nome });
                     toast.success('Carro liberado e removido do estoque');
                   } catch (e: any) { toast.error(e?.response?.data?.error || 'Erro'); }
                 }}>Liberar carro</Button>

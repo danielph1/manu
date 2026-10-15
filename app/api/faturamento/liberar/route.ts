@@ -35,6 +35,22 @@ export async function POST(req: NextRequest) {
     try { await query(`DELETE FROM public.oficina_carros WHERE ${where}`, [placa]); } catch { /* ok */ }
 
     const txt = `${c.marca || ''} ${c.modelo || c.carro || ''} ${c.ano_modelo || c.ano || ''} ${b.placa || placa} vendido`.replace(/\s+/g, ' ').trim();
+
+    if (b.lead_id) {
+      try { await query(`UPDATE public.leads SET venda_concluida = TRUE, data_venda = COALESCE(data_venda, now()) WHERE id = $1`, [b.lead_id]); } catch { /* ok */ }
+    }
+    if (b.ficha_id) {
+      try { await query(`UPDATE public.fichas_credito SET comprou = TRUE WHERE id = $1`, [b.ficha_id]); } catch { /* ok */ }
+      try {
+        await query(
+          `INSERT INTO public.processos_transferencia (ficha_id, lead_id, placa, nome_lead, status, observacao)
+           VALUES ($1,$2,$3,$4,'nao iniciado',$5)
+           ON CONFLICT (ficha_id) DO NOTHING`,
+          [b.ficha_id, b.lead_id || null, b.placa, b.nome || c.modelo || '', 'liberado'],
+        );
+      } catch { /* ok */ }
+    }
+
     await notificar({ titulo: 'Carro vendido', mensagem: txt, tipo: 'venda', broadcast: true });
     return NextResponse.json({ ok: true, mensagem: txt });
   } catch (e: any) {
