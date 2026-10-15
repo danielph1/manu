@@ -24,6 +24,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) },
     { href: '/metricas', label: 'Metricas', icon: BarChart3, show: Role.verMetricas(user) },
     { href: '/equipe', label: 'Equipe', icon: Users, show: Role.isGerente(user) },
+    { href: '/ranking', label: 'Ranking', icon: Target, show: !!user },
     { href: '/metas', label: 'Metas', icon: Target, show: Role.verLeads(user) },
     { href: '/processos', label: 'Transferencias', icon: ArrowRightLeft, show: Role.verDocumental(user) },
     { href: '/oficina', label: 'Oficina', icon: Wrench, show: !!user },

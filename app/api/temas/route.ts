@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
-const TODOS = ['escuro', 'claro', 'azul', 'verde', 'rosa', 'preto', 'ambar', 'grafite', 'vinho'];
+const TODOS = ['escuro', 'claro', 'azul', 'verde', 'rosa', 'preto', 'ambar', 'grafite', 'vinho', 'platinum'];
 const LIVRE = ['admin', 'gerente', 'documento', 'documentista', 'elfenai', 'marketing'];
 
 export async function GET(req: NextRequest) {
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
   if (total >= 2) ['rosa', 'preto'].forEach((t) => liberados.add(t));
   if (mes >= 3) liberados.add('ambar');
   if (mes >= 4) liberados.add('vinho');
+  if (total >= 10) liberados.add('platinum');
 
   // aviso seco, uma vez por tema
   const novos = [...liberados].filter((t) => !['escuro', 'claro'].includes(t));
