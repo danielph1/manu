@@ -28,7 +28,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const stored = window.localStorage.getItem(USER_STORAGE_KEY);
       if (stored) setUser(JSON.parse(stored));
     } catch {}
-    setIsLoading(false);
+    api.get('/auth/me').then((r) => {
+      if (r.data) {
+        setUser(r.data);
+        window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(r.data));
+      }
+    }).catch(() => {}).finally(() => setIsLoading(false));
   }, []);
 
   const login = useCallback(async (payload: LoginPayload) => {
