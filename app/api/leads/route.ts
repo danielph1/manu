@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
 
     await notificar({
         titulo: 'Novo lead',
-        mensagem: String(b.nome_lead || 'lead'),
+        mensagem: String(nome || 'lead'),
         tipo: 'lead',
         tipos: ['admin', 'gerente'],
       });
