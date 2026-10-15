@@ -25,7 +25,10 @@ export default function EquipePage() {
           <Card key={v.id}>
             <CardContent className="py-4">
               <div className="flex items-center justify-between">
-                <div className="font-semibold">{i + 1}. {v.nome}</div>
+                <div className="flex items-center gap-2 font-semibold">
+                  {v.foto_url ? <img src={v.foto_url} alt="" className="h-8 w-8 rounded-full object-cover" /> : <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">{String(v.nome||'?').charAt(0).toUpperCase()}</span>}
+                  {i + 1}. {v.nome}
+                </div>
                 <div className="text-lg font-bold text-primary">{Number(v.pontos || 0).toFixed(1)} pts</div>
               </div>
               <div className="text-sm text-muted-foreground">Loja {String(v.loja || '—').replace('.0', '')}</div>

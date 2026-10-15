@@ -11,9 +11,9 @@ export async function GET(req: NextRequest) {
     let vends: any[] = [];
     const lojaFilter = u.tipo === 'gerente' && u.loja;
     const tries = [
-      `SELECT id, nome, loja FROM public.vendedores WHERE LOWER(COALESCE(nome,'')) <> 'matheus' ${lojaFilter ? 'AND UPPER(COALESCE(loja,\'381\')) = UPPER($1)' : ''} ORDER BY LOWER(nome)`,
-      `SELECT id, nome, loja FROM public.vendedores WHERE LOWER(COALESCE(nome,'')) <> 'matheus' ORDER BY LOWER(nome)`,
-      `SELECT id, nome, loja FROM public.vendedores ORDER BY id`,
+      `SELECT v.id, v.nome, v.loja, COALESCE(u.foto_url,'') AS foto_url FROM public.vendedores v LEFT JOIN public.usuarios u ON u.vendedor_id = v.id WHERE LOWER(COALESCE(v.nome,'')) <> 'matheus' ${lojaFilter ? 'AND UPPER(COALESCE(loja,\'381\')) = UPPER($1)' : ''} ORDER BY LOWER(v.nome)`,
+      `SELECT v.id, v.nome, v.loja, COALESCE(u.foto_url,'') AS foto_url FROM public.vendedores v LEFT JOIN public.usuarios u ON u.vendedor_id = v.id WHERE LOWER(COALESCE(v.nome,'')) <> 'matheus' ORDER BY LOWER(v.nome)`,
+      `SELECT v.id, v.nome, v.loja, COALESCE(u.foto_url,'') AS foto_url FROM public.vendedores v LEFT JOIN public.usuarios u ON u.vendedor_id = v.id ORDER BY v.id`,
     ];
     for (const sql of tries) {
       try {

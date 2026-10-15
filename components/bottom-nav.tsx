@@ -33,7 +33,7 @@ export function BottomNav() {
 
   return createPortal(
     <>
-      <nav style={{ position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, display: 'flex', alignItems: 'center', gap: 4, maxWidth: '96vw', overflowX: 'auto', borderRadius: 999, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', padding: '8px 10px', boxShadow: '0 8px 30px rgba(0,0,0,.35)' }}>
+      <nav style={{ position: 'fixed', bottom: 16, left: '50%', transform: `translateX(-50%) translateY(${escondido ? '120px' : '0'})`, transition: 'transform .3s ease', zIndex: 9999, display: 'flex', alignItems: 'center', gap: 4, maxWidth: '96vw', overflowX: 'auto', borderRadius: 999, border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))', padding: '8px 10px', boxShadow: '0 8px 30px rgba(0,0,0,.35)' }}>
         <Item href="/painel" Icon={LayoutDashboard} />
         <Item href="/estoque" Icon={Car} />
         <Item href="/fichas" Icon={FileText} />
@@ -41,7 +41,7 @@ export function BottomNav() {
         <Item href="/tarefas" Icon={CheckSquare} />
         <Item href="/chat" Icon={MessageSquare} />
         <Link href="/configuracoes" style={{ display: 'flex', width: 40, height: 40, alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-          <span style={{ width: 32, height: 32, borderRadius: 999, background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>{inicial}</span>
+          <span style={{ width: 32, height: 32, borderRadius: 999, background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, overflow: 'hidden' }}>{(user as any)?.foto_url ? <img src={(user as any).foto_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : inicial}</span>
         </Link>
       </nav>
     </>,

@@ -52,9 +52,25 @@ export default function MinhaContaPage() {
     } finally { setSalvando(false); }
   }
 
+  function quadrado(file: File): Promise<Blob> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const lado = Math.min(img.width, img.height);
+        const x = (img.width - lado) / 2;
+        const y = (img.height - lado) / 2;
+        const c = document.createElement('canvas');
+        c.width = 256; c.height = 256;
+        c.getContext('2d')!.drawImage(img, x, y, lado, lado, 0, 0, 256, 256);
+        c.toBlob((b) => resolve(b || file), 'image/jpeg', 0.85);
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
   async function foto(f?: File) {
     if (!f) return;
-    const blob = await comprimir(f);
+    const blob = await quadrado(f);
     const fd = new FormData();
     fd.append('foto', new File([blob], 'perfil.jpg', { type: 'image/jpeg' }));
     try {
