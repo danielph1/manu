@@ -68,10 +68,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             [b.banco, b.status, b.valor_financiado || 0, b.parcela_48 || 0, b.parcela_60 || 0, b.valor_entrada || 0, b.observacao || null, b.id],
           );
         } else {
+          const st = String(b.status || 'pendente').toLowerCase();
+          const ok = ['pendente','aprovado','aprovada','negado','negada','recusado','recusada'].includes(st) ? st : 'pendente';
           await query(
             `INSERT INTO public.ficha_bancos (ficha_id, banco, status, valor_financiado, parcela_48, parcela_60, valor_entrada, observacao)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [Number(id), b.banco, b.status, b.valor_financiado || 0, b.parcela_48 || 0, b.parcela_60 || 0, b.valor_entrada || 0, b.observacao || null],
+            [Number(id), b.banco || '—', ok, b.valor_financiado || 0, b.parcela_48 || 0, b.parcela_60 || 0, b.valor_entrada || 0, b.observacao || null],
           );
         }
       }
