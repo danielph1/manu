@@ -57,6 +57,18 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         params2,
       );
     }
+    if (body.status_geral) {
+      const sg = String(body.status_geral).toLowerCase();
+      const aprov = sg.startsWith('aprov');
+      const neg = sg.startsWith('neg') || sg.startsWith('recus');
+      if (aprov || neg) {
+        await query(
+          `UPDATE public.leads SET aprovado = $1
+           WHERE id = (SELECT lead_id FROM public.fichas_credito WHERE id = $2)`,
+          [aprov, id],
+        );
+      }
+    }
     if (Array.isArray(body.bancos)) {
       for (const b of body.bancos) {
         const st = String(b.status || 'pendente').toLowerCase();

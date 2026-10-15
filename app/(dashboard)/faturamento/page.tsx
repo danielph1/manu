@@ -159,6 +159,12 @@ export default function FaturamentoPage() {
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => baixar(aberto.id, aberto.placa)}><Download className="mr-1 h-4 w-4" /> Baixar HTML</Button>
+                <Button variant="outline" onClick={async () => {
+                  try {
+                    await api.post('/faturamento/liberar', { placa: aberto.placa, marca: aberto.marca, modelo: aberto.modelo, ano: aberto.ano_modelo });
+                    toast.success('Carro liberado e removido do estoque');
+                  } catch (e: any) { toast.error(e?.response?.data?.error || 'Erro'); }
+                }}>Liberar carro</Button>
                 <Button variant="outline" onClick={() => imprimir(aberto.id)}><Printer className="mr-1 h-4 w-4" /> Imprimir</Button>
               </div>
             </div>
