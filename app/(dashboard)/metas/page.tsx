@@ -72,15 +72,17 @@ export default function MetasPage() {
             </div>
           </div>
           {pode && (
-            <Button variant="outline" size="sm" onClick={async () => {
-              await api.patch('/metas', { id: m.id, concluida: !m.concluida });
-              qc.invalidateQueries({ queryKey: ['metas'] });
-            }}>{m.concluida ? 'Reabrir' : 'Concluir'}</Button>
-            <Button size="sm" variant="outline" className="text-red-400" onClick={async () => {
-              if (!confirm('Excluir meta?')) return;
-              await api.delete('/metas', { data: { id: m.id } });
-              qc.invalidateQueries({ queryKey: ['metas'] });
-            }}>Excluir</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={async () => {
+                await api.patch('/metas', { id: m.id, concluida: !m.concluida });
+                qc.invalidateQueries({ queryKey: ['metas'] });
+              }}>{m.concluida ? 'Reabrir' : 'Concluir'}</Button>
+              <Button size="sm" variant="outline" className="text-red-400" onClick={async () => {
+                if (!confirm('Excluir meta?')) return;
+                await api.delete('/metas', { data: { id: m.id } });
+                qc.invalidateQueries({ queryKey: ['metas'] });
+              }}>Excluir</Button>
+            </div>
           )}
         </CardContent></Card>
       ))}
