@@ -43,14 +43,16 @@ export async function POST(req: NextRequest) {
   try {
     const row = await queryOne(
       `INSERT INTO public.metas
-         (titulo, descricao, valor_objetivo, unidade, destinatario_id, destinatario_tipo, destinatario_loja, criado_por_id, ativo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,TRUE)
+         (titulo, descricao, valor_objetivo, unidade, periodo_inicio, periodo_fim, destinatario_id, destinatario_tipo, destinatario_loja, criado_por_id, ativo)
+       VALUES ($1,$2,$3,$4,COALESCE($5::date, CURRENT_DATE),COALESCE($6::date, (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date),$7,$8,$9,$10,TRUE)
        RETURNING *`,
       [
         String(b.titulo).trim(),
         b.descricao || null,
         b.valor_objetivo != null && b.valor_objetivo !== '' ? Number(b.valor_objetivo) : null,
         b.unidade || 'un',
+        b.periodo_inicio || null,
+        b.periodo_fim || null,
         b.destinatario_id ? Number(b.destinatario_id) : null,
         b.destinatario_tipo || null,
         b.destinatario_loja || null,
