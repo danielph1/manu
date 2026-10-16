@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
 
   const periodo = new URL(req.url).searchParams.get('periodo') || 'todas';
+  const busca = (new URL(req.url).searchParams.get('busca') || '').trim();
   const { di, df } = periodoBounds(periodo);
   const params: unknown[] = [];
   const where: string[] = ['1=1'];
