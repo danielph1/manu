@@ -42,15 +42,13 @@ export async function GET(req: NextRequest) {
       l.nome_lead AS lead_nome,
       l.telefone,
       l.cpf,
-      l.carro_selecionado, l.placa_carro, l.bairro, l.cidade, l.estado,
-      l.nome_mae, l.nome_pai, l.empresa, l.banco_correntista, l.cep, l.valor_carro, l.rg, l.valor_entrada,
       COALESCE(l.cliente_na_loja, FALSE) AS em_loja,
       COALESCE(f.comprou, l.venda_concluida, FALSE) AS comprou,
       v.nome AS vendedor_nome
     FROM public.fichas_credito f
     LEFT JOIN public.leads l ON l.id = f.lead_id
     LEFT JOIN public.vendedores v ON v.id = f.vendedor_id
-    WHERE ${where.join(' AND ')} ${busca ? `AND (l.nome_lead ILIKE $${params.length+1} OR l.nome_completo ILIKE $${params.length+1} OR l.cpf ILIKE $${params.length+1} OR l.telefone ILIKE $${params.length+1} OR l.carro_selecionado ILIKE $${params.length+1} OR l.placa_carro ILIKE $${params.length+1} OR l.bairro ILIKE $${params.length+1} OR l.cidade ILIKE $${params.length+1} OR l.estado ILIKE $${params.length+1} OR l.nome_mae ILIKE $${params.length+1} OR l.nome_pai ILIKE $${params.length+1} OR l.empresa ILIKE $${params.length+1} OR l.banco_correntista ILIKE $${params.length+1} OR l.cep ILIKE $${params.length+1} OR l.rg ILIKE $${params.length+1} OR v.nome ILIKE $${params.length+1} OR f.banco_contratado ILIKE $${params.length+1})` : ''}
+    WHERE ${where.join(' AND ')} ${busca ? `AND (COALESCE(l.nome_lead,'') ILIKE $${params.length+1} OR COALESCE(l.nome_completo,'') ILIKE $${params.length+1} OR COALESCE(l.cpf,'') ILIKE $${params.length+1} OR COALESCE(l.telefone,'') ILIKE $${params.length+1} OR COALESCE(v.nome,'') ILIKE $${params.length+1} OR COALESCE(f.banco_contratado,'') ILIKE $${params.length+1})` : ''}
   `;
 
   if (busca) params.push(`%${busca}%`);
