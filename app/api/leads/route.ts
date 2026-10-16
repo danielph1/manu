@@ -94,11 +94,10 @@ export async function GET(req: NextRequest) {
     if (di) add('COALESCE(l.data_lead, l.created_at)::date >= ?::date', di);
     if (df) add('COALESCE(l.data_lead, l.created_at)::date < ?::date', df);
 
-    if (filtro === 'responderam') add('COALESCE(l.respondeu, FALSE) = TRUE', true);
-    else if (filtro === 'nao_responderam') {
-      where.push('COALESCE(l.respondeu, FALSE) = FALSE');
-    } else if (filtro === 'fichas') add('COALESCE(l.gerou_ficha, FALSE) = TRUE', true);
-    else if (filtro === 'aprovados') add('COALESCE(l.aprovado, FALSE) = TRUE', true);
+    if (filtro === 'responderam') where.push('COALESCE(l.respondeu, FALSE) = TRUE');
+    else if (filtro === 'nao_responderam') where.push('COALESCE(l.respondeu, FALSE) = FALSE');
+    else if (filtro === 'fichas') where.push('COALESCE(l.gerou_ficha, FALSE) = TRUE');
+    else if (filtro === 'aprovados') where.push('COALESCE(l.aprovado, FALSE) = TRUE');
     else if (filtro === 'vendidos') {
       where.push('(COALESCE(l.venda_concluida, FALSE) = TRUE OR l.data_venda IS NOT NULL)');
     } else if (filtro === 'negados') {

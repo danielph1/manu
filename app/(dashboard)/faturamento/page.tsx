@@ -112,7 +112,7 @@ export default function FaturamentoPage() {
                 <div className="font-semibold">{f.nome} · {f.placa}</div>
                 <div className="text-sm text-muted-foreground">
                   {f.vendedor_nome || '—'} · entrada R$ {Number(f.entrada_total || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  {' · '}{f.status || '—'}
+                  {' · '}{f.status || '—'}{f.liberado ? <span className="ml-2 rounded bg-emerald-500/20 px-1.5 text-xs text-emerald-400">Liberado</span> : null}
                   {f.created_at && <> · {new Date(f.created_at).toLocaleDateString('pt-BR')}</>}
                 </div>
               </div>
@@ -159,12 +159,15 @@ export default function FaturamentoPage() {
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => baixar(aberto.id, aberto.placa)}><Download className="mr-1 h-4 w-4" /> Baixar HTML</Button>
-                <Button variant="outline" onClick={async () => {
-                  try {
-                    await api.post('/faturamento/liberar', { placa: aberto.placa, marca: aberto.marca, modelo: aberto.modelo, ano: aberto.ano_modelo, ficha_id: aberto.ficha_id, lead_id: aberto.lead_id, nome: aberto.nome });
-                    toast.success('Carro liberado e removido do estoque');
-                  } catch (e: any) { toast.error(e?.response?.data?.error || 'Erro'); }
-                }}>Liberar carro</Button>
+                {aberto.liberado
+                  ? <span className="rounded-lg bg-emerald-500/20 px-3 py-2 text-sm text-emerald-400">Carro liberado</span>
+                  : <Button variant="outline" onClick={async () => {
+                      try {
+                        await api.post('/faturamento/liberar', { placa: aberto.placa, marca: aberto.marca, modelo: aberto.modelo, ano: aberto.ano_modelo, ficha_id: aberto.ficha_id, lead_id: aberto.lead_id, nome: aberto.nome });
+                        toast.success('Carro liberado');
+                        setAberto({ ...aberto, liberado: true });
+                      } catch (e: any) { toast.error(e?.response?.data?.error || 'Erro'); }
+                    }}>Liberar carro</Button>}
                 <Button variant="outline" onClick={() => imprimir(aberto.id)}><Printer className="mr-1 h-4 w-4" /> Imprimir</Button>
               </div>
             </div>

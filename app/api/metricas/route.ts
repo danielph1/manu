@@ -73,12 +73,12 @@ export async function GET(req: NextRequest) {
     try {
       fin = (await queryOne(
         `SELECT
-           COALESCE(SUM(valor_financiado),0)::float AS valor_liberado,
-           COALESCE(SUM(valor_entrada),0)::float AS entrada_paga,
-           COALESCE(SUM(COALESCE(boleto_valor,0)),0)::float AS total_boletos,
-           COALESCE(SUM(COALESCE(valor_pendente,0)),0)::float AS valor_pendente,
-           COUNT(*) FILTER (WHERE COALESCE(gerou_boleto,FALSE))::int AS clientes_com_boleto
-         FROM public.fichas_credito`,
+           COALESCE(SUM(COALESCE(fin_valor_parcela,0) * COALESCE(fin_parcelas,0)),0)::float AS valor_liberado,
+           COALESCE(SUM(COALESCE(entrada_total,0)),0)::float AS entrada_paga,
+           COALESCE(SUM(0),0)::float AS total_boletos,
+           COALESCE(SUM(0),0)::float AS valor_pendente,
+           COUNT(*) FILTER (WHERE COALESCE(entrada_boleto,0) > 0)::int AS clientes_com_boleto
+         FROM public.faturamentos`,
       )) || {};
     } catch {
       fin = {};

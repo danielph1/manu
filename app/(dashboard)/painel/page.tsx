@@ -213,7 +213,11 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
         <div className="flex flex-wrap gap-2 pt-1">
           <StatusChip label="Respondeu" ok={!!lead.respondeu} />
           <StatusChip label="Ficha" ok={!!lead.gerou_ficha} />
-          <StatusChip label="Aprovado" ok={!!(lead as any).aprovado} />
+          {(lead as any).aprovado
+            ? <StatusChip label="Aprovado" ok />
+            : (lead as any).gerou_ficha && (lead as any).status_geral?.toLowerCase?.().startsWith('neg')
+              ? <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">Recusado</span>
+              : <StatusChip label="Aprovado" ok={false} />}
         </div>
       </CardContent>
     </Card>
