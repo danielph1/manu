@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       } catch { /* ok */ }
     }
 
-    try { await query(`UPDATE public.faturamentos SET liberado = TRUE WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1`, [placa]); } catch { /* ok */ }
+    try { await query(`UPDATE public.faturamentos SET liberado = TRUE, status = 'emitido' WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1`, [placa]); } catch { /* ok */ }
     await notificar({ titulo: 'Carro vendido', mensagem: txt, tipo: 'venda', broadcast: true });
     return NextResponse.json({ ok: true, mensagem: txt });
   } catch (e: any) {

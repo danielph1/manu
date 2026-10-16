@@ -76,7 +76,7 @@ export default function FaturamentoPage() {
     if (!form?.nome || !form?.placa) { toast.error('Nome e placa são obrigatórios'); return; }
     setSalvando(true);
     try {
-      await api.post('/faturamento', form);
+      if (form.id) await api.patch('/faturamento', form); else await api.post('/faturamento', form);
       toast.success('Faturamento salvo');
       setForm(null);
       qc.invalidateQueries({ queryKey: ['faturamento'] });
@@ -159,6 +159,12 @@ export default function FaturamentoPage() {
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => baixar(aberto.id, aberto.placa)}><Download className="mr-1 h-4 w-4" /> Baixar HTML</Button>
+                {['admin','gerente'].includes(user?.tipo || '') && (
+                  <Button variant="outline" className="text-red-400" onClick={async () => {
+                    if (!confirm('Excluir este faturamento?')) return;
+                    try { await api.post('/faturamento/excluir', { id: aberto.id }); toast.success('Excluído'); setAberto(null); } catch (e: any) { toast.error('Erro'); }
+                  }}>Excluir</Button>
+                )}
                 {aberto.liberado
                   ? <span className="rounded-lg bg-emerald-500/20 px-3 py-2 text-sm text-emerald-400">Carro liberado</span>
                   : <Button variant="outline" onClick={async () => {
@@ -168,6 +174,7 @@ export default function FaturamentoPage() {
                         setAberto({ ...aberto, liberado: true });
                       } catch (e: any) { toast.error(e?.response?.data?.error || 'Erro'); }
                     }}>Liberar carro</Button>}
+                <Button variant="outline" onClick={() => { setForm({ ...aberto }); setAberto(null); }}>Editar</Button>
                 <Button variant="outline" onClick={() => imprimir(aberto.id)}><Printer className="mr-1 h-4 w-4" /> Imprimir</Button>
               </div>
             </div>
@@ -202,6 +209,15 @@ export default function FaturamentoPage() {
                 <div className="space-y-1"><Label className="text-xs">Banco</Label><Input value={form.fin_banco ?? ''} onChange={(e) => set('fin_banco', e.target.value)} /></div>
                 <div className="space-y-1"><Label className="text-xs">Parcelas</Label><Input value={form.fin_parcelas ?? ''} onChange={(e) => set('fin_parcelas', e.target.value)} /></div>
                 <div className="space-y-1"><Label className="text-xs">Valor da parcela</Label><Input type="number" value={form.fin_valor_parcela ?? ''} onChange={(e) => set('fin_valor_parcela', e.target.value)} /></div>
+              </div>
+              <div className="text-sm font-medium text-muted-foreground">Carro na troca (opcional)</div>
+              <div className="grid gap-3 md:grid-cols-3">
+                {['troca_marca','troca_modelo','troca_ano_modelo','troca_placa','troca_cor','troca_km'].map((k) => (
+                  <div key={k} className="space-y-1">
+                    <Label className="text-xs">{k.replace('troca_', '')}</Label>
+                    <Input value={form[k] ?? ''} onChange={(e) => set(k, e.target.value)} />
+                  </div>
+                ))}
               </div>
               <div className="space-y-1"><Label className="text-xs">Observações</Label><Textarea value={form.observacoes ?? ''} onChange={(e) => set('observacoes', e.target.value)} /></div>
               <Button type="submit" disabled={salvando}>{salvando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Salvar</Button>

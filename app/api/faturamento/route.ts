@@ -142,3 +142,52 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e?.message }, { status: 500 });
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  const u = await requireUser(req);
+  if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
+  const b = await req.json();
+  if (!b.id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+
+  const atual = await queryOne(`SELECT * FROM public.faturamentos WHERE id = $1`, [b.id]);
+  if (!atual) return NextResponse.json({ error: 'não encontrado' }, { status: 404 });
+
+  const pode = ['admin', 'gerente', 'documentista', 'elfenai', 'elfenaí'].includes(u.tipo)
+    || (u.tipo === 'vendedor' && atual.criado_por_id === u.id);
+  if (!pode) return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
+
+  const campos = ['nome','cpf_cnpj','telefone','email','endereco','bairro','cidade','cep',
+    'marca','modelo','ano_modelo','placa','cor','kilometragem','vendedor_nome',
+    'entrada_dinheiro','entrada_debito','entrada_credito','entrada_transferencia','entrada_boleto','entrada_total',
+    'fin_banco','fin_parcelas','fin_valor_parcela','observacoes','status',
+    'troca_marca','troca_modelo','troca_ano_modelo','troca_placa','troca_cor','troca_km'];
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  for (const k of campos) {
+    if (k in b) { params.push(b[k] || null); sets.push(`${k} = $${params.length}`); }
+  }
+  if (sets.length) {
+    params.push(b.id);
+    await query(`UPDATE public.faturamentos SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
+  }
+
+  const novo = await queryOne(`SELECT * FROM public.faturamentos WHERE id = $1`, [b.id]);
+  if (novo?.status === 'emitido' && novo?.troca_placa && !atual.troca_entrou_estoque) {
+    try {
+      await query(
+        `INSERT INTO public.estoque_carros (marca, carro, modelo, ano, placa, cor, status, patio)
+         VALUES ($1,$2,$3,$4,$5,$6,'Disponível','—')`,
+        [novo.troca_marca, `${novo.troca_marca || ''} ${novo.troca_modelo || ''}`.trim(), novo.troca_modelo, novo.troca_ano_modelo, novo.troca_placa, novo.troca_cor],
+      );
+      await query(`UPDATE public.faturamentos SET troca_entrou_estoque = TRUE WHERE id = $1`, [b.id]);
+      const { notificar } = await import('@/lib/notify');
+      await notificar({
+        titulo: 'Carro no estoque',
+        mensagem: `${novo.troca_marca || ''} ${novo.troca_modelo || ''} ${novo.troca_ano_modelo || ''} ${novo.troca_placa} entrou (troca)`.replace(/\s+/g, ' ').trim(),
+        tipo: 'estoque',
+        broadcast: true,
+      });
+    } catch { /* ok */ }
+  }
+  return NextResponse.json({ ok: true });
+}

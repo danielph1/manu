@@ -93,3 +93,12 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: e?.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  const u = await requireUser(req);
+  if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
+  if (!['admin', 'gerente'].includes(u.tipo)) return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
+  const b = await req.json();
+  await query('DELETE FROM public.metas WHERE id = $1', [b.id]);
+  return NextResponse.json({ ok: true });
+}

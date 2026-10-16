@@ -9,8 +9,16 @@ export async function GET(req: NextRequest) {
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
 
   try {
+    const periodo = req.nextUrl.searchParams.get('periodo') || 'mes';
     const now = new Date();
-    const di = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    let di: string | null = null;
+    let df: string | null = null;
+    if (periodo === 'mes') {
+      di = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    } else if (periodo === 'mes_passado') {
+      di = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
+      df = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    }
     const params: unknown[] = [di];
     let scope = '';
     if (u.tipo === 'vendedor' && u.vendedor_id) {
@@ -73,12 +81,15 @@ export async function GET(req: NextRequest) {
     try {
       fin = (await queryOne(
         `SELECT
-           COALESCE(SUM(COALESCE(fin_valor_parcela,0) * COALESCE(fin_parcelas,0)),0)::float AS valor_liberado,
+           COALESCE(SUM(COALESCE(entrada_total,0)),0)::float AS valor_liberado,
            COALESCE(SUM(COALESCE(entrada_total,0)),0)::float AS entrada_paga,
            COALESCE(SUM(0),0)::float AS total_boletos,
            COALESCE(SUM(0),0)::float AS valor_pendente,
            COUNT(*) FILTER (WHERE COALESCE(entrada_boleto,0) > 0)::int AS clientes_com_boleto
-         FROM public.faturamentos`,
+         FROM public.faturamentos f
+         WHERE ($1::date IS NULL OR f.created_at::date >= $1)
+           AND ($2::date IS NULL OR f.created_at::date < $2)`,
+        [di, df],
       )) || {};
     } catch {
       fin = {};

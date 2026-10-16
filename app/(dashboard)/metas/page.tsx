@@ -76,6 +76,11 @@ export default function MetasPage() {
               await api.patch('/metas', { id: m.id, concluida: !m.concluida });
               qc.invalidateQueries({ queryKey: ['metas'] });
             }}>{m.concluida ? 'Reabrir' : 'Concluir'}</Button>
+            <Button size="sm" variant="outline" className="text-red-400" onClick={async () => {
+              if (!confirm('Excluir meta?')) return;
+              await api.delete('/metas', { data: { id: m.id } });
+              qc.invalidateQueries({ queryKey: ['metas'] });
+            }}>Excluir</Button>
           )}
         </CardContent></Card>
       ))}

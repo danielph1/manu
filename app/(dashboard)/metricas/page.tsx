@@ -10,8 +10,8 @@ const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#8b5cf6'
 
 export default function MetricasPage() {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['metricas'],
-    queryFn: async () => (await api.get('/metricas')).data,
+    queryKey: ['metricas', periodo],
+    queryFn: async () => (await api.get('/metricas', { params: { periodo } })).data,
   });
 
   if (isLoading) return <CarLoader compact />;
@@ -39,7 +39,7 @@ export default function MetricasPage() {
         <KPI icon={Users} label="Fichas" value={data.funil.fichas} />
         <KPI icon={CheckCircle2} label="Aprovados" value={data.funil.aprovados} />
         <KPI icon={AlertCircle} label="Negadas" value={bancos.reduce((s: number, b: any) => s + b.negadas, 0)} />
-        <KPI icon={FileText} label="Pendentes" value={bancos.reduce((s: number, b: any) => s + b.pendentes, 0)} />
+        
         <KPI icon={TrendingUp} label="Compras" value={data.funil.vendidos} />
         <KPI icon={DollarSign} label="Clientes c/ boleto" value={fin.clientes_com_boleto} />
       </section>
@@ -74,7 +74,7 @@ export default function MetricasPage() {
                 <Legend />
                 <Bar dataKey="aprovadas" fill="#22c55e" />
                 <Bar dataKey="negadas" fill="#ef4444" />
-                <Bar dataKey="pendentes" fill="#f97316" />
+                
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
