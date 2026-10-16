@@ -215,8 +215,8 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
           <StatusChip label="Ficha" ok={!!lead.gerou_ficha} />
           {(lead as any).aprovado
             ? <StatusChip label="Aprovado" ok />
-            : (lead as any).gerou_ficha && (lead as any).status_geral?.toLowerCase?.().startsWith('neg')
-              ? <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">Recusado</span>
+            : ['negada','negado','reprovada','recusada'].includes(String((lead as any).status_ficha || '').toLowerCase())
+              ? <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">Negado</span>
               : <StatusChip label="Aprovado" ok={false} />}
         </div>
       </CardContent>

@@ -119,7 +119,8 @@ export async function GET(req: NextRequest) {
       SELECT
         l.*,
         v.nome AS vendedor_nome,
-        v.loja AS vendedor_loja
+        v.loja AS vendedor_loja,
+        (SELECT f.status_geral FROM public.fichas_credito f WHERE f.lead_id = l.id ORDER BY f.id DESC LIMIT 1) AS status_ficha
       FROM public.leads l
       LEFT JOIN public.vendedores v ON v.id = l.vendedor_id
       WHERE ${where.join(' AND ')}
