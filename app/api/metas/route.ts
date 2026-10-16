@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
         String(b.titulo).trim(),
         b.descricao || null,
         b.valor_objetivo != null && b.valor_objetivo !== '' ? Number(b.valor_objetivo) : null,
-        b.unidade || null,
+        b.unidade || 'un',
         b.destinatario_id ? Number(b.destinatario_id) : null,
         b.destinatario_tipo || null,
         b.destinatario_loja || null,
