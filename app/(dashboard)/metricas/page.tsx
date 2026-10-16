@@ -1,5 +1,6 @@
 'use client';
 import { CarLoader } from '@/components/car-loader';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
 import { api } from '@/lib/api';
@@ -9,6 +10,7 @@ import { Loader2, TrendingUp, DollarSign, CheckCircle2, FileText, Users, AlertCi
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#8b5cf6', '#ec4899'];
 
 export default function MetricasPage() {
+  const [periodo, setPeriodo] = useState('mes');
   const { data, isLoading, error } = useQuery({
     queryKey: ['metricas', periodo],
     queryFn: async () => (await api.get('/metricas', { params: { periodo } })).data,

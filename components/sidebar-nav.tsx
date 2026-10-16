@@ -35,7 +35,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <aside className="flex h-screen w-72 flex-col border-r border-border bg-card px-4 py-6 sticky top-0 overflow-y-auto">
       <div className="mt-10 flex items-center gap-3 px-2">
-        <a href="/minha-conta" className="relative flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-bold text-primary-foreground">
+        <a href="/minha-conta" className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-primary text-lg font-bold text-primary-foreground">
           {(user as any)?.foto_url ? <img src={(user as any).foto_url} alt="" className="h-full w-full object-cover" /> : String(user?.nome || user?.login || '?').charAt(0).toUpperCase()}
             <span className="rank-dot absolute -right-0.5 -top-0.5 z-10 h-3.5 w-3.5 rounded-full border-2 border-card" style={{ background: (user as any)?.rank_cor || '#cd7f32' }} />
         </a>

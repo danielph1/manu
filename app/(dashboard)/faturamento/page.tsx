@@ -1,6 +1,7 @@
 'use client';
 import { CarLoader } from '@/components/car-loader';
 import { useState } from 'react';
+import { useAuth } from '@/contexts/auth-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ const CAMPOS = [
 
 export default function FaturamentoPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const [busca, setBusca] = useState('');
   const [q, setQ] = useState('');
   const [aberto, setAberto] = useState<any>(null);
