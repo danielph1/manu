@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'Manu' },
   robots: { index: false, follow: false },
-  icons: { icon: '/icon-192.png', apple: '/icon-192.png' },
+  icons: { icon: '/aurox.jpeg', apple: '/aurox.jpeg' },
 };
 
 export const viewport: Viewport = {

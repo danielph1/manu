@@ -81,7 +81,10 @@ export async function GET(req: NextRequest) {
     try {
       fin = (await queryOne(
         `SELECT
-           COALESCE(SUM(COALESCE(fc.valor_liberado,0)),0)::float AS valor_liberado,
+           COALESCE(SUM(COALESCE(fc.valor_liberado, (
+             SELECT fb.valor_financiado FROM public.ficha_bancos fb
+             WHERE fb.ficha_id = fc.id AND fb.status = 'aprovado' LIMIT 1
+           ), 0)),0)::float AS valor_liberado,
            COALESCE(SUM(COALESCE(f.entrada_total,0)),0)::float AS entrada_paga,
            COALESCE(SUM(COALESCE(f.entrada_boleto,0)),0)::float AS total_boletos,
            COALESCE(SUM(COALESCE(f.entrada_boleto,0)),0)::float AS valor_pendente,
