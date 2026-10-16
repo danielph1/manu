@@ -81,12 +81,13 @@ export async function GET(req: NextRequest) {
     try {
       fin = (await queryOne(
         `SELECT
-           COALESCE(SUM(COALESCE(entrada_total,0)),0)::float AS valor_liberado,
-           COALESCE(SUM(COALESCE(entrada_total,0)),0)::float AS entrada_paga,
-           COALESCE(SUM(0),0)::float AS total_boletos,
-           COALESCE(SUM(0),0)::float AS valor_pendente,
-           COUNT(*) FILTER (WHERE COALESCE(entrada_boleto,0) > 0)::int AS clientes_com_boleto
+           COALESCE(SUM(COALESCE(fc.valor_liberado,0)),0)::float AS valor_liberado,
+           COALESCE(SUM(COALESCE(f.entrada_total,0)),0)::float AS entrada_paga,
+           COALESCE(SUM(COALESCE(f.entrada_boleto,0)),0)::float AS total_boletos,
+           COALESCE(SUM(COALESCE(f.entrada_boleto,0)),0)::float AS valor_pendente,
+           COUNT(*) FILTER (WHERE COALESCE(f.entrada_boleto,0) > 0)::int AS clientes_com_boleto
          FROM public.faturamentos f
+         LEFT JOIN public.fichas_credito fc ON fc.id = f.ficha_id
          WHERE ($1::date IS NULL OR f.created_at::date >= $1)
            AND ($2::date IS NULL OR f.created_at::date < $2)`,
         [di, df],
