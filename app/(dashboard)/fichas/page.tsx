@@ -23,10 +23,11 @@ export default function FichasPage() {
   const [selected, setSelected] = useState<number | null>(null);
   const [periodo, setPeriodo] = useState('todas');
   const [status, setStatus] = useState('todos');
+  const [busca, setBusca] = useState('');
 
   const { data: fichas = [], isLoading, error } = useQuery({
-    queryKey: ['fichas', periodo],
-    queryFn: async () => (await api.get('/fichas', { params: { periodo } })).data,
+    queryKey: ['fichas', periodo, busca],
+    queryFn: async () => (await api.get('/fichas', { params: { periodo, busca } })).data,
   });
 
   const todas = Array.isArray(fichas) ? fichas : [];
@@ -50,6 +51,7 @@ export default function FichasPage() {
             Admin, gerente e elfenAI veem todas. Cliente na loja fica no topo.
           </p>
         </div>
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar nome, CPF, placa, vendedor..." className="mr-2 rounded border border-border bg-card px-3 py-1.5 text-sm" />
         <Select value={periodo} onValueChange={setPeriodo}>
           <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
