@@ -216,7 +216,7 @@ function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
           {(lead as any).aprovado
             ? <StatusChip label="Aprovado" ok />
             : ['negada','negado','reprovada','recusada'].includes(String((lead as any).status_ficha || '').toLowerCase())
-              ? <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">Recusado</span>
+              ? <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">Negado</span>
               : <StatusChip label="Aprovado" ok={false} />}
         </div>
       </CardContent>

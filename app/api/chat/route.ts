@@ -62,6 +62,40 @@ export async function POST(req: NextRequest) {
        RETURNING id, mensagem, created_at, remetente_id, arquivo_nome, arquivo_mime`,
       [u.id, msg || (mime?.startsWith('audio') ? 'Áudio' : 'Mídia'), nome, mime, b64, leadId],
     );
+
+    // se for chat de lead com telefone → envia pelo Z-API (WhatsApp)
+    if (leadId && msg) {
+      try {
+        const lead = await queryOne(
+          `SELECT telefone FROM public.leads WHERE id = $1`,
+          [leadId],
+        );
+        const telRaw = String(lead?.telefone || '').replace(/\D/g, '');
+        const phone = telRaw
+          ? telRaw.startsWith('55')
+            ? telRaw
+            : `55${telRaw}`
+          : '';
+        const instance = process.env.ZAPI_INSTANCE_ID;
+        const token = process.env.ZAPI_TOKEN;
+        const clientToken = process.env.ZAPI_CLIENT_TOKEN || '';
+        if (phone && instance && token) {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (clientToken) headers['Client-Token'] = clientToken;
+          await fetch(
+            `https://api.z-api.io/instances/${instance}/token/${token}/send-text`,
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ phone, message: msg }),
+            },
+          );
+        }
+      } catch (e) {
+        console.error('zapi send', e);
+      }
+    }
+
     await notificar({
       titulo: 'Nova mensagem no chat',
       mensagem: `${u.nome || u.login}: ${(msg || 'mídia').slice(0, 80)}`,
