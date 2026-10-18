@@ -4,12 +4,12 @@ import { query, queryOne } from '@/lib/db';
 export const runtime = 'nodejs';
 
 /**
- * Webhook Z-API — Ao receber
- * URL: https://SEU-DOMINIO.vercel.app/api/webhooks/zapi
+ * Webhook Z-API — Ao receber mensagem
+ * No Z-API, campo "Ao receber":
+ *   https://manu-manu-automoveis.vercel.app/api/webhooks/zapi
  *
- * 1) acha lead pelo telefone (ou cria triagem)
- * 2) grava mensagem em chat_geral_mensagens com lead_id
- * 3) notifica vendedor / admin
+ * Env no Vercel (opcional):
+ *   ZAPI_INSTANCE_ID, ZAPI_TOKEN
  */
 
 function texto(b: any): string {
@@ -40,12 +40,12 @@ export async function POST(req: NextRequest) {
   try {
     const b = await req.json().catch(() => ({}));
 
+    // ignora status / presença / mensagens enviadas por você / grupos
     if (b.type && /status|connected|disconnected|presence/i.test(String(b.type))) {
       return NextResponse.json({ ok: true, ignored: 'status' });
     }
-    const fromMe = b.fromMe === true;
-    if (b.isGroup === true) {
-      return NextResponse.json({ ok: true, ignored: 'group' });
+    if (b.fromMe === true || b.isGroup === true) {
+      return NextResponse.json({ ok: true, ignored: 'fromMe/group' });
     }
 
     const nome =
@@ -58,89 +58,49 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ignored: 'sem telefone/mensagem' });
     }
 
-    // lead pelo telefone
-    let lead: any = null;
+    // evita duplicar o mesmo telefone em menos de 2 minutos
     if (tel) {
       try {
-        lead = await queryOne(
-          `SELECT id, vendedor_id, COALESCE(nome_completo, nome_lead) AS nome
-           FROM public.leads
+        const recente = await queryOne(
+          `SELECT id FROM public.triagem
            WHERE REPLACE(REPLACE(COALESCE(telefone,''),'-',''),' ','') LIKE $1
-           ORDER BY id DESC LIMIT 1`,
+             AND created_at > now() - interval '2 minutes'
+           LIMIT 1`,
           [`%${tel.slice(-9)}%`],
         );
-      } catch { /* ok */ }
-    }
-
-    // sem lead e não é fromMe → triagem
-    if (!lead && !fromMe) {
-      try {
-        const recente = tel
-          ? await queryOne(
-              `SELECT id FROM public.triagem
-               WHERE REPLACE(REPLACE(COALESCE(telefone,''),'-',''),' ','') LIKE $1
-                 AND created_at > now() - interval '2 minutes'
-               LIMIT 1`,
-              [`%${tel.slice(-9)}%`],
-            )
-          : null;
-        if (!recente?.id) {
-          await queryOne(
-            `INSERT INTO public.triagem (nome, telefone, email, interesse, origem, mensagem)
-             VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-            [nome, tel || null, null, null, 'whatsapp', msg || null],
-          );
+        if (recente?.id) {
+          return NextResponse.json({ ok: true, existente: recente.id });
         }
-      } catch { /* ok */ }
-    }
-
-    // com lead → grava no chat
-    let chatId = null;
-    if (lead?.id && msg) {
-      try {
-        let remetenteId = null;
-        if (fromMe && lead.vendedor_id) {
-          const vendUser = await queryOne(
-            `SELECT id FROM public.usuarios WHERE vendedor_id = $1 LIMIT 1`,
-            [lead.vendedor_id],
-          );
-          remetenteId = vendUser?.id || null;
-        }
-        const row = await queryOne(
-          `INSERT INTO public.chat_geral_mensagens (remetente_id, mensagem, lead_id)
-           VALUES ($1, $2, $3)
-           RETURNING id`,
-          [remetenteId, msg, lead.id],
-        );
-        chatId = row?.id;
-      } catch (e) {
-        console.error('chat insert', e);
+      } catch {
+        /* ok */
       }
     }
 
-    if (!fromMe) {
-      try {
-        const ids: number[] = [];
-        if (lead?.vendedor_id) {
-          const vu = await queryOne(`SELECT id FROM public.usuarios WHERE vendedor_id = $1 LIMIT 1`, [lead.vendedor_id]);
-          if (vu?.id) ids.push(vu.id);
-        }
-        const { rows: admins } = await query(
-          `SELECT id FROM public.usuarios
-           WHERE LOWER(tipo) IN ('admin','gerente','marketing') AND COALESCE(ativo,TRUE)`,
+    const row = await queryOne(
+      `INSERT INTO public.triagem (nome, telefone, email, interesse, origem, mensagem)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       RETURNING id`,
+      [nome, tel || null, null, null, 'whatsapp', msg || null],
+    );
+
+    // notifica admin / gerente / marketing
+    try {
+      const { rows: admins } = await query(
+        `SELECT id FROM public.usuarios
+         WHERE LOWER(tipo) IN ('admin','gerente','marketing') AND COALESCE(ativo,TRUE)`,
+      );
+      for (const a of admins || []) {
+        await query(
+          `INSERT INTO public.notificacoes (usuario_id, tipo, titulo, mensagem)
+           VALUES ($1,'lead','Lead WhatsApp',$2)`,
+          [a.id, `${nome} · ${tel || 'sem tel'} · ${(msg || '').slice(0, 80)}`],
         );
-        for (const a of admins || []) ids.push(a.id);
-        for (const id of [...new Set(ids)]) {
-          await query(
-            `INSERT INTO public.notificacoes (usuario_id, tipo, titulo, mensagem)
-             VALUES ($1,'chat',$2,$3)`,
-            [id, lead ? `WhatsApp · ${lead.nome || nome}` : 'Lead WhatsApp', (msg || '').slice(0, 100)],
-          );
-        }
-      } catch { /* ok */ }
+      }
+    } catch {
+      /* ok */
     }
 
-    return NextResponse.json({ ok: true, lead_id: lead?.id || null, chat_id: chatId });
+    return NextResponse.json({ ok: true, triagem_id: row?.id });
   } catch (e: any) {
     console.error('zapi webhook', e);
     return NextResponse.json({ error: e?.message || 'erro' }, { status: 500 });

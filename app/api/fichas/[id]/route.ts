@@ -41,7 +41,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const body = await req.json();
   try {
-    const allowed = ['status_geral','banco_contratado','valor_liberado','valor_financiado','valor_entrada','entrada_total','entrada_paga','valor_pendente','gerou_boleto','boleto_valor','boleto_meses','boleto_total','valor_veiculo'];
+    const allowed = [
+      'status_geral','banco_contratado','valor_liberado','valor_financiado','valor_entrada',
+      'entrada_total','entrada_paga','valor_pendente','gerou_boleto','boleto_valor','boleto_meses',
+      'boleto_total','valor_veiculo',
+      'pendente_documentacao','contrato_em_analise','pendente_assinatura','contrato_pago','contrato_recusado',
+    ];
     const sets: string[] = [];
     const params2: unknown[] = [];
     for (const k of allowed) {
@@ -69,6 +74,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         );
       }
     }
+    // recusado na análise do contrato → marca lead como não aprovado
+    if (body.contrato_recusado === true) {
+      await query(
+        `UPDATE public.leads SET aprovado = FALSE
+         WHERE id = (SELECT lead_id FROM public.fichas_credito WHERE id = $1)`,
+        [id],
+      );
+    }
     if (Array.isArray(body.bancos)) {
       for (const b of body.bancos) {
         const st = String(b.status || 'pendente').toLowerCase();
@@ -90,6 +103,30 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         }
       }
     }
+
+    // notifica vendedor se pediu documentação
+    if (body.pendente_documentacao === true) {
+      try {
+        const info = await queryOne(
+          `SELECT f.lead_id, l.vendedor_id, COALESCE(l.nome_completo, l.nome_lead) AS nome
+           FROM public.fichas_credito f
+           LEFT JOIN public.leads l ON l.id = f.lead_id
+           WHERE f.id = $1`,
+          [id],
+        );
+        if (info?.vendedor_id) {
+          const vu = await queryOne(`SELECT id FROM public.usuarios WHERE vendedor_id = $1 LIMIT 1`, [info.vendedor_id]);
+          if (vu?.id) {
+            await query(
+              `INSERT INTO public.notificacoes (usuario_id, tipo, titulo, mensagem)
+               VALUES ($1,'ficha',$2,$3)`,
+              [vu.id, 'Pendente documentação', `Ficha de ${info.nome || '#'+id}: banco pediu documentos.`],
+            );
+          }
+        }
+      } catch { /* ok */ }
+    }
+
     await notificar({
       titulo: 'Ficha atualizada',
       mensagem: `Ficha #${id} alterada por ${u.nome || u.login}`,

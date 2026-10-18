@@ -81,6 +81,11 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
         boleto_valor: Number(data.boleto_valor) || 0,
         boleto_meses: Number(data.boleto_meses) || 0,
         boleto_total: Number(data.boleto_total) || 0,
+        pendente_documentacao: !!data.pendente_documentacao,
+        contrato_em_analise: !!data.contrato_em_analise,
+        pendente_assinatura: !!data.pendente_assinatura,
+        contrato_pago: !!data.contrato_pago,
+        contrato_recusado: !!data.contrato_recusado,
         bancos,
       });
       toast.success('Ficha atualizada');
@@ -192,6 +197,13 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
                   <ReadOnly label="Boleto meses" value={data.boleto_meses} />
                 </>}
               </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                {data.pendente_documentacao && <span className="rounded-full bg-amber-500/15 px-2 py-1 text-amber-400">Pendente documentação</span>}
+                {data.contrato_em_analise && <span className="rounded-full bg-sky-500/15 px-2 py-1 text-sky-400">Contrato em análise</span>}
+                {data.contrato_recusado && <span className="rounded-full bg-rose-500/15 px-2 py-1 text-rose-400">Recusado pelo banco</span>}
+                {data.pendente_assinatura && <span className="rounded-full bg-violet-500/15 px-2 py-1 text-violet-400">Pendente assinatura</span>}
+                {data.contrato_pago && <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-emerald-400">Contrato pago</span>}
+              </div>
             </div>
           ) : (
             <>
@@ -262,6 +274,54 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
                     <div><Label className="text-xs">Total</Label><Input className="w-32" type="number" value={data.boleto_total ?? ''} onChange={(e) => setData({ ...data, boleto_total: e.target.value })} /></div>
                   </>)}
                 </div>
+              </div>
+
+              {/* Etapas pós-aprovação — ElfenAI acompanha o banco */}
+              <Separator />
+              <div className="space-y-3 rounded border border-border p-3">
+                <div className="text-sm font-medium">Etapas do banco (após aprovado)</div>
+                <p className="text-xs text-muted-foreground">
+                  Ligar/desligar conforme o banco avança. Pendente documentação avisa o vendedor.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+                    <Checkbox
+                      checked={!!data.pendente_documentacao}
+                      onCheckedChange={(v) => setData({ ...data, pendente_documentacao: !!v })}
+                    />
+                    <span className="text-sm">Pendente documentação</span>
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+                    <Checkbox
+                      checked={!!data.contrato_em_analise}
+                      onCheckedChange={(v) => setData({ ...data, contrato_em_analise: !!v, contrato_recusado: v ? data.contrato_recusado : false })}
+                    />
+                    <span className="text-sm">Contrato em análise</span>
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+                    <Checkbox
+                      checked={!!data.pendente_assinatura}
+                      onCheckedChange={(v) => setData({ ...data, pendente_assinatura: !!v })}
+                    />
+                    <span className="text-sm">Pendente assinatura</span>
+                  </label>
+                  <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
+                    <Checkbox
+                      checked={!!data.contrato_pago}
+                      onCheckedChange={(v) => setData({ ...data, contrato_pago: !!v })}
+                    />
+                    <span className="text-sm">Contrato pago</span>
+                  </label>
+                </div>
+                {!!data.contrato_em_analise && (
+                  <label className="flex items-center gap-2 rounded-md border border-rose-500/40 bg-rose-500/5 px-3 py-2">
+                    <Checkbox
+                      checked={!!data.contrato_recusado}
+                      onCheckedChange={(v) => setData({ ...data, contrato_recusado: !!v })}
+                    />
+                    <span className="text-sm text-rose-400">Recusado pelo banco (na análise)</span>
+                  </label>
+                )}
               </div>
             </>
           )}
