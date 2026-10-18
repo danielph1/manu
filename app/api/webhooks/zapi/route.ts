@@ -4,13 +4,27 @@ import { query, queryOne } from '@/lib/db';
 export const runtime = 'nodejs';
 
 /**
- * Webhook Z-API — Ao receber mensagem
- * No Z-API, campo "Ao receber":
- *   https://manu-manu-automoveis.vercel.app/api/webhooks/zapi
+ * Webhook Z-API — Ao receber / Ao enviar
+ * URL: https://SEU-DOMINIO.vercel.app/api/webhooks/zapi
  *
- * Env no Vercel (opcional):
- *   ZAPI_INSTANCE_ID, ZAPI_TOKEN
+ * REGRA: 1 telefone = 1 lead (ou 1 triagem).
+ * Mensagens extras só entram no chat / atualizam a triagem.
  */
+
+function normTel(raw: string): string {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('55') && d.length >= 12) d = d.slice(2);
+  // tira 9 extra se tiver 11 dígitos (celular BR)
+  return d;
+}
+
+/** chave de comparação: últimos 8 ou 9 dígitos */
+function chaveTel(d: string): string {
+  const n = normTel(d);
+  if (n.length >= 9) return n.slice(-9);
+  if (n.length >= 8) return n.slice(-8);
+  return n;
+}
 
 function texto(b: any): string {
   if (!b) return '';
@@ -20,16 +34,16 @@ function texto(b: any): string {
   if (b.message) return String(b.message);
   if (b.mensagem) return String(b.mensagem);
   if (b.image?.caption) return String(b.image.caption);
-  if (b.audio) return '[áudio]';
-  if (b.video) return '[vídeo]';
-  if (b.document) return '[documento]';
+  if (b.sticker || b.type === 'sticker' || b.messageType === 'sticker') return '[figurinha]';
+  if (b.audio || b.messageType === 'audio') return '[áudio]';
+  if (b.video || b.messageType === 'video') return '[vídeo]';
+  if (b.document || b.messageType === 'document') return '[documento]';
+  if (b.image || b.messageType === 'image') return '[imagem]';
   return '';
 }
 
 function telefone(b: any): string {
-  const raw = String(b.phone || b.phoneNumber || b.senderPhone || b.from || '').replace(/\D/g, '');
-  if (raw.startsWith('55') && raw.length >= 12) return raw.slice(2);
-  return raw;
+  return normTel(b.phone || b.phoneNumber || b.senderPhone || b.from || '');
 }
 
 export async function GET() {
@@ -40,50 +54,136 @@ export async function POST(req: NextRequest) {
   try {
     const b = await req.json().catch(() => ({}));
 
-    // ignora status / presença / mensagens enviadas por você / grupos
     if (b.type && /status|connected|disconnected|presence/i.test(String(b.type))) {
       return NextResponse.json({ ok: true, ignored: 'status' });
     }
-    if (b.fromMe === true || b.isGroup === true) {
-      return NextResponse.json({ ok: true, ignored: 'fromMe/group' });
+    if (b.isGroup === true) {
+      return NextResponse.json({ ok: true, ignored: 'group' });
     }
 
+    const fromMe = b.fromMe === true;
     const nome =
       String(b.senderName || b.chatName || b.notification || b.pushName || '').trim() ||
       'WhatsApp';
     const tel = telefone(b);
-    const msg = texto(b).slice(0, 2000);
+    const chave = chaveTel(tel);
+    const msg = texto(b).slice(0, 2000) || '[mensagem]';
 
-    if (!tel && !msg) {
-      return NextResponse.json({ ok: true, ignored: 'sem telefone/mensagem' });
+    if (!chave) {
+      return NextResponse.json({ ok: true, ignored: 'sem telefone' });
     }
 
-    // evita duplicar o mesmo telefone em menos de 2 minutos
-    if (tel) {
+    // ——— 1) Lead já existente com esse telefone? ———
+    let lead: any = null;
+    try {
+      lead = await queryOne(
+        `SELECT id, vendedor_id, COALESCE(nome_completo, nome_lead) AS nome, telefone
+         FROM public.leads
+         WHERE RIGHT(REGEXP_REPLACE(COALESCE(telefone,''), '\\D', '', 'g'), 9) = $1
+            OR RIGHT(REGEXP_REPLACE(COALESCE(telefone,''), '\\D', '', 'g'), 8) = $2
+         ORDER BY id DESC
+         LIMIT 1`,
+        [chave.length >= 9 ? chave : chave.padStart(9, '0'), chave.slice(-8)],
+      );
+    } catch {
+      // fallback sem regex
       try {
-        const recente = await queryOne(
-          `SELECT id FROM public.triagem
-           WHERE REPLACE(REPLACE(COALESCE(telefone,''),'-',''),' ','') LIKE $1
-             AND created_at > now() - interval '2 minutes'
-           LIMIT 1`,
-          [`%${tel.slice(-9)}%`],
+        lead = await queryOne(
+          `SELECT id, vendedor_id, COALESCE(nome_completo, nome_lead) AS nome, telefone
+           FROM public.leads
+           WHERE REPLACE(REPLACE(REPLACE(COALESCE(telefone,''),'-',''),' ',''),'+','') LIKE $1
+           ORDER BY id DESC LIMIT 1`,
+          [`%${chave.slice(-8)}%`],
         );
-        if (recente?.id) {
-          return NextResponse.json({ ok: true, existente: recente.id });
-        }
-      } catch {
-        /* ok */
-      }
+      } catch { /* ok */ }
     }
 
+    // ——— 2) Se tem lead → só grava no chat (nunca cria lead/triagem nova) ———
+    if (lead?.id) {
+      let chatId = null;
+      try {
+        let remetenteId = null;
+        if (fromMe && lead.vendedor_id) {
+          const vu = await queryOne(
+            `SELECT id FROM public.usuarios WHERE vendedor_id = $1 LIMIT 1`,
+            [lead.vendedor_id],
+          );
+          remetenteId = vu?.id || null;
+        }
+        const row = await queryOne(
+          `INSERT INTO public.chat_geral_mensagens (remetente_id, mensagem, lead_id)
+           VALUES ($1, $2, $3) RETURNING id`,
+          [remetenteId, msg, lead.id],
+        );
+        chatId = row?.id;
+      } catch (e) {
+        console.error('chat insert', e);
+      }
+
+      if (!fromMe) {
+        try {
+          const ids: number[] = [];
+          if (lead.vendedor_id) {
+            const vu = await queryOne(
+              `SELECT id FROM public.usuarios WHERE vendedor_id = $1 LIMIT 1`,
+              [lead.vendedor_id],
+            );
+            if (vu?.id) ids.push(vu.id);
+          }
+          const { rows: admins } = await query(
+            `SELECT id FROM public.usuarios
+             WHERE LOWER(tipo) IN ('admin','gerente','marketing') AND COALESCE(ativo,TRUE)`,
+          );
+          for (const a of admins || []) ids.push(a.id);
+          for (const id of [...new Set(ids)]) {
+            await query(
+              `INSERT INTO public.notificacoes (usuario_id, tipo, titulo, mensagem)
+               VALUES ($1,'chat',$2,$3)`,
+              [id, `WhatsApp · ${lead.nome || nome}`, msg.slice(0, 100)],
+            );
+          }
+        } catch { /* ok */ }
+      }
+
+      return NextResponse.json({ ok: true, lead_id: lead.id, chat_id: chatId, acao: 'mensagem_no_lead' });
+    }
+
+    // fromMe sem lead → ignora
+    if (fromMe) {
+      return NextResponse.json({ ok: true, ignored: 'fromMe sem lead' });
+    }
+
+    // ——— 3) Triagem já existe com esse telefone? Atualiza, não cria outra ———
+    let triagem: any = null;
+    try {
+      triagem = await queryOne(
+        `SELECT id FROM public.triagem
+         WHERE REPLACE(REPLACE(REPLACE(COALESCE(telefone,''),'-',''),' ',''),'+','') LIKE $1
+         ORDER BY id DESC LIMIT 1`,
+        [`%${chave.slice(-8)}%`],
+      );
+    } catch { /* ok */ }
+
+    if (triagem?.id) {
+      try {
+        await query(
+          `UPDATE public.triagem
+           SET mensagem = COALESCE(mensagem,'') || E'\n' || $1,
+               nome = CASE WHEN COALESCE(nome,'') IN ('','WhatsApp','Sem nome') THEN $2 ELSE nome END
+           WHERE id = $3`,
+          [msg.slice(0, 500), nome, triagem.id],
+        );
+      } catch { /* ok */ }
+      return NextResponse.json({ ok: true, triagem_id: triagem.id, acao: 'atualizou_triagem' });
+    }
+
+    // ——— 4) Primeira vez desse telefone → cria UMA triagem ———
     const row = await queryOne(
       `INSERT INTO public.triagem (nome, telefone, email, interesse, origem, mensagem)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING id`,
-      [nome, tel || null, null, null, 'whatsapp', msg || null],
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [nome, tel || chave, null, null, 'whatsapp', msg],
     );
 
-    // notifica admin / gerente / marketing
     try {
       const { rows: admins } = await query(
         `SELECT id FROM public.usuarios
@@ -93,14 +193,12 @@ export async function POST(req: NextRequest) {
         await query(
           `INSERT INTO public.notificacoes (usuario_id, tipo, titulo, mensagem)
            VALUES ($1,'lead','Lead WhatsApp',$2)`,
-          [a.id, `${nome} · ${tel || 'sem tel'} · ${(msg || '').slice(0, 80)}`],
+          [a.id, `${nome} · ${tel || chave} · ${msg.slice(0, 80)}`],
         );
       }
-    } catch {
-      /* ok */
-    }
+    } catch { /* ok */ }
 
-    return NextResponse.json({ ok: true, triagem_id: row?.id });
+    return NextResponse.json({ ok: true, triagem_id: row?.id, acao: 'nova_triagem' });
   } catch (e: any) {
     console.error('zapi webhook', e);
     return NextResponse.json({ error: e?.message || 'erro' }, { status: 500 });
