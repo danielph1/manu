@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Car, LayoutDashboard, MessageSquare, Target, FileText,
   CheckSquare, ArrowRightLeft, PlusCircle, LogOut, UserCircle2,
-  FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox,
+  FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox, Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Role } from '@/lib/roles';
@@ -18,15 +18,19 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
+  const tipo = String(user?.tipo || '').toLowerCase().trim();
+  const isSuper = tipo === 'superadmin';
+
   const items: Array<{ href: string; label: string; icon: any; show: boolean }> = [
-    { href: '/triagem', label: 'Triagem', icon: Inbox, show: Role.isAdmin(user) },
-    { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) },
-    { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) },
-    { href: '/metricas', label: 'Metricas', icon: BarChart3, show: Role.verMetricas(user) },
-    { href: '/equipe', label: 'Equipe', icon: Users, show: Role.isGerente(user) },
+    { href: '/aurox', label: 'Aurox (empresas)', icon: Building2, show: isSuper },
+    { href: '/triagem', label: 'Triagem', icon: Inbox, show: Role.isAdmin(user) || isSuper },
+    { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) || isSuper },
+    { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) || isSuper },
+    { href: '/metricas', label: 'Metricas', icon: BarChart3, show: Role.verMetricas(user) || isSuper },
+    { href: '/equipe', label: 'Equipe', icon: Users, show: Role.isGerente(user) || isSuper },
     { href: '/ranking', label: 'Ranking', icon: Target, show: !!user },
-    { href: '/metas', label: 'Metas', icon: Target, show: Role.verLeads(user) },
-    { href: '/processos', label: 'Transferencias', icon: ArrowRightLeft, show: Role.verDocumental(user) },
+    { href: '/metas', label: 'Metas', icon: Target, show: Role.verLeads(user) || isSuper },
+    { href: '/processos', label: 'Transferencias', icon: ArrowRightLeft, show: Role.verDocumental(user) || isSuper },
     { href: '/oficina', label: 'Oficina', icon: Wrench, show: !!user },
     { href: '/faturamento', label: 'Faturamento', icon: Receipt, show: !!user },
     { href: '/configuracoes', label: 'Configurações', icon: Settings, show: !!user },
