@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Car, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
@@ -43,20 +43,19 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-card p-4">
-      {/* logo sutil de fundo */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06]">
-        <img src="/aurox-logo.png" alt="" className="h-[min(70vw,420px)] w-[min(70vw,420px)] object-contain" />
-      </div>
-      <Card className="relative z-10 w-full max-w-md border-border/60 shadow-2xl">
+      {/* logo sutil — canto superior direito */}
+      <img
+        src="/aurox-logo.png"
+        alt="Aurox"
+        className="pointer-events-none absolute right-5 top-5 h-14 w-14 object-contain opacity-70 md:h-16 md:w-16 md:opacity-80"
+      />
+
+      <Card className="w-full max-w-md border-border/60 shadow-2xl">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex flex-col items-center gap-2">
-            <img
-              src="/aurox-logo.png"
-              alt="Aurox"
-              className="h-16 w-16 object-contain drop-shadow-[0_0_18px_rgba(94,234,212,0.25)]"
-            />
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+            <Car className="h-7 w-7 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Manu Automóveis</CardTitle>
+          <CardTitle className="text-2xl">Project Manu</CardTitle>
           <CardDescription>Entre com suas credenciais para acessar</CardDescription>
         </CardHeader>
         <CardContent>
