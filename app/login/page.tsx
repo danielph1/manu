@@ -49,7 +49,7 @@ export default function LoginPage() {
             <img
               src="/aurox-logo.png"
               alt="Aurox"
-              className="h-24 w-24 object-contain md:h-28 md:w-28"
+              className="h-32 w-32 object-contain md:h-40 md:w-40"
             />
           </div>
           <CardTitle className="text-2xl font-semibold tracking-tight">
