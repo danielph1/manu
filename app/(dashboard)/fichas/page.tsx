@@ -1,4 +1,4 @@
-use client';
+'use client';
 import { CarLoader } from '@/components/car-loader';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
