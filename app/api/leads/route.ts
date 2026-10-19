@@ -26,6 +26,8 @@ function inicioPeriodo(periodo: string): { di: string | null; df: string | null 
 
 async function rotacionar() {
   try {
+    const { emHorarioDescanso } = await import('@/lib/horario-descanso');
+    if (emHorarioDescanso()) return;
     const vencidos = await query(
       `SELECT id, vendedor_id FROM public.leads
        WHERE vendedor_id IS NOT NULL

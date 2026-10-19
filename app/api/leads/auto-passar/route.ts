@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
+import { emHorarioDescanso } from '@/lib/horario-descanso';
 
 export const runtime = 'nodejs';
 
@@ -8,6 +9,7 @@ export const runtime = 'nodejs';
  * Pode ser chamado por cron ou ao abrir triagem/painel.
  *
  * REGRA: se comentario_interno preenchido → NÃO passa.
+ * REGRA: entre 21h e 9h (SP) → NÃO passa (descanso).
  */
 
 const MINUTOS = 10;
@@ -27,6 +29,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    if (emHorarioDescanso()) {
+      return NextResponse.json({
+        ok: true,
+        transferidos: 0,
+        checados: 0,
+        pausado: true,
+        motivo: 'horario_descanso_21h_9h',
+      });
+    }
+
     const { rows: leads } = await query(
       `SELECT id, vendedor_id
        FROM public.leads
