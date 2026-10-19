@@ -78,8 +78,14 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         })}
       </nav>
 
-      <div className="mt-auto pt-6 text-center text-xs text-muted-foreground">
-        Aurox Technology
+      <div className="mt-auto space-y-2 pt-6 text-center">
+        <img
+          src="/aurox-logo.png"
+          alt=""
+          className="mx-auto h-10 w-10 object-contain opacity-25 pointer-events-none select-none"
+          aria-hidden
+        />
+        <div className="text-xs text-muted-foreground">Aurox Technology</div>
       </div>
     </aside>
   );

@@ -62,9 +62,13 @@ export async function GET(req: NextRequest) {
     if (dateSql) sql += ' AND ' + dateSql;
     sql += `
       ORDER BY
+        -- concluídas / compradas no final
+        CASE WHEN COALESCE(f.comprou, l.venda_concluida, FALSE) THEN 1 ELSE 0 END ASC,
+        CASE WHEN LOWER(COALESCE(f.status_geral,'')) IN ('concluido','concluído','comprado') THEN 1 ELSE 0 END ASC,
+        -- cliente na loja no topo
         COALESCE(l.cliente_na_loja, FALSE) DESC,
-        CASE WHEN LOWER(COALESCE(f.status_geral,'')) IN ('aprovada','negada','reprovada','aprovado','negado','recusada','concluido','concluído') THEN 1 ELSE 0 END ASC,
-        f.id DESC
+        -- quem chegou primeiro (id menor) entre as abertas
+        f.id ASC
       LIMIT 500`;
     return query(sql, p);
   }

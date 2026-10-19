@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Car, Search, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { CARROCERIAS, matchCarroceria } from '@/lib/carroceria';
 
 type Ordem = 'preco_asc' | 'preco_desc' | 'chegada_desc' | 'chegada_asc' | 'marca';
 
@@ -19,13 +20,14 @@ function limpo(v: any) {
 export default function EstoquePage() {
   const [q, setQ] = useState('');
   const [ordem, setOrdem] = useState<Ordem>('preco_asc');
+  const [carroceria, setCarroceria] = useState('todas');
   const { data: carros = [], isLoading } = useQuery({
     queryKey: ['estoque', q],
     queryFn: async () => (await api.get('/estoque', { params: { busca: q || undefined } })).data,
   });
 
   const lista = useMemo(() => {
-    const arr = [...(carros as any[])];
+    let arr = [...(carros as any[])].filter((c) => matchCarroceria(c, carroceria));
     const preco = (c: any) => Number(c.preco ?? c.valor ?? 0) || 0;
     const data = (c: any) => new Date(c.created_at || c.data_entrada || 0).getTime() || Number(c.id) || 0;
     arr.sort((a, b) => {
@@ -36,7 +38,7 @@ export default function EstoquePage() {
       return String(a.marca || '').localeCompare(String(b.marca || ''), 'pt-BR');
     });
     return arr;
-  }, [carros, ordem]);
+  }, [carros, ordem, carroceria]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -48,8 +50,18 @@ export default function EstoquePage() {
       <div className="flex flex-wrap gap-3">
         <div className="relative max-w-md flex-1">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Buscar por modelo, placa, cor..." value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input className="pl-9" placeholder="Buscar por modelo, placa, cor, carroceria..." value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+        <select
+          className="rounded-md border border-border bg-background px-3 text-sm"
+          value={carroceria}
+          onChange={(e) => setCarroceria(e.target.value)}
+        >
+          <option value="todas">Carroceria: todas</option>
+          {CARROCERIAS.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
         <select
           className="rounded-md border border-border bg-background px-3 text-sm"
           value={ordem}

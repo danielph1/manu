@@ -33,6 +33,7 @@ export default function PainelPage() {
   const [filtro, setFiltro] = useState<LeadFiltros['filtro']>('todos');
   const [periodo, setPeriodo] = useState<LeadFiltros['periodo']>('mes');
   const [busca, setBusca] = useState('');
+  const [carroceria, setCarroceria] = useState('todas');
   const [selected, setSelected] = useState<Lead | null>(null);
   const [loja, setLoja] = useState('');
   const [vendedorId, setVendedorId] = useState('');
@@ -65,15 +66,27 @@ export default function PainelPage() {
   const totalVend = (stats?.total_vendidos ?? stats?.vendidos ?? 0) || (usarLista ? daLista.vend : 0);
 
   const filteredLeads = useMemo(() => {
-    if (!busca) return leads;
-    const q = busca.toLowerCase();
-    return leads.filter((l) =>
-      l.nome_lead?.toLowerCase().includes(q) ||
-      l.telefone?.toLowerCase().includes(q) ||
-      l.cpf?.toLowerCase().includes(q) ||
-      (l as any).observacao?.toLowerCase?.().includes(q),
-    );
-  }, [leads, busca]);
+    let arr = leads;
+    if (busca) {
+      const q = busca.toLowerCase();
+      arr = arr.filter((l) =>
+        l.nome_lead?.toLowerCase().includes(q) ||
+        l.telefone?.toLowerCase().includes(q) ||
+        l.cpf?.toLowerCase().includes(q) ||
+        (l as any).observacao?.toLowerCase?.().includes(q) ||
+        (l as any).produto_interesse?.toLowerCase?.().includes(q) ||
+        (l as any).carroceria?.toLowerCase?.().includes(q),
+      );
+    }
+    if (carroceria && carroceria !== 'todas') {
+      const f = carroceria.toLowerCase();
+      arr = arr.filter((l) => {
+        const blob = `${(l as any).carroceria || ''} ${(l as any).produto_interesse || ''} ${(l as any).marca_carro || ''} ${(l as any).modelo || ''}`.toLowerCase();
+        return blob.includes(f);
+      });
+    }
+    return arr;
+  }, [leads, busca, carroceria]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -146,9 +159,24 @@ export default function PainelPage() {
 
       <section className="space-y-3">
         <Label>Buscar lead</Label>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Nome, CPF, telefone..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <div className="flex flex-wrap gap-3">
+          <div className="relative min-w-[200px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input className="pl-9" placeholder="Nome, CPF, telefone..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+          </div>
+          <select
+            className="rounded-md border border-border bg-background px-3 text-sm"
+            value={carroceria}
+            onChange={(e) => setCarroceria(e.target.value)}
+          >
+            <option value="todas">Carroceria: todas</option>
+            <option value="hatch">hatch</option>
+            <option value="sedan">sedan</option>
+            <option value="suv">suv</option>
+            <option value="pickup">pickup</option>
+            <option value="utilitario">utilitario</option>
+            <option value="van">van</option>
+          </select>
         </div>
       </section>
 

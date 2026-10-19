@@ -17,14 +17,20 @@ export default function OficinaPage() {
   const qc = useQueryClient();
   const podeEditar = ['admin', 'gerente', 'guariba', 'mecanico'].includes(user?.tipo || '');
   const [busca, setBusca] = useState('');
+  const [carroceria, setCarroceria] = useState('todas');
   const [form, setForm] = useState({
     marca: '', modelo: '', ano_modelo: '', placa: '', cor: '', valor_carro: '',
   });
 
-  const { data: carros = [], isLoading } = useQuery({
+  const { data: carrosRaw = [], isLoading } = useQuery({
     queryKey: ['oficina', busca],
     queryFn: async () =>
       (await api.get('/oficina', { params: { busca: busca || undefined } })).data,
+  });
+  const carros = (Array.isArray(carrosRaw) ? carrosRaw : []).filter((c: any) => {
+    if (!carroceria || carroceria === 'todas') return true;
+    const blob = `${c.carroceria || ''} ${c.marca || ''} ${c.modelo || ''}`.toLowerCase();
+    return blob.includes(carroceria.toLowerCase());
   });
 
   async function cadastrar() {
@@ -60,11 +66,27 @@ export default function OficinaPage() {
         </p>
       </header>
 
-      <Input
-        placeholder="Buscar marca, modelo, placa..."
-        value={busca}
-        onChange={(e) => setBusca(e.target.value)}
-      />
+      <div className="flex flex-wrap gap-3">
+        <Input
+          className="max-w-md flex-1"
+          placeholder="Buscar marca, modelo, placa, carroceria..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
+        <select
+          className="rounded-md border border-border bg-background px-3 text-sm"
+          value={carroceria}
+          onChange={(e) => setCarroceria(e.target.value)}
+        >
+          <option value="todas">Carroceria: todas</option>
+          <option value="hatch">hatch</option>
+          <option value="sedan">sedan</option>
+          <option value="suv">suv</option>
+          <option value="pickup">pickup</option>
+          <option value="utilitario">utilitario</option>
+          <option value="van">van</option>
+        </select>
+      </div>
 
       {podeEditar && (
         <Card>

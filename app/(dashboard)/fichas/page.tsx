@@ -48,6 +48,7 @@ export default function FichasPage() {
   const [periodo, setPeriodo] = useState('todas');
   const [status, setStatus] = useState('todos');
   const [busca, setBusca] = useState('');
+  const [carroceria, setCarroceria] = useState('todas');
 
   const { data: fichas = [], isLoading, error } = useQuery({
     queryKey: ['fichas', periodo, busca],
@@ -60,9 +61,13 @@ export default function FichasPage() {
   const nNeg = todas.filter((f) => ['negada', 'reprovada', 'negado', 'recusada'].includes(st(f))).length;
   const nPend = todas.filter((f) => !st(f).startsWith('aprov') && !['negada', 'reprovada', 'negado', 'recusada'].includes(st(f))).length;
   const lista = todas.filter((f) => {
-    if (status === 'aprovadas') return st(f).startsWith('aprov');
-    if (status === 'negadas') return ['negada', 'reprovada', 'negado', 'recusada'].includes(st(f));
-    if (status === 'pendentes') return !st(f).startsWith('aprov') && !['negada', 'reprovada', 'negado', 'recusada'].includes(st(f));
+    if (status === 'aprovadas' && !st(f).startsWith('aprov')) return false;
+    if (status === 'negadas' && !['negada', 'reprovada', 'negado', 'recusada'].includes(st(f))) return false;
+    if (status === 'pendentes' && (st(f).startsWith('aprov') || ['negada', 'reprovada', 'negado', 'recusada'].includes(st(f)))) return false;
+    if (carroceria && carroceria !== 'todas') {
+      const blob = `${f.carroceria || ''} ${f.produto_interesse || ''} ${f.marca_carro || ''} ${f.modelo || ''}`.toLowerCase();
+      if (!blob.includes(carroceria.toLowerCase())) return false;
+    }
     return true;
   });
 
@@ -76,6 +81,19 @@ export default function FichasPage() {
           </p>
         </div>
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar nome, CPF, placa, vendedor..." className="mr-2 rounded border border-border bg-card px-3 py-1.5 text-sm" />
+        <select
+          className="mr-2 rounded border border-border bg-card px-3 py-1.5 text-sm"
+          value={carroceria}
+          onChange={(e) => setCarroceria(e.target.value)}
+        >
+          <option value="todas">Carroceria: todas</option>
+          <option value="hatch">hatch</option>
+          <option value="sedan">sedan</option>
+          <option value="suv">suv</option>
+          <option value="pickup">pickup</option>
+          <option value="utilitario">utilitario</option>
+          <option value="van">van</option>
+        </select>
         <Select value={periodo} onValueChange={setPeriodo}>
           <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
