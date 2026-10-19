@@ -5,8 +5,8 @@ import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Car, Loader2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
@@ -42,21 +42,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-card p-4">
-      {/* logo sutil — canto superior direito */}
-      <img
-        src="/aurox-logo.png"
-        alt="Aurox"
-        className="pointer-events-none absolute right-5 top-5 h-14 w-14 object-contain opacity-70 md:h-16 md:w-16 md:opacity-80"
-      />
-
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-card p-4">
       <Card className="w-full max-w-md border-border/60 shadow-2xl">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
-            <Car className="h-7 w-7 text-primary" />
+        <CardHeader className="space-y-3 text-center">
+          <div className="mx-auto flex items-center justify-center">
+            <img
+              src="/aurox-logo.png"
+              alt="Aurox"
+              className="h-24 w-24 object-contain md:h-28 md:w-28"
+            />
           </div>
-          <CardTitle className="text-2xl">Project Manu</CardTitle>
-          <CardDescription>Entre com suas credenciais para acessar</CardDescription>
+          <CardTitle className="text-2xl font-semibold tracking-tight">
+            Bem vindo a Aurox
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -85,9 +83,6 @@ export default function LoginPage() {
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Entrar
             </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Mesmo login/senha do Streamlit (coluna senha_hash no Supabase)
-            </p>
           </form>
         </CardContent>
       </Card>

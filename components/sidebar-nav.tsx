@@ -79,7 +79,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
       </nav>
 
       <div className="mt-auto pt-6 text-center text-xs text-muted-foreground">
-        Project Manu  v0.2
+        Aurox technology
       </div>
     </aside>
   );
