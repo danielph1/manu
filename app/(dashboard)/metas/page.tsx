@@ -19,6 +19,8 @@ export default function MetasPage() {
   const { data = [], isLoading, error } = useQuery({
     queryKey: ['metas'],
     queryFn: async () => (await api.get('/metas')).data,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: true,
   });
   const { data: usuarios = [] } = useQuery({
     queryKey: ['usuarios'],

@@ -12,7 +12,7 @@ export default function TriagemPage() {
   const { data = [] } = useQuery({
     queryKey: ['triagem'],
     queryFn: async () => (await api.get('/triagem')).data,
-    refetchInterval: 5000,
+    refetchInterval: 3000,
     enabled: user?.tipo === 'admin',
   });
   const { data: vendedores = [] } = useQuery({

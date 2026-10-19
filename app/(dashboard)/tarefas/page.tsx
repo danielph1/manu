@@ -25,6 +25,8 @@ export default function TarefasPage() {
   const { data: tarefas = [] } = useQuery({
     queryKey: ['tarefas'],
     queryFn: async () => (await api.get('/tarefas')).data,
+    refetchInterval: 120000,
+    refetchOnWindowFocus: true,
   });
   const { data: equipe = [] } = useQuery({
     queryKey: ['equipe-users'],

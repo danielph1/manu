@@ -40,11 +40,14 @@ export default function PainelPage() {
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads', filtro, periodo, loja, vendedorId],
     queryFn: () => leadsService.list({ filtro, periodo, loja: loja || undefined, vendedor_id: vendedorId || undefined }),
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: stats } = useQuery({
     queryKey: ['stats', periodo],
     queryFn: () => leadsService.stats({ periodo }),
+    refetchInterval: 10000,
   });
 
   const daLista = {

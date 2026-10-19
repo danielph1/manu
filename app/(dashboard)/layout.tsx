@@ -7,7 +7,13 @@ import { SidebarNav } from '@/components/sidebar-nav';
 import { Menu, X } from 'lucide-react';
 import { AvisosFlutuante } from '@/components/avisos-flutuante';
 import { BottomNav } from '@/components/bottom-nav';
+import { useRealtimeCore } from '@/hooks/use-realtime';
 import type { ReactNode } from 'react';
+
+function RealtimeBootstrap() {
+  useRealtimeCore();
+  return null;
+}
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -18,6 +24,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const voltar = noChat || ['/minha-conta','/favoritos','/temas','/sobre','/privacidade'].some((p) => path.startsWith(p));
   return (
     <ProtectedRoute>
+      <RealtimeBootstrap />
       <div className="flex min-h-screen w-full bg-background">
         <button
           className="fixed left-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-card"

@@ -34,13 +34,13 @@ function ChatPageInner() {
   const { data = [] } = useQuery({
     queryKey: ['chat', leadId],
     queryFn: async () => (await api.get('/chat', { params: leadId ? { lead_id: leadId } : {} })).data,
-    refetchInterval: 8000,
+    refetchInterval: 4000,
     enabled: !!leadId,
   });
   const { data: conversas = [] } = useQuery({
     queryKey: ['conversas'],
     queryFn: async () => (await api.get('/chat/conversas')).data,
-    refetchInterval: 8000,
+    refetchInterval: 4000,
   });
   useEffect(() => {
     if (!leadId || !Array.isArray(data) || !data.length) return;
