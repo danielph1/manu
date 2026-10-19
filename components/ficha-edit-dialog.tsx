@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { Role } from '@/lib/roles';
 import { useAuth } from '@/contexts/auth-context';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { chanceAprovacao } from '@/lib/credito-chance';
 
 const BANCOS = ['Itau', 'BV', 'Creditas', 'Bradesco', 'Pan', 'Safra', 'Santander', 'Volkswagen'];
 const STATUS = [
@@ -209,14 +210,39 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
             <>
               {/* Editavel por ElfenAI/Gerente */}
               <div>
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm font-medium text-muted-foreground">Bancos  o ElfenAI preenche aqui</div>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setBancos([...bancos, { banco: '', status: 'pendente' }])}>
-                    <Plus className="mr-1 h-3 w-3" />Adicionar banco
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs text-muted-foreground">
+                      Score:{' '}
+                      <b className="text-foreground">
+                        {data?.score ?? lead?.score ?? 'sem score'}
+                      </b>
+                    </span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setBancos([...bancos, { banco: '', status: 'pendente' }])}>
+                      <Plus className="mr-1 h-3 w-3" />Adicionar banco
+                    </Button>
+                  </div>
                 </div>
                 <div className="space-y-3">
-                  {bancos.map((b, i) => (
+                  {bancos.map((b, i) => {
+                    const scoreRaw = data?.score ?? data?.lead?.score ?? lead?.score;
+                    const scoreNum = scoreRaw === '' || scoreRaw == null ? null : Number(scoreRaw);
+                    const chance = chanceAprovacao({
+                      score: scoreNum,
+                      banco: b.banco,
+                      valorEntrada: Number(data?.entrada_total ?? data?.valor_entrada ?? lead?.valor_entrada) || null,
+                      valorCarro: Number(data?.valor_veiculo ?? data?.valor_carro ?? lead?.valor_carro) || null,
+                    });
+                    const chanceCls =
+                      chance.nivel === 'alto'
+                        ? 'bg-sky-500/15 text-sky-400'
+                        : chance.nivel === 'medio'
+                          ? 'bg-amber-500/15 text-amber-400'
+                          : chance.nivel === 'baixo'
+                            ? 'bg-rose-500/15 text-rose-400'
+                            : 'bg-muted text-muted-foreground';
+                    return (
                     <div key={i} className="grid gap-2 rounded-lg border border-border p-3 md:grid-cols-6">
                       <div className="md:col-span-2">
                         <Label className="text-xs">Banco</Label>
@@ -236,9 +262,17 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
                       <div><Label className="text-xs">Parcela 48x</Label><Input type="number" value={b.parcela_48 ?? ''} onChange={(e) => setBancos(bancos.map((x, j) => j === i ? { ...x, parcela_48: e.target.value } : x))} /></div>
                       <div><Label className="text-xs">Parcela 60x</Label><Input type="number" value={b.parcela_60 ?? ''} onChange={(e) => setBancos(bancos.map((x, j) => j === i ? { ...x, parcela_60: e.target.value } : x))} /></div>
                       <div className="md:col-span-5"><Label className="text-xs">Observacao</Label><Input value={b.observacao ?? ''} onChange={(e) => setBancos(bancos.map((x, j) => j === i ? { ...x, observacao: e.target.value } : x))} /></div>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setBancos(bancos.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+                      <div className="flex flex-col items-center justify-center gap-1">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setBancos(bancos.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${chanceCls}`} title={chance.detalhe || ''}>
+                          {chance.sem_score
+                            ? 'sem score'
+                            : `chance: ${chance.label}${chance.p != null ? ` (${Math.round(chance.p * 100)}%)` : ''}`}
+                        </span>
+                      </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

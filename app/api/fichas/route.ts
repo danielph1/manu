@@ -45,7 +45,10 @@ export async function GET(req: NextRequest) {
       l.cpf,
       COALESCE(l.cliente_na_loja, FALSE) AS em_loja,
       COALESCE(f.comprou, l.venda_concluida, FALSE) AS comprou,
-      v.nome AS vendedor_nome
+      v.nome AS vendedor_nome,
+      COALESCE(f.score, l.score) AS score,
+      COALESCE(f.valor_entrada, l.valor_entrada) AS valor_entrada_calc,
+      COALESCE(f.valor_veiculo, l.valor_carro) AS valor_veiculo_calc
     FROM public.fichas_credito f
     LEFT JOIN public.leads l ON l.id = f.lead_id
     LEFT JOIN public.vendedores v ON v.id = f.vendedor_id

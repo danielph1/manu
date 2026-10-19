@@ -8,7 +8,31 @@ import { FileText, Store, CheckCircle2, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { FichaEditDialog } from '@/components/ficha-edit-dialog';
 import { useAuth } from '@/contexts/auth-context';
+import { chanceAprovacao } from '@/lib/credito-chance';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+const BANCOS_REF = ['Itau', 'BV', 'Creditas', 'Bradesco', 'Pan', 'Safra', 'Santander', 'Volkswagen'];
+
+/** Melhor chance entre os bancos da lista (cálculo local, sem lag no servidor). */
+function melhorChance(f: any) {
+  const score = f.score == null || f.score === '' ? null : Number(f.score);
+  if (score == null || Number.isNaN(score)) {
+    return { nivel: 'sem_score' as const, label: 'sem score', banco: null as string | null, p: null as number | null };
+  }
+  let best: ReturnType<typeof chanceAprovacao> & { banco: string } | null = null;
+  for (const banco of BANCOS_REF) {
+    const c = chanceAprovacao({
+      score,
+      banco,
+      valorEntrada: Number(f.valor_entrada_calc ?? f.valor_entrada) || null,
+      valorCarro: Number(f.valor_veiculo_calc ?? f.valor_veiculo) || null,
+    });
+    if (!c.ok || c.p == null) continue;
+    if (!best || (c.p > (best.p || 0))) best = { ...c, banco };
+  }
+  if (!best) return { nivel: 'sem_score' as const, label: 'sem score', banco: null, p: null };
+  return { nivel: best.nivel, label: best.label, banco: best.banco, p: best.p };
+}
 
 const statusColor: Record<string, string> = {
   aprovada: 'bg-green-400',
@@ -81,7 +105,17 @@ export default function FichasPage() {
       {error && <p className="text-rose-400">Erro ao carregar fichas.</p>}
 
       <div className="grid gap-4 md:grid-cols-2">
-        {lista.map((f: any) => (
+        {lista.map((f: any) => {
+          const mc = melhorChance(f);
+          const chanceCls =
+            mc.nivel === 'alto'
+              ? 'bg-sky-500/15 text-sky-400 border-sky-500/40'
+              : mc.nivel === 'medio'
+                ? 'bg-amber-500/15 text-amber-400 border-amber-500/40'
+                : mc.nivel === 'baixo'
+                  ? 'bg-rose-500/15 text-rose-400 border-rose-500/40'
+                  : 'bg-muted text-muted-foreground border-border';
+          return (
           <Card
             key={f.id}
             className={`cursor-pointer transition hover:border-primary/60 hover:shadow-lg ${f.comprou ? 'opacity-70' : ''}`}
@@ -93,9 +127,14 @@ export default function FichasPage() {
                   <FileText className="h-5 w-5 shrink-0 text-primary" />
                   <span className="truncate">{f.lead_nome || `Lead #${f.lead_id}`}</span>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex flex-wrap justify-end gap-1">
                   {f.em_loja && !f.comprou && <Badge variant="outline" className="gap-1 border-amber-500 text-amber-400"><Store className="h-3 w-3" />Na loja</Badge>}
                   {f.comprou && <Badge className="bg-emerald-600 gap-1"><CheckCircle2 className="h-3 w-3" />Concluido</Badge>}
+                  <Badge variant="outline" className={`text-[10px] ${chanceCls}`}>
+                    {mc.nivel === 'sem_score'
+                      ? 'sem score'
+                      : `${mc.label}${mc.p != null ? ` ${Math.round(mc.p * 100)}%` : ''}${mc.banco ? ` · ${mc.banco}` : ''}`}
+                  </Badge>
                 </div>
               </div>
               <div className="text-sm text-muted-foreground">
@@ -104,7 +143,8 @@ export default function FichasPage() {
               <span className={`inline-block h-2 w-2 rounded-full ${statusColor[String(f.status_geral || '').toLowerCase()] || 'bg-gray-500'}`} />
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
       {!isLoading && lista.length === 0 && <p className="text-muted-foreground">Nenhuma ficha encontrada.</p>}
       <FichaEditDialog fichaId={selected} onClose={() => setSelected(null)} />

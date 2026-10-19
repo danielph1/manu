@@ -98,6 +98,13 @@ export function LeadEditDialog({ lead, onClose }: { lead: Lead | null; onClose: 
                 <CheckField label="Habilitado" checked={!!form.habilitado} onChange={(v) => setForm({ ...form, habilitado: v })} disabled={!canEdit} />
                 <Field label="Cor" value={form.cor_carro} onChange={(v) => setForm({ ...form, cor_carro: v })} disabled={!canEdit} />
                 <Field label="Valor de entrada" value={form.valor_entrada} onChange={(v) => setForm({ ...form, valor_entrada: v })} disabled={!canEdit} />
+                <Field
+                  label="Score de crédito"
+                  value={form.score ?? ''}
+                  onChange={(v) => setForm({ ...form, score: v })}
+                  disabled={!canEdit}
+                  placeholder="0–1000 (opcional)"
+                />
               </div>
             </>
           )}

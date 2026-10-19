@@ -27,9 +27,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
 
-  const allowed = ['nome_lead','telefone','cpf','produto_interesse','observacao','comentario_interno','respondeu','gerou_ficha','data_hora_visita','venda_concluida','data_venda','nome_completo','data_nascimento','habilitado','data_lead','em_loja','cliente_na_loja','carro_selecionado','marca_carro','ano_carro','placa_carro','cor_carro','valor_carro','valor_entrada','rg','data_expedicao','orgao_expeditor','nome_pai','nome_mae','email','endereco','bairro','cidade','estado','cep','empresa','cnpj','endereco_empresa','bairro_empresa','cidade_empresa','estado_empresa','cep_empresa','tempo_carreira','salario','banco_correntista'];
+  const allowed = ['nome_lead','telefone','cpf','produto_interesse','observacao','comentario_interno','respondeu','gerou_ficha','data_hora_visita','venda_concluida','data_venda','nome_completo','data_nascimento','habilitado','data_lead','em_loja','cliente_na_loja','carro_selecionado','marca_carro','ano_carro','placa_carro','cor_carro','valor_carro','valor_entrada','score','rg','data_expedicao','orgao_expeditor','nome_pai','nome_mae','email','endereco','bairro','cidade','estado','cep','empresa','cnpj','endereco_empresa','bairro_empresa','cidade_empresa','estado_empresa','cep_empresa','tempo_carreira','salario','banco_correntista'];
   const payload: any = {};
   for (const k of allowed) if (k in body) payload[k] = body[k];
+  if ('score' in payload && payload.score !== null && payload.score !== '') {
+    const n = Number(payload.score);
+    payload.score = Number.isFinite(n) ? n : null;
+  }
 
   // comentário interno segura o lead — para de rotacionar
   if ('comentario_interno' in body) {
@@ -44,13 +48,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.gerou_ficha === true) {
     const { data: exists } = await supabaseAdmin.from('fichas_credito').select('id').eq('lead_id', id).maybeSingle();
     if (!exists) {
-      await supabaseAdmin.from('fichas_credito').insert({
-        lead_id: Number(id), 
-        vendedor_id: data.vendedor_id, 
+      const ins: any = {
+        lead_id: Number(id),
+        vendedor_id: data.vendedor_id,
         criado_por_id: u.id,
         valor_entrada: data.valor_entrada || 0,
         valor_veiculo: data.valor_carro || 0,
-      });
+      };
+      if (data.score != null) ins.score = data.score;
+      await supabaseAdmin.from('fichas_credito').insert(ins);
     }
   }
   return NextResponse.json(data);
