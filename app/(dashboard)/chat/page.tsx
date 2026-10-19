@@ -65,9 +65,13 @@ function ChatPageInner() {
         reader.readAsDataURL(blob);
         return;
       }
-      await api.post('/chat', { mensagem: texto, ...extra });
+      const r = await api.post('/chat', { mensagem: texto, lead_id: leadId, ...extra });
       setTexto('');
       qc.invalidateQueries({ queryKey: ['chat'] });
+      const w = r?.data?.whatsapp;
+      if (w && w.ok === false) {
+        toast.error(w.skipped || w.error || 'WhatsApp não enviou (confira token/telefone no Vercel)');
+      }
     } catch (e: any) {
       toast.error(e?.response?.data?.error || 'Erro ao enviar');
     }

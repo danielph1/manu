@@ -73,23 +73,17 @@ export async function POST(req: NextRequest) {
         [u.id, texto, leadId],
       );
     }
+    let whatsapp: any = null;
     if (leadId && msg) {
       try {
+        const { zapiSendText } = await import('@/lib/zapi');
         const lead = await queryOne(`SELECT telefone FROM public.leads WHERE id = $1`, [leadId]);
-        let tel = String(lead?.telefone || '').replace(/\D/g, '');
-        if (tel && !tel.startsWith('55')) tel = `55${tel}`;
-        const instance = process.env.ZAPI_INSTANCE_ID;
-        const token = process.env.ZAPI_TOKEN;
-        const clientToken = process.env.ZAPI_CLIENT_TOKEN || '';
-        if (tel && instance && token) {
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (clientToken) headers['Client-Token'] = clientToken;
-          await fetch(
-            `https://api.z-api.io/instances/${instance}/token/${token}/send-text`,
-            { method: 'POST', headers, body: JSON.stringify({ phone: tel, message: msg }) },
-          );
+        whatsapp = await zapiSendText(String(lead?.telefone || ''), msg);
+        if (!whatsapp.ok) {
+          console.error('zapi send fail', whatsapp);
         }
-      } catch (e) {
+      } catch (e: any) {
+        whatsapp = { ok: false, error: e?.message || String(e) };
         console.error('zapi send', e);
       }
     }
@@ -101,7 +95,13 @@ export async function POST(req: NextRequest) {
         broadcast: true,
       });
     } catch { /* ok */ }
-    return NextResponse.json({ ...row, remetente_nome: u.nome || u.login, arquivo_b64: b64, reacoes: [] });
+    return NextResponse.json({
+      ...row,
+      remetente_nome: u.nome || u.login,
+      arquivo_b64: b64,
+      reacoes: [],
+      whatsapp,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'erro ao enviar' }, { status: 500 });
   }

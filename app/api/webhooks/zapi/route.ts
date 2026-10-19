@@ -20,20 +20,26 @@ function chaveTel(d: string): string {
 
 function texto(b: any): string {
   if (!b) return '';
-  if (typeof b.text === 'string') return b.text;
+  if (typeof b.text === 'string' && b.text.trim()) return b.text;
   if (b.text?.message) return String(b.text.message);
+  if (typeof b.message === 'string' && b.message.trim()) return b.message;
+  if (b.message?.text) return String(b.message.text);
+  if (b.message?.conversation) return String(b.message.conversation);
   if (b.body) return String(b.body);
-  if (b.message) return String(b.message);
-  if (b.sticker || b.type === 'sticker' || b.messageType === 'sticker') return '[figurinha]';
-  if (b.audio || b.messageType === 'audio') return '[áudio]';
-  if (b.video || b.messageType === 'video') return '[vídeo]';
-  if (b.document || b.messageType === 'document') return '[documento]';
-  if (b.image || b.messageType === 'image') return b.image?.caption ? String(b.image.caption) : '[imagem]';
+  if (b.hydratedTemplate?.message) return String(b.hydratedTemplate.message);
+  const mt = String(b.messageType || b.type || '').toLowerCase();
+  if (b.sticker || mt.includes('sticker')) return '[figurinha]';
+  if (b.audio || mt.includes('audio')) return '[áudio]';
+  if (b.video || mt.includes('video')) return '[vídeo]';
+  if (b.document || mt.includes('document')) return '[documento]';
+  if (b.image || mt.includes('image')) return b.image?.caption ? String(b.image.caption) : '[imagem]';
   return '';
 }
 
 function telefone(b: any): string {
-  return normTel(b.phone || b.phoneNumber || b.senderPhone || b.from || '');
+  return normTel(
+    b.phone || b.phoneNumber || b.senderPhone || b.from || b.chatId || b.participant || '',
+  );
 }
 
 export async function GET() {

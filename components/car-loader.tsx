@@ -1,35 +1,49 @@
+'use client';
+
+/** Splash / loading com logo Aurox + efeito CSS */
 export function CarLoader({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={`flex flex-col items-center justify-center gap-4 ${compact ? 'py-10' : 'min-h-screen'} bg-background`}>
-      <div className="flex items-end gap-3">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="car-front" style={{ animationDelay: `${i * 0.2}s` }}>
-            <span className="faro esq" />
-            <span className="grade" />
-            <span className="faro dir" />
-          </div>
-        ))}
+    <div
+      className={`flex flex-col items-center justify-center gap-5 ${
+        compact ? 'py-10' : 'min-h-screen'
+      } bg-black`}
+    >
+      <div className="aurox-splash">
+        <img src="/aurox-logo.png" alt="Aurox" className="aurox-logo-img" />
       </div>
-      <p className="text-sm text-muted-foreground">Carregando…</p>
+      <p className="text-sm tracking-wide text-white/50">Carregando…</p>
       <style>{`
-        .car-front {
-          width: 72px; height: 36px; border-radius: 18px 18px 8px 8px;
-          background: hsl(var(--primary)); opacity: 0.9;
-          display: flex; align-items: center; justify-content: space-between;
-          padding: 0 8px;
-          animation: pulseCar 1.4s ease-in-out infinite;
+        .aurox-splash {
+          position: relative;
+          width: 140px;
+          height: 140px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
-        .car-front .grade {
-          width: 28px; height: 14px; border-radius: 3px;
-          background: repeating-linear-gradient(90deg, #111 0 2px, transparent 2px 5px);
+        .aurox-logo-img {
+          width: 120px;
+          height: 120px;
+          object-fit: contain;
+          animation: auroxPulse 1.8s ease-in-out infinite;
+          filter: drop-shadow(0 0 22px rgba(94, 234, 212, 0.35));
         }
-        .car-front .faro {
-          width: 10px; height: 8px; border-radius: 4px;
-          background: #fff; box-shadow: 0 0 8px #fff;
+        .aurox-splash::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          border: 2px solid transparent;
+          border-top-color: rgba(94, 234, 212, 0.7);
+          border-right-color: rgba(94, 234, 212, 0.25);
+          animation: auroxSpin 1.2s linear infinite;
         }
-        @keyframes pulseCar {
-          0%, 100% { transform: translateY(0); opacity: 0.45; }
-          50% { transform: translateY(-8px); opacity: 1; }
+        @keyframes auroxPulse {
+          0%, 100% { transform: scale(0.94); opacity: 0.75; }
+          50% { transform: scale(1.04); opacity: 1; }
+        }
+        @keyframes auroxSpin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>
