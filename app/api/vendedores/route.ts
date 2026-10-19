@@ -10,9 +10,13 @@ export async function GET(req: NextRequest) {
   try {
     const params: unknown[] = [];
     let where = `COALESCE(ativo, TRUE) = TRUE AND LOWER(nome) <> 'matheus'`;
+    if (u.empresa_id && u.tipo !== 'superadmin') {
+      params.push(u.empresa_id);
+      where += ` AND empresa_id = $${params.length}`;
+    }
     if (u.tipo === 'gerente' && u.loja) {
       params.push(u.loja);
-      where += ` AND UPPER(COALESCE(loja,'381')) = UPPER($1)`;
+      where += ` AND UPPER(COALESCE(loja,'381')) = UPPER($${params.length})`;
     }
     const { rows } = await query(
       `SELECT DISTINCT ON (LOWER(nome)) id, nome, loja, COALESCE(ativo, TRUE) AS ativo

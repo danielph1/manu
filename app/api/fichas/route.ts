@@ -29,6 +29,12 @@ export async function GET(req: NextRequest) {
   const params: unknown[] = [];
   const where: string[] = ['1=1'];
 
+  // Isolamento SaaS por empresa
+  if (u.empresa_id && u.tipo !== 'superadmin') {
+    params.push(u.empresa_id);
+    where.push(`(f.vendedor_id IS NULL OR f.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${params.length}))`);
+  }
+
   if (u.tipo === 'vendedor' && u.vendedor_id) {
     params.push(u.vendedor_id);
     where.push(`f.vendedor_id = $${params.length}`);

@@ -2,15 +2,18 @@
 import type { User } from '@/types';
 
 export const Role = {
-  isAdmin: (u?: User | null) => u?.tipo === 'admin',
-  isGerente: (u?: User | null) => u?.tipo === 'gerente' || u?.tipo === 'admin',
+  isSuperAdmin: (u?: User | null) => u?.tipo === 'superadmin',
+  isAdmin: (u?: User | null) => u?.tipo === 'admin' || u?.tipo === 'superadmin',
+  isGerente: (u?: User | null) => u?.tipo === 'gerente' || u?.tipo === 'admin' || u?.tipo === 'superadmin',
   isVendedor: (u?: User | null) => u?.tipo === 'vendedor',
   isElfenAI: (u?: User | null) => u?.tipo === 'elfenai',
-  isDocumento: (u?: User | null) => u?.tipo === 'documento',
-  verMetricas: (u?: User | null) => u?.tipo === 'admin' || u?.tipo === 'gerente',
-  verLeads: (u?: User | null) => ['admin','gerente','vendedor','marketing','documentista','documento','elfenai'].includes(u?.tipo ?? ''),
-  verFichas: (u?: User | null) => ['admin','gerente','vendedor','elfenai'].includes(u?.tipo ?? ''),
-  verDocumental: (u?: User | null) => ['admin','gerente','vendedor','documento'].includes(u?.tipo ?? ''),
+  isDocumento: (u?: User | null) => u?.tipo === 'documento' || u?.tipo === 'documentista',
+  verMetricas: (u?: User | null) => u?.tipo === 'admin' || u?.tipo === 'gerente' || u?.tipo === 'superadmin',
+  verLeads: (u?: User | null) => ['admin','gerente','vendedor','marketing','documentista','documento','elfenai','superadmin'].includes(u?.tipo ?? ''),
+  verFichas: (u?: User | null) => ['admin','gerente','vendedor','elfenai','superadmin'].includes(u?.tipo ?? ''),
+  verDocumental: (u?: User | null) => ['admin','gerente','vendedor','documento','documentista','superadmin'].includes(u?.tipo ?? ''),
+  verAurox: (u?: User | null) => u?.tipo === 'superadmin',
+
   editarLead: (u?: User | null, leadVendedorId?: number) => {
     if (!u) return false;
     if (u.tipo === 'admin' || u.tipo === 'gerente') return true;

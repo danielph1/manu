@@ -10,19 +10,38 @@ export async function GET(req: NextRequest) {
   try {
     let vends: any[] = [];
     const lojaFilter = u.tipo === 'gerente' && u.loja;
-    const tries = [
-      `SELECT v.id, v.nome, v.loja, COALESCE(u.foto_url,'') AS foto_url FROM public.vendedores v LEFT JOIN public.usuarios u ON u.vendedor_id = v.id WHERE LOWER(COALESCE(v.nome,'')) <> 'matheus' ${lojaFilter ? 'AND UPPER(COALESCE(loja,\'381\')) = UPPER($1)' : ''} ORDER BY LOWER(v.nome)`,
-      `SELECT v.id, v.nome, v.loja, COALESCE(u.foto_url,'') AS foto_url FROM public.vendedores v LEFT JOIN public.usuarios u ON u.vendedor_id = v.id WHERE LOWER(COALESCE(v.nome,'')) <> 'matheus' ORDER BY LOWER(v.nome)`,
-      `SELECT v.id, v.nome, v.loja, COALESCE(u.foto_url,'') AS foto_url FROM public.vendedores v LEFT JOIN public.usuarios u ON u.vendedor_id = v.id ORDER BY v.id`,
-    ];
-    for (const sql of tries) {
-      try {
-        const params = sql.includes('$1') && lojaFilter ? [u.loja] : [];
-        const r = await query(sql, params);
-        if (r.rows.length) { vends = r.rows; break; }
-        vends = r.rows;
-      } catch { /* next */ }
+    const empFilter = !!(u.empresa_id && u.tipo !== 'superadmin');
+    const paramsBase: unknown[] = [];
+    let extra = ` WHERE LOWER(COALESCE(v.nome,'')) <> 'matheus'`;
+    if (empFilter) {
+      paramsBase.push(u.empresa_id);
+      extra += ` AND v.empresa_id = $${paramsBase.length}`;
     }
+    if (lojaFilter) {
+      paramsBase.push(u.loja);
+      extra += ` AND UPPER(COALESCE(v.loja,'381')) = UPPER($${paramsBase.length})`;
+    }
+    try {
+      const r = await query(
+        `SELECT v.id, v.nome, v.loja, COALESCE(u.foto_url,'') AS foto_url
+         FROM public.vendedores v
+         LEFT JOIN public.usuarios u ON u.vendedor_id = v.id
+         ${extra}
+         ORDER BY LOWER(v.nome)`,
+        paramsBase,
+      );
+      vends = r.rows;
+    } catch {
+      try {
+        const r = await query(
+          `SELECT v.id, v.nome, v.loja, COALESCE(u.foto_url,'') AS foto_url
+           FROM public.vendedores v LEFT JOIN public.usuarios u ON u.vendedor_id = v.id
+           WHERE LOWER(COALESCE(v.nome,'')) <> 'matheus' ORDER BY LOWER(v.nome)`,
+        );
+        vends = r.rows;
+      } catch { /* ok */ }
+    }
+
     if (!vends.length) return NextResponse.json([]);
 
     // métricas do mês (ranking)

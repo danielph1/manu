@@ -73,7 +73,15 @@ export async function GET(req: NextRequest) {
       where.push(sql.replace('?', `$${params.length}`));
     };
 
-    // RBAC
+    // Isolamento por empresa (SaaS) — nunca vaza lead de outra empresa
+    if (u.empresa_id && u.tipo !== 'superadmin') {
+      add(
+        `(l.vendedor_id IS NULL OR l.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = ?))`,
+        u.empresa_id,
+      );
+    }
+
+    // RBAC dentro da empresa
     if (u.tipo === 'vendedor' && u.vendedor_id) {
       add('l.vendedor_id = ?', u.vendedor_id);
     } else if (u.tipo === 'gerente' && u.loja) {
@@ -82,13 +90,13 @@ export async function GET(req: NextRequest) {
         u.loja,
       );
     }
-    if (lojaParam && ['admin', 'marketing'].includes(u.tipo)) {
+    if (lojaParam && ['admin', 'marketing', 'superadmin'].includes(u.tipo)) {
       add(
         `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER(?))`,
         lojaParam,
       );
     }
-    if (vendedorIdParam && ['admin', 'gerente', 'marketing'].includes(u.tipo)) {
+    if (vendedorIdParam && ['admin', 'gerente', 'marketing', 'superadmin'].includes(u.tipo)) {
       add('l.vendedor_id = ?', parseInt(vendedorIdParam, 10));
     }
 
