@@ -23,19 +23,16 @@ export async function GET(req: NextRequest) {
         vends = r.rows;
       } catch { /* next */ }
     }
-    if (!vends.length) {
-      return NextResponse.json([]);
-    }
+    if (!vends.length) return NextResponse.json([]);
 
+    // métricas do mês (ranking)
     let leads: any[] = [];
-    const leadTries = [
-      `SELECT vendedor_id, COALESCE(respondeu,FALSE) AS respondeu, COALESCE(gerou_ficha,FALSE) AS gerou_ficha, COALESCE(aprovado,FALSE) AS aprovado, COALESCE(venda_concluida,FALSE) AS venda FROM public.leads WHERE data_lead >= date_trunc('month', CURRENT_DATE)`,
+    for (const sql of [
+      `SELECT vendedor_id, COALESCE(respondeu,FALSE) AS respondeu, COALESCE(gerou_ficha,FALSE) AS gerou_ficha, COALESCE(aprovado,FALSE) AS aprovado, COALESCE(venda_concluida,FALSE) AS venda FROM public.leads WHERE COALESCE(data_lead, created_at)::date >= date_trunc('month', CURRENT_DATE)`,
       `SELECT vendedor_id, COALESCE(respondeu,FALSE) AS respondeu, COALESCE(gerou_ficha,FALSE) AS gerou_ficha, FALSE AS aprovado, COALESCE(venda_concluida,FALSE) AS venda FROM public.leads`,
-    ];
-    for (const sql of leadTries) {
+    ]) {
       try {
-        const r = await query(sql);
-        leads = r.rows;
+        leads = (await query(sql)).rows;
         break;
       } catch { /* next */ }
     }
@@ -52,15 +49,70 @@ export async function GET(req: NextRequest) {
       if (l.aprovado) a.aprovados++;
       if (l.venda) a.vendas++;
     }
+
+    // + do dia: leads que CAÍRAM pra ele hoje (transferência recebida OU primeira atribuição)
+    const recebeuHoje = new Map<number, number>();
+    const passouHoje = new Map<number, number>();
+    const recebeuMes = new Map<number, number>();
+    const passouMes = new Map<number, number>();
+
+    try {
+      const { rows: tr } = await query(
+        `SELECT para_vendedor_id, de_vendedor_id, created_at::date AS d
+         FROM public.lead_transferencias
+         WHERE created_at >= date_trunc('month', CURRENT_DATE)`,
+      );
+      const hoje = new Date().toISOString().slice(0, 10);
+      for (const t of tr || []) {
+        const para = Number(t.para_vendedor_id);
+        const de = Number(t.de_vendedor_id);
+        const isHoje = String(t.d).slice(0, 10) === hoje;
+        if (para) {
+          recebeuMes.set(para, (recebeuMes.get(para) || 0) + 1);
+          if (isHoje) recebeuHoje.set(para, (recebeuHoje.get(para) || 0) + 1);
+        }
+        if (de) {
+          passouMes.set(de, (passouMes.get(de) || 0) + 1);
+          if (isHoje) passouHoje.set(de, (passouHoje.get(de) || 0) + 1);
+        }
+      }
+    } catch { /* tabela pode não existir ainda */ }
+
+    // também conta primeira atribuição do dia (sem transferência) via atribuido_em
+    try {
+      const { rows: atr } = await query(
+        `SELECT vendedor_id, COUNT(*)::int AS n
+         FROM public.leads
+         WHERE COALESCE(atribuido_em, data_lead, created_at)::date = CURRENT_DATE
+           AND vendedor_id IS NOT NULL
+         GROUP BY vendedor_id`,
+      );
+      for (const a of atr || []) {
+        const id = Number(a.vendedor_id);
+        // se já contou transferência, não dobra — usa o maior entre transfer e atribuição
+        const atual = recebeuHoje.get(id) || 0;
+        if (Number(a.n) > atual) recebeuHoje.set(id, Number(a.n));
+      }
+    } catch { /* ok */ }
+
     const seen = new Set<string>();
     const out: any[] = [];
     for (const v of vends) {
       const key = String(v.nome || '').trim().toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      const a = by.get(Number(v.id)) || { leads: 0, responderam: 0, fichas: 0, aprovados: 0, vendas: 0 };
+      const id = Number(v.id);
+      const a = by.get(id) || { leads: 0, responderam: 0, fichas: 0, aprovados: 0, vendas: 0 };
       const pontos = a.leads + a.responderam * 0.5 + a.fichas * 0.5 + a.aprovados + a.vendas * 2;
-      out.push({ ...v, ...a, pontos });
+      out.push({
+        ...v,
+        ...a,
+        pontos,
+        plus_hoje: recebeuHoje.get(id) || 0,
+        minus_hoje: passouHoje.get(id) || 0,
+        plus_mes: recebeuMes.get(id) || 0,
+        minus_mes: passouMes.get(id) || 0,
+      });
     }
     out.sort((a, b) => b.pontos - a.pontos || String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
     return NextResponse.json(out);

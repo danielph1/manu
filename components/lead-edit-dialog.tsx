@@ -126,8 +126,22 @@ export function LeadEditDialog({ lead, onClose }: { lead: Lead | null; onClose: 
           )}
 
           <div className="space-y-2">
-            <Label>Observacao</Label>
-            <Textarea rows={3} value={form.observacao ?? ''} onChange={(e) => setForm({ ...form, observacao: e.target.value })} disabled={!canEdit} />
+            <Label>Observação</Label>
+            <Textarea rows={2} value={form.observacao ?? ''} onChange={(e) => setForm({ ...form, observacao: e.target.value })} disabled={!canEdit} />
+          </div>
+
+          <div className="space-y-2 rounded border border-border p-3">
+            <Label>Comentário interno (segura o lead)</Label>
+            <p className="text-xs text-muted-foreground">
+              Se preencher, o sistema não transfere o lead automaticamente. Não vai para o cliente.
+            </p>
+            <Textarea
+              rows={2}
+              value={form.comentario_interno ?? ''}
+              onChange={(e) => setForm({ ...form, comentario_interno: e.target.value })}
+              disabled={!canEdit}
+              placeholder="Ex: cliente disse que volta amanhã"
+            />
           </div>
 
           <DialogFooter className="gap-2">

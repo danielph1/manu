@@ -39,12 +39,27 @@ async function virarLead(triagemId: number, vendedorId: number) {
       [(await queryOne(`SELECT id FROM public.usuarios ORDER BY id LIMIT 1`))?.id || 1, `[cliente] ${t.mensagem}`, lead.id],
     );
   }
+  if (lead?.id) {
+    try {
+      await query(
+        `INSERT INTO public.lead_transferencias (lead_id, de_vendedor_id, para_vendedor_id, transferido_por, motivo)
+         VALUES ($1, NULL, $2, NULL, 'atribuicao')`,
+        [lead.id, vendedorId],
+      );
+    } catch { /* ok */ }
+  }
 }
 
 export async function GET(req: NextRequest) {
   const u = await requireUser(req);
   if (!u || u.tipo !== 'admin') return NextResponse.json({ error: 'sem acesso' }, { status: 403 });
   await expirar();
+  try {
+    await fetch(new URL('/api/leads/auto-passar', req.url).toString(), {
+      method: 'POST',
+      headers: { 'x-manu-cron': process.env.CRON_SECRET || process.env.ENTRADA_SECRET || '' },
+    });
+  } catch { /* ok */ }
   const { rows } = await query(
     `SELECT * FROM public.triagem WHERE status = 'aguardando' ORDER BY created_at ASC`,
   );

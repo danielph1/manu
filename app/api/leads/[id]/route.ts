@@ -27,9 +27,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
   }
 
-  const allowed = ['nome_lead','telefone','cpf','produto_interesse','observacao','respondeu','gerou_ficha','data_hora_visita','venda_concluida','data_venda','nome_completo','data_nascimento','habilitado','data_lead','em_loja','cliente_na_loja','carro_selecionado','marca_carro','ano_carro','placa_carro','cor_carro','valor_carro','valor_entrada','rg','data_expedicao','orgao_expeditor','nome_pai','nome_mae','email','endereco','bairro','cidade','estado','cep','empresa','cnpj','endereco_empresa','bairro_empresa','cidade_empresa','estado_empresa','cep_empresa','tempo_carreira','salario','banco_correntista'];
+  const allowed = ['nome_lead','telefone','cpf','produto_interesse','observacao','comentario_interno','respondeu','gerou_ficha','data_hora_visita','venda_concluida','data_venda','nome_completo','data_nascimento','habilitado','data_lead','em_loja','cliente_na_loja','carro_selecionado','marca_carro','ano_carro','placa_carro','cor_carro','valor_carro','valor_entrada','rg','data_expedicao','orgao_expeditor','nome_pai','nome_mae','email','endereco','bairro','cidade','estado','cep','empresa','cnpj','endereco_empresa','bairro_empresa','cidade_empresa','estado_empresa','cep_empresa','tempo_carreira','salario','banco_correntista'];
   const payload: any = {};
   for (const k of allowed) if (k in body) payload[k] = body[k];
+
+  // comentário interno segura o lead — para de rotacionar
+  if ('comentario_interno' in body) {
+    const ci = String(body.comentario_interno || '').trim();
+    payload.comentario_interno = ci;
+    payload.rotacionar = ci.length === 0;
+  }
 
   const { data, error } = await supabaseAdmin.from('leads').update(payload).eq('id', id).select().single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
