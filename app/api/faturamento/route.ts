@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireUser } from '@/lib/session';
+import { isSuperAdmin, isGerenteLoja } from '@/lib/tenant';
 import { notificar } from '@/lib/notify';
 
 export const runtime = 'nodejs';
@@ -15,12 +16,22 @@ export async function GET(req: NextRequest) {
     const params: unknown[] = [];
     const where: string[] = ['1=1'];
 
-    // vendedor só os dele
+    // isolamento empresa / loja
+    if (!isSuperAdmin(u) && u.empresa_id) {
+      params.push(u.empresa_id);
+      where.push(`(
+        f.empresa_id = $${params.length}
+        OR f.criado_por_id IN (SELECT id FROM public.usuarios WHERE empresa_id = $${params.length})
+        OR UPPER(COALESCE(f.loja,'')) IN (
+          SELECT UPPER(codigo) FROM public.lojas WHERE empresa_id = $${params.length}
+        )
+      )`);
+    }
     if (u.tipo === 'vendedor') {
       params.push(u.id);
       where.push(`f.criado_por_id = $${params.length}`);
-    } else if (u.tipo === 'gerente' && u.loja) {
-      params.push(u.loja);
+    } else if ((isGerenteLoja(u) || u.tipo === 'gerente') && u.loja) {
+      params.push(String(u.loja).toUpperCase());
       where.push(`UPPER(COALESCE(f.loja,'381')) = UPPER($${params.length})`);
     }
 

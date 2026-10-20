@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireUser } from '@/lib/session';
+import { isSuperAdmin, isGerenteLoja } from '@/lib/tenant';
 import { notificar } from '@/lib/notify';
 
 export const runtime = 'nodejs';
@@ -9,22 +10,46 @@ export async function GET(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   try {
+    const params: unknown[] = [];
+    const where: string[] = ['COALESCE(m.ativo, TRUE) = TRUE'];
+
+    if (!isSuperAdmin(u) && u.empresa_id) {
+      params.push(u.empresa_id);
+      const p = `$${params.length}`;
+      where.push(`(c.empresa_id = ${p} OR d.empresa_id = ${p} OR (c.id IS NULL AND d.id IS NULL))`);
+    }
+
+    if (isGerenteLoja(u) && u.loja) {
+      params.push(String(u.loja).toUpperCase());
+      const p = `$${params.length}`;
+      where.push(
+        `(UPPER(COALESCE(m.destinatario_loja,'')) = UPPER(${p})
+          OR m.destinatario_id IN (
+            SELECT us.id FROM public.usuarios us
+            LEFT JOIN public.vendedores vv ON vv.id = us.vendedor_id
+            WHERE UPPER(COALESCE(vv.loja,'')) = UPPER(${p})
+          )
+          OR (m.destinatario_id IS NULL AND (m.destinatario_loja IS NULL OR UPPER(COALESCE(m.destinatario_loja,'')) = UPPER(${p}))))`,
+      );
+    }
+
+    if (!['admin', 'gerente', 'marketing', 'superadmin'].includes(String(u.tipo))) {
+      params.push(u.id);
+      params.push(u.tipo);
+      where.push(
+        `(m.destinatario_id = $${params.length - 1} OR LOWER(COALESCE(m.destinatario_tipo,'')) = LOWER($${params.length}))`,
+      );
+    }
+
     const { rows } = await query(
       `SELECT m.*, d.nome AS destinatario_nome, c.nome AS criador_nome
        FROM public.metas m
        LEFT JOIN public.usuarios d ON d.id = m.destinatario_id
        LEFT JOIN public.usuarios c ON c.id = m.criado_por_id
-       WHERE COALESCE(m.ativo, TRUE) = TRUE
-         AND (
-           $1 IN ('admin','gerente','marketing')
-           OR m.destinatario_id = $2
-           OR m.destinatario_id IS NULL
-           OR LOWER(COALESCE(m.destinatario_tipo,'')) = LOWER($1)
-           OR UPPER(COALESCE(m.destinatario_loja,'')) = UPPER($3)
-         )
+       WHERE ${where.join(' AND ')}
        ORDER BY m.created_at DESC
        LIMIT 200`,
-      [u.tipo, u.id, u.loja || ''],
+      params,
     );
     return NextResponse.json(rows);
   } catch (e: any) {
@@ -35,11 +60,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
-  if (!['admin', 'gerente'].includes(u.tipo)) {
+  if (!['admin', 'gerente', 'superadmin'].includes(u.tipo)) {
     return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   }
   const b = await req.json();
   if (!b.titulo) return NextResponse.json({ error: 'título obrigatório' }, { status: 400 });
+  let destLoja = b.destinatario_loja || null;
+  if (isGerenteLoja(u) && u.loja) destLoja = u.loja;
   try {
     const row = await queryOne(
       `INSERT INTO public.metas
@@ -55,7 +82,7 @@ export async function POST(req: NextRequest) {
         b.periodo_fim || null,
         b.destinatario_id ? Number(b.destinatario_id) : null,
         b.destinatario_tipo || null,
-        b.destinatario_loja || null,
+        destLoja,
         u.id,
       ],
     );
@@ -75,7 +102,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
-  if (!['admin', 'gerente'].includes(u.tipo)) {
+  if (!['admin', 'gerente', 'superadmin'].includes(u.tipo)) {
     return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   }
   const b = await req.json();
@@ -99,7 +126,7 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
-  if (!['admin', 'gerente'].includes(u.tipo)) return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
+  if (!['admin', 'gerente', 'superadmin'].includes(u.tipo)) return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   const b = await req.json();
   await query('DELETE FROM public.metas WHERE id = $1', [b.id]);
   return NextResponse.json({ ok: true });

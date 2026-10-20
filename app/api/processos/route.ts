@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireUser, can } from '@/lib/session';
+import { isSuperAdmin, isGerenteLoja } from '@/lib/tenant';
 
 export const runtime = 'nodejs';
 
@@ -8,6 +9,16 @@ export async function GET(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   try {
+    const scopeParams: unknown[] = [];
+    let scopeSql = '';
+    if (!isSuperAdmin(u) && u.empresa_id) {
+      scopeParams.push(u.empresa_id);
+      scopeSql += ` AND (f.vendedor_id IS NULL OR f.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${scopeParams.length}))`;
+    }
+    if (isGerenteLoja(u) && u.loja) {
+      scopeParams.push(String(u.loja).toUpperCase());
+      scopeSql += ` AND f.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${scopeParams.length}))`;
+    }
     const { rows } = await query(
       `SELECT
          p.id,
@@ -29,8 +40,10 @@ export async function GET(req: NextRequest) {
        LEFT JOIN public.fichas_credito f ON f.id = p.ficha_id
        LEFT JOIN public.leads l ON l.id = f.lead_id
        LEFT JOIN public.vendedores v ON v.id = COALESCE(f.vendedor_id, l.vendedor_id)
+       WHERE 1=1 ${scopeSql}
        ORDER BY p.updated_at DESC NULLS LAST, p.id DESC
        LIMIT 150`,
+      scopeParams,
     );
     return NextResponse.json(rows);
   } catch (e: any) {

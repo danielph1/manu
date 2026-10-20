@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireUser } from '@/lib/session';
+import { isSuperAdmin, isGerenteLoja } from '@/lib/tenant';
 import { notificar } from '@/lib/notify';
 
 export const runtime = 'nodejs';
@@ -24,6 +25,16 @@ export async function GET(req: NextRequest) {
     const busca = (new URL(req.url).searchParams.get('busca') || '').trim();
     const params: unknown[] = [];
     let where = '1=1';
+    if (!isSuperAdmin(u)) {
+      if (u.empresa_id) {
+        params.push(u.empresa_id);
+        where += ` AND (empresa_id = $${params.length} OR empresa_id IS NULL)`;
+      }
+      if (isGerenteLoja(u) && u.loja) {
+        params.push(String(u.loja).toUpperCase());
+        where += ` AND UPPER(COALESCE(loja,'')) = UPPER($${params.length})`;
+      }
+    }
     if (busca) {
       params.push(`%${busca}%`);
       const p = `$${params.length}`;

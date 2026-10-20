@@ -85,10 +85,19 @@ export async function GET(req: NextRequest) {
     if (u.tipo === 'vendedor' && u.vendedor_id) {
       add('l.vendedor_id = ?', u.vendedor_id);
     } else if (u.tipo === 'gerente' && u.loja) {
-      add(
-        `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER(?))`,
-        u.loja,
-      );
+      // gerente: somente a loja dele
+      if (u.empresa_id) {
+        params.push(u.loja);
+        params.push(u.empresa_id);
+        where.push(
+          `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${params.length - 1}) AND empresa_id = $${params.length})`,
+        );
+      } else {
+        add(
+          `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER(?))`,
+          u.loja,
+        );
+      }
     }
     if (lojaParam && ['admin', 'marketing', 'superadmin'].includes(u.tipo)) {
       add(

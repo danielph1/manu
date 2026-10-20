@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { requireUser } from '@/lib/session';
+import { isSuperAdmin, isGerenteLoja } from '@/lib/tenant';
 
 export const runtime = 'nodejs';
 
@@ -13,9 +14,18 @@ export async function GET(req: NextRequest) {
   if (u.tipo === 'vendedor' && u.vendedor_id) {
     params.push(u.vendedor_id);
     where.push(`l.vendedor_id = $${params.length}`);
-  } else if (u.tipo === 'gerente' && u.loja) {
-    params.push(u.loja);
-    where.push(`l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${params.length}))`);
+  } else if (isGerenteLoja(u) && u.loja) {
+    params.push(String(u.loja).toUpperCase());
+    let g = `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${params.length})`;
+    if (u.empresa_id) {
+      params.push(u.empresa_id);
+      g += ` AND empresa_id = $${params.length}`;
+    }
+    g += ')';
+    where.push(g);
+  } else if (!isSuperAdmin(u) && u.empresa_id) {
+    params.push(u.empresa_id);
+    where.push(`(l.vendedor_id IS NULL OR l.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${params.length}))`);
   }
 
   const { rows } = await query(
