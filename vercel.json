@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/ia/observar",
+      "schedule": "0 */3 * * *"
+    }
+  ]
+}
