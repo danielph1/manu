@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
       String(b.senderName || b.chatName || b.notification || b.pushName || '').trim() || 'WhatsApp';
     const tel = telefone(b);
     const keys = chavesTel(tel);
-    const msg = texto(b).slice(0, 2000) || '[mensagem]';
+    let msgRaw = texto(b).slice(0, 2000) || '[mensagem]';
     if (!keys.length) return NextResponse.json({ ok: true, ignored: 'sem telefone' });
 
     // 1) Já existe lead com esse telefone? → só mensagem no chat
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
         const row = await queryOne(
           `INSERT INTO public.chat_geral_mensagens (remetente_id, mensagem, lead_id)
            VALUES ($1,$2,$3) RETURNING id`,
-          [remetenteId, msg, lead.id],
+          [remetenteId, (fromMe ? msg : (msg.startsWith('[cliente]') ? msg : `[cliente] ${msg}`)), lead.id],
         );
         chatId = row?.id;
       } catch (e) {

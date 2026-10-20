@@ -57,7 +57,7 @@ function ChatPageInner() {
         reader.onload = async () => {
           const data = String(reader.result || '');
           const b64 = data.includes(',') ? data.split(',')[1] : data;
-          await api.post('/chat', { mensagem: texto || 'Áudio', arquivo_b64: b64, arquivo_nome: 'audio.webm', arquivo_mime: 'audio/webm', lead_id: leadId });
+          await api.post('/chat', { mensagem: texto || 'Áudio', arquivo_b64: b64, arquivo_nome: 'audio.webm', arquivo_mime: 'audio/webm', lead_id: leadId ? Number(leadId) : null });
           setTexto('');
           setAudioPendente(null);
           qc.invalidateQueries({ queryKey: ['chat'] });
@@ -65,7 +65,7 @@ function ChatPageInner() {
         reader.readAsDataURL(blob);
         return;
       }
-      const r = await api.post('/chat', { mensagem: texto, lead_id: leadId, ...extra });
+      const r = await api.post('/chat', { mensagem: texto, lead_id: leadId ? Number(leadId) : null, ...extra });
       setTexto('');
       qc.invalidateQueries({ queryKey: ['chat'] });
       const w = r?.data?.whatsapp;
@@ -219,6 +219,17 @@ function ChatPageInner() {
           <div className="flex gap-2">
             <input className="flex-1 rounded border bg-background px-2 py-1" placeholder="Observação interna" value={obs} onChange={(e) => setObs(e.target.value)} />
             <button className="rounded border px-2 py-1" onClick={async () => { if (!obs.trim()) return; await api.post('/chat', { mensagem: '[interno] ' + obs.trim(), lead_id: leadId }); setObs(''); qc.invalidateQueries({ queryKey: ['chat'] }); }}>Enviar</button>
+          </div>
+          <div className="max-h-28 overflow-y-auto rounded border border-border/50 p-2 text-xs">
+            <div className="mb-1 font-medium text-muted-foreground">Histórico de transferências</div>
+            {(Array.isArray(data) ? data : [])
+              .filter((m: any) => String(m.mensagem || '').startsWith('Transferido de'))
+              .map((m: any) => (
+                <div key={m.id} className="py-0.5">{m.mensagem}</div>
+              ))}
+            {(Array.isArray(data) ? data : []).filter((m: any) => String(m.mensagem || '').startsWith('Transferido de')).length === 0 && (
+              <div className="text-muted-foreground">Nenhuma transferência registrada neste chat.</div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2 pt-1">
             <button className="rounded border px-2 py-1" onClick={async () => { await api.post(`/leads/${leadId}/passar`); router.push('/chat'); }}>Passar</button>

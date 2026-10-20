@@ -313,6 +313,29 @@ export async function GET(req: NextRequest) {
     };
 
     // Inadimplência proxy: boletos / valor bruto do período atual
+    
+    // se "gerou venda" veio zerado, mescla faturamentos
+    if (!Number(fin.valor_liberado) && !Number(fin.entrada_paga)) {
+      try {
+        const fat = await queryOne(
+          `SELECT
+             COALESCE(SUM(COALESCE(fc.valor_liberado, (
+               SELECT fb.valor_financiado FROM public.ficha_bancos fb
+               WHERE fb.ficha_id = fc.id AND LOWER(COALESCE(fb.status,'')) LIKE 'aprov%' LIMIT 1
+             ), 0)),0)::float AS valor_liberado,
+             COALESCE(SUM(COALESCE(f.entrada_total, f.entrada_paga, 0)),0)::float AS entrada_paga,
+             COALESCE(SUM(COALESCE(f.entrada_boleto, f.valor_pendente, 0)),0)::float AS valor_pendente,
+             COALESCE(SUM(COALESCE(f.entrada_boleto, 0)),0)::float AS total_boletos
+           FROM public.faturamentos f
+           LEFT JOIN public.fichas_credito fc ON fc.id = f.ficha_id OR fc.lead_id = f.lead_id
+           WHERE ($1::date IS NULL OR f.created_at::date >= $1::date)
+             AND ($2::date IS NULL OR f.created_at::date < $2::date)`,
+          [di, df],
+        );
+        if (fat) fin = { ...fin, ...fat };
+      } catch { /* ok */ }
+    }
+
     const valorLiberado = Number(fin.valor_liberado || 0);
     const entrada = Number(fin.entrada_paga || 0);
     const boletos = Number(fin.total_boletos || 0);
