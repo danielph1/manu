@@ -56,13 +56,14 @@ export async function GET(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   const tipo = String(u.tipo || '').toLowerCase();
-  // métricas sensíveis: admin/gerente/marketing
-  if (!['admin', 'gerente', 'marketing'].includes(tipo)) {
+  // métricas: admin / gerente / marketing / superadmin (Aurox)
+  if (!['admin', 'gerente', 'marketing', 'superadmin'].includes(tipo)) {
     return NextResponse.json({ error: 'sem acesso' }, { status: 403 });
   }
 
   try {
     const periodo = req.nextUrl.searchParams.get('periodo') || 'mes';
+    const lojaParam = (req.nextUrl.searchParams.get('loja') || 'geral').trim();
     const now = new Date();
     let di: string | null = null;
     let df: string | null = null;
@@ -73,11 +74,23 @@ export async function GET(req: NextRequest) {
       df = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
     }
 
+    // plano efetivo (sessão ou black)
+    const plano = String((u as any).loja_plano || (u as any).plano || 'black').toLowerCase();
+
     const params: unknown[] = [di];
     let scope = '';
+    // isolamento empresa
+    if (u.empresa_id && tipo !== 'superadmin') {
+      params.push(u.empresa_id);
+      scope += ` AND (vendedor_id IS NULL OR vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${params.length}))`;
+    }
+    // gerente: só a loja dele
     if (tipo === 'gerente' && u.loja) {
       params.push(u.loja);
-      scope = ` AND vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${params.length}))`;
+      scope += ` AND vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${params.length}))`;
+    } else if (lojaParam && lojaParam !== 'geral' && ['admin', 'marketing', 'superadmin'].includes(tipo)) {
+      params.push(lojaParam);
+      scope += ` AND vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${params.length}))`;
     }
 
     let row: any = { leads: 0, responderam: 0, fichas: 0, aprovados: 0, vendidos: 0 };
@@ -339,7 +352,88 @@ export async function GET(req: NextRequest) {
       pct: Math.round(c.pct * 1000) / 10,
     }));
 
+
+    // --- por loja ---
+    let por_loja: any[] = [];
+    try {
+      let sqlLoja = `
+        SELECT UPPER(COALESCE(v.loja,'381')) AS loja,
+          COUNT(*)::int AS leads,
+          COUNT(*) FILTER (WHERE COALESCE(l.respondeu,FALSE))::int AS responderam,
+          COUNT(*) FILTER (WHERE COALESCE(l.gerou_ficha,FALSE))::int AS fichas,
+          COUNT(*) FILTER (WHERE COALESCE(l.aprovado,FALSE))::int AS aprovados,
+          COUNT(*) FILTER (WHERE COALESCE(l.venda_concluida,FALSE) OR l.data_venda IS NOT NULL)::int AS vendidos
+        FROM public.leads l
+        LEFT JOIN public.vendedores v ON v.id = l.vendedor_id
+        WHERE ($1::date IS NULL OR COALESCE(l.data_lead, l.created_at)::date >= $1::date)`;
+      const pLoja: unknown[] = [di];
+      if (df) {
+        pLoja.push(df);
+        sqlLoja += ` AND COALESCE(l.data_lead, l.created_at)::date < $${pLoja.length}::date`;
+      }
+      if (u.empresa_id && tipo !== 'superadmin') {
+        pLoja.push(u.empresa_id);
+        sqlLoja += ` AND (l.vendedor_id IS NULL OR l.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${pLoja.length}))`;
+      }
+      sqlLoja += ` GROUP BY 1 ORDER BY leads DESC`;
+      por_loja = (await query(sqlLoja, pLoja)).rows;
+    } catch {
+      por_loja = [];
+    }
+
+    let alertas_vendedores: any[] = [];
+    try {
+      const r = await query(
+        `SELECT v.nome, UPPER(COALESCE(v.loja,'381')) AS loja,
+           COUNT(*)::int AS leads,
+           COUNT(*) FILTER (WHERE COALESCE(l.venda_concluida,FALSE) OR l.data_venda IS NOT NULL)::int AS vendidos
+         FROM public.leads l
+         JOIN public.vendedores v ON v.id = l.vendedor_id
+         WHERE ($1::date IS NULL OR COALESCE(l.data_lead,l.created_at)::date >= $1::date)
+         GROUP BY v.id, v.nome, v.loja
+         HAVING COUNT(*) >= 5`,
+        [di],
+      );
+      const rows = r.rows.map((x: any) => ({
+        nome: x.nome,
+        loja: x.loja,
+        leads: Number(x.leads),
+        vendidos: Number(x.vendidos),
+        conversao: Number(x.leads) > 0 ? Number(x.vendidos) / Number(x.leads) : 0,
+      }));
+      const avg = rows.length ? rows.reduce((s: number, x: any) => s + x.conversao, 0) / rows.length : 0;
+      alertas_vendedores = rows
+        .filter((x: any) => x.conversao < avg * 0.6)
+        .map((x: any) => ({ ...x, media: avg, status: 'baixo_desempenho' }))
+        .slice(0, 15);
+    } catch {
+      alertas_vendedores = [];
+    }
+
+    const avgConvLoja =
+      por_loja.length > 0
+        ? por_loja.reduce(
+            (s: number, x: any) =>
+              s + (Number(x.leads) > 0 ? Number(x.vendidos) / Number(x.leads) : 0),
+            0,
+          ) / por_loja.length
+        : 0;
+    const alertas_lojas = por_loja
+      .map((x: any) => ({
+        loja: x.loja,
+        leads: Number(x.leads),
+        vendidos: Number(x.vendidos),
+        conversao: Number(x.leads) > 0 ? Number(x.vendidos) / Number(x.leads) : 0,
+      }))
+      .filter((x: any) => x.leads >= 8 && x.conversao < avgConvLoja * 0.7)
+      .map((x: any) => ({ ...x, status: 'loja_abaixo_media' }));
+
+    const nivel =
+      plano === 'vanguard' ? 'vanguard' : plano === 'command' ? 'command' : 'black';
+
     return NextResponse.json({
+      plano: nivel,
+      loja_filtro: lojaParam || 'geral',
       funil: {
         leads: row?.leads ?? 0,
         responderam: row?.responderam ?? 0,
@@ -376,6 +470,10 @@ export async function GET(req: NextRequest) {
         mix_carroceria: mixProjecao,
       },
       por_carroceria: porCarroceria,
+      por_loja,
+      alertas_vendedores: nivel === 'command' ? alertas_vendedores : nivel === 'black' ? [] : [],
+      alertas_lojas: nivel === 'black' || nivel === 'command' ? alertas_lojas : [],
+      // Vanguard: frontend ignora financeiro avançado / projeção
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'erro' }, { status: 500 });

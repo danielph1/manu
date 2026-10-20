@@ -38,14 +38,29 @@ function money(v: number) {
 
 export default function MetricasPage() {
   const [periodo, setPeriodo] = useState('mes');
+  const [loja, setLoja] = useState('geral');
   const { data, isLoading, error } = useQuery({
-    queryKey: ['metricas', periodo],
-    queryFn: async () => (await api.get('/metricas', { params: { periodo } })).data,
+    queryKey: ['metricas', periodo, loja],
+    queryFn: async () => (await api.get('/metricas', { params: { periodo, loja } })).data,
   });
 
   if (isLoading) return <CarLoader compact />;
-  if (error) return <p className="text-rose-400">Não foi possível carregar as métricas.</p>;
+  if (error) {
+    return (
+      <div className="space-y-2 p-4">
+        <p className="text-rose-400">Não foi possível carregar as métricas.</p>
+        <p className="text-xs text-muted-foreground">
+          Confirme se seu perfil é admin, gerente, marketing ou superadmin e faça logout/login.
+        </p>
+      </div>
+    );
+  }
   if (!data?.funil) return <p className="text-muted-foreground">Sem dados de métricas.</p>;
+
+  const plano = String(data.plano || 'black').toLowerCase();
+  const isVanguard = plano === 'vanguard';
+  const isCommand = plano === 'command';
+  const isBlack = plano === 'black' || (!isVanguard && !isCommand);
 
   const bancos = Array.isArray(data.por_banco) ? data.por_banco : [];
   const fin = data.financeiro || {};
@@ -54,6 +69,10 @@ export default function MetricasPage() {
   const proj = data.projecao || {};
   const mix = Array.isArray(proj.mix_carroceria) ? proj.mix_carroceria : [];
   const carroceria = Array.isArray(data.por_carroceria) ? data.por_carroceria : [];
+  const porLoja = Array.isArray(data.por_loja) ? data.por_loja : [];
+  const alertasVend = Array.isArray(data.alertas_vendedores) ? data.alertas_vendedores : [];
+  const alertasLoja = Array.isArray(data.alertas_lojas) ? data.alertas_lojas : [];
+  const lojasOpts = porLoja.map((x: any) => String(x.loja));
 
   const funil = [
     { stage: 'Leads', value: data.funil.leads || 0, fill: COLORS[0] },
@@ -91,33 +110,124 @@ export default function MetricasPage() {
     <div className="mx-auto max-w-7xl space-y-8 pb-10">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight">Métricas financeiras</h1>
+          <h1 className="text-4xl font-bold tracking-tight">Métricas</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Visão gerencial · conversão, crédito e projeção
+            Plano <span className="uppercase font-medium text-foreground">{plano}</span>
+            {' · '}
+            {isVanguard && 'básico (leads, vendas, aprovação)'}
+            {isCommand && 'fluxo + por loja + alertas de vendedor'}
+            {isBlack && 'CEO · lojas · previsões · financeiro'}
           </p>
         </div>
-        <select
-          className="rounded-md border border-border bg-card px-3 py-2 text-sm"
-          value={periodo}
-          onChange={(e) => setPeriodo(e.target.value)}
-        >
-          <option value="mes">Este mês</option>
-          <option value="mes_passado">Mês passado</option>
-          <option value="tudo">Todo período</option>
-        </select>
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm"
+            value={loja}
+            onChange={(e) => setLoja(e.target.value)}
+          >
+            <option value="geral">Todas as lojas (empresa)</option>
+            {lojasOpts.map((c: string) => (
+              <option key={c} value={c}>
+                Loja {c}
+              </option>
+            ))}
+          </select>
+          <select
+            className="rounded-md border border-border bg-card px-3 py-2 text-sm"
+            value={periodo}
+            onChange={(e) => setPeriodo(e.target.value)}
+          >
+            <option value="mes">Este mês</option>
+            <option value="mes_passado">Mês passado</option>
+            <option value="tudo">Todo período</option>
+          </select>
+        </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-6">
-        <KPI icon={Users} label="Fichas" value={data.funil.fichas} />
+      {/* KPIs básicos — todos os planos */}
+      <section className="grid gap-4 md:grid-cols-5">
+        <KPI icon={Users} label="Leads" value={data.funil.leads} />
         <KPI icon={CheckCircle2} label="Aprovados" value={data.funil.aprovados} />
-        <KPI
-          icon={AlertCircle}
-          label="Negadas"
-          value={bancos.reduce((s: number, b: any) => s + Number(b.negadas || 0), 0)}
-        />
-        <KPI icon={TrendingUp} label="Compras" value={data.funil.vendidos} />
-        <KPI icon={DollarSign} label="Clientes c/ boleto" value={fin.clientes_com_boleto} />
+        <KPI icon={TrendingUp} label="Vendidos" value={data.funil.vendidos} />
         <KPI icon={Percent} label="Conv. venda" value={pct(taxas.conversao_venda)} />
+        <KPI icon={Percent} label="Taxa aprovação" value={pct(taxas.taxa_liberacao_credito)} />
+      </section>
+
+      {/* Command+: por loja */}
+      {!isVanguard && porLoja.length > 0 && (
+        <Card>
+          <CardContent className="p-5">
+            <h3 className="mb-3 font-semibold">Desempenho por loja</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th className="py-1">Loja</th>
+                    <th>Leads</th>
+                    <th>Fichas</th>
+                    <th>Aprov.</th>
+                    <th>Vendidos</th>
+                    <th>Conv.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {porLoja.map((r: any) => (
+                    <tr key={r.loja} className="border-t border-border/50">
+                      <td className="py-1.5 font-medium">{r.loja}</td>
+                      <td>{r.leads}</td>
+                      <td>{r.fichas}</td>
+                      <td>{r.aprovados}</td>
+                      <td>{r.vendidos}</td>
+                      <td>
+                        {Number(r.leads) > 0
+                          ? `${((Number(r.vendidos) / Number(r.leads)) * 100).toFixed(1)}%`
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Command: alertas vendedor */}
+      {isCommand && alertasVend.length > 0 && (
+        <Card className="border-amber-600/40">
+          <CardContent className="space-y-2 p-5">
+            <h3 className="font-semibold text-amber-400">Alertas — vendedores com baixo desempenho</h3>
+            {alertasVend.map((a: any, i: number) => (
+              <p key={i} className="text-sm">
+                <span className="capitalize font-medium">{a.nome}</span> (loja {a.loja}) — conv.{' '}
+                {(a.conversao * 100).toFixed(1)}% com {a.leads} leads
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Black: alertas loja */}
+      {isBlack && alertasLoja.length > 0 && (
+        <Card className="border-rose-600/40">
+          <CardContent className="space-y-2 p-5">
+            <h3 className="font-semibold text-rose-400">Alertas — lojas abaixo da média</h3>
+            {alertasLoja.map((a: any, i: number) => (
+              <p key={i} className="text-sm">
+                Loja <strong>{a.loja}</strong> — conv. {(a.conversao * 100).toFixed(1)}% ({a.vendidos}/
+                {a.leads})
+              </p>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <section className="grid gap-4 md:grid-cols-5">
+        <KPI icon={Users} label="Leads" value={data.funil.leads} />
+        <KPI icon={CheckCircle2} label="Aprovados" value={data.funil.aprovados} />
+        <KPI icon={TrendingUp} label="Vendidos" value={data.funil.vendidos} />
+        <KPI icon={Percent} label="Conv. venda" value={pct(taxas.conversao_venda)} />
+        <KPI icon={Percent} label="Taxa aprovação" value={pct(taxas.taxa_liberacao_credito)} />
       </section>
 
       {/* Taxas bancárias / CRM */}
