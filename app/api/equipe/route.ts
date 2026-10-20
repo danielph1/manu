@@ -9,7 +9,9 @@ export async function GET(req: NextRequest) {
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   try {
     let vends: any[] = [];
-    const lojaFilter = u.tipo === 'gerente' && u.loja;
+    const lojaQuery = (new URL(req.url).searchParams.get('loja') || '').trim();
+    const lojaFilter = (u.tipo === 'gerente' && u.loja) || (!!lojaQuery && ['admin','superadmin','marketing','gerente'].includes(String(u.tipo)));
+    const lojaValor = (u.tipo === 'gerente' && u.loja) ? u.loja : lojaQuery;
     const empFilter = !!(u.empresa_id && u.tipo !== 'superadmin');
     const paramsBase: unknown[] = [];
     let extra = ` WHERE LOWER(COALESCE(v.nome,'')) <> 'matheus'`;
@@ -17,8 +19,8 @@ export async function GET(req: NextRequest) {
       paramsBase.push(u.empresa_id);
       extra += ` AND v.empresa_id = $${paramsBase.length}`;
     }
-    if (lojaFilter) {
-      paramsBase.push(u.loja);
+    if (lojaFilter && lojaValor) {
+      paramsBase.push(lojaValor);
       extra += ` AND UPPER(COALESCE(v.loja,'381')) = UPPER($${paramsBase.length})`;
     }
     try {

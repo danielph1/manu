@@ -7,9 +7,19 @@ import { Button } from '@/components/ui/button';
 import { Heart, MessageCircle, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { useI18n } from '@/contexts/i18n-context';
+import { useAuth } from '@/contexts/auth-context';
 
 export default function FeedPage() {
   const { t } = useI18n();
+  const { user } = useAuth();
+  if (String(user?.tipo || '').toLowerCase() !== 'superadmin') {
+    return (
+      <div className="mx-auto max-w-lg p-6">
+        <h1 className="text-2xl font-bold">Feed</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Área em testes — disponível apenas para superadmin.</p>
+      </div>
+    );
+  }
   const qc = useQueryClient();
   const [texto, setTexto] = useState('');
   const [openComments, setOpenComments] = useState<number | null>(null);

@@ -31,7 +31,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) || isSuper },
     { href: '/metricas', label: t('nav.metricas'), icon: BarChart3, show: Role.verMetricas(user) || isSuper },
     { href: '/equipe', label: t('nav.equipe'), icon: Users, show: Role.isGerente(user) || isSuper },
-    { href: '/feed', label: t('nav.feed'), icon: Sparkles, show: !!user },
+    { href: '/feed', label: t('nav.feed'), icon: Sparkles, show: isSuper },
     { href: '/ranking', label: t('nav.ranking'), icon: Target, show: !!user },
     { href: '/metas', label: t('nav.metas'), icon: Target, show: Role.verLeads(user) || isSuper },
     { href: '/processos', label: 'Transferencias', icon: ArrowRightLeft, show: Role.verDocumental(user) || isSuper },

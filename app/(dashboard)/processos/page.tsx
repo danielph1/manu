@@ -53,22 +53,34 @@ export default function ProcessosPage() {
       <h1 className="text-3xl font-bold">Transferências</h1>
       <p className="text-sm text-muted-foreground">
         Processos de transferência de veículos vendidos (gravame, firma, documento).
+        Entram automaticamente quando o carro é liberado no faturamento.
       </p>
       {isLoading && <CarLoader compact />}
       {error && <p className="text-rose-400">Erro ao carregar.</p>}
 
       {lista.map((p: any) => {
         const veiculo = [p.marca, p.modelo].filter(Boolean).join(' ') || '—';
+        const compra = p.compra_em
+          ? new Date(p.compra_em).toLocaleDateString('pt-BR')
+          : '—';
         return (
           <Card key={p.id}>
             <CardContent className="space-y-2 py-4 text-sm">
               <div className="font-semibold">
-                {p.nome_lead || `Ficha ${p.ficha_id}`}
+                {p.nome_lead || `Ficha ${p.ficha_id || p.id}`}
                 {p.placa ? ` · ${p.placa}` : ''}
               </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
+                <div><span className="opacity-70">Veículo: </span>{veiculo}</div>
+                <div><span className="opacity-70">Ano: </span>{p.ano || '—'}</div>
+                <div><span className="opacity-70">Placa: </span>{p.placa || '—'}</div>
+                <div><span className="opacity-70">Compra: </span>{compra}</div>
+              </div>
               <div className="text-xs text-muted-foreground">
-                {veiculo}
-                {p.vendedor_nome ? ` · Vendedor: ${p.vendedor_nome}` : ''}
+                {p.vendedor_display || p.vendedor_nome
+                  ? `Vendedor: ${p.vendedor_display || p.vendedor_nome}`
+                  : ''}
+                {p.cor ? ` · Cor: ${p.cor}` : ''}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-muted-foreground">Status:</span>
@@ -101,7 +113,9 @@ export default function ProcessosPage() {
       })}
 
       {!isLoading && lista.length === 0 && (
-        <p className="text-muted-foreground">Nenhum processo.</p>
+        <p className="text-muted-foreground">
+          Nenhum processo. Libere o carro no faturamento para entrar aqui.
+        </p>
       )}
     </div>
   );

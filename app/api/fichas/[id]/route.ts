@@ -34,6 +34,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
+async function ensureFichaCols() {
+  const cols = [
+    ['pendente_documentacao', 'boolean DEFAULT false'],
+    ['contrato_em_analise', 'boolean DEFAULT false'],
+    ['pendente_assinatura', 'boolean DEFAULT false'],
+    ['contrato_pago', 'boolean DEFAULT false'],
+    ['contrato_recusado', 'boolean DEFAULT false'],
+    ['valor_liberado', 'numeric'],
+    ['entrada_paga', 'numeric'],
+    ['valor_pendente', 'numeric'],
+    ['observacao_elfenai', 'text'],
+    ['etapa_obs', 'text'],
+  ];
+  for (const [c, typ] of cols) {
+    try {
+      await query(`ALTER TABLE public.fichas_credito ADD COLUMN IF NOT EXISTS ${c} ${typ}`);
+    } catch { /* ok */ }
+  }
+}
+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
@@ -41,6 +61,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const body = await req.json();
   try {
+    await ensureFichaCols();
     const allowed = [
       'status_geral','banco_contratado','valor_liberado','valor_financiado','valor_entrada',
       'entrada_total','entrada_paga','valor_pendente','gerou_boleto','boleto_valor','boleto_meses',
