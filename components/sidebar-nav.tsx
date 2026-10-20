@@ -13,27 +13,31 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Role } from '@/lib/roles';
+import { useI18n } from '@/contexts/i18n-context';
+import { Sparkles } from 'lucide-react';
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { t } = useI18n();
 
   const tipo = String(user?.tipo || '').toLowerCase().trim();
   const isSuper = tipo === 'superadmin';
 
   const items: Array<{ href: string; label: string; icon: any; show: boolean }> = [
     { href: '/aurox', label: 'Aurox', icon: Building2, show: isSuper },
-    { href: '/triagem', label: 'Triagem', icon: Inbox, show: Role.isAdmin(user) || isSuper },
+    { href: '/triagem', label: t('nav.triagem'), icon: Inbox, show: Role.isAdmin(user) || isSuper },
     { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) || isSuper },
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) || isSuper },
-    { href: '/metricas', label: 'Metricas', icon: BarChart3, show: Role.verMetricas(user) || isSuper },
-    { href: '/equipe', label: 'Equipe', icon: Users, show: Role.isGerente(user) || isSuper },
-    { href: '/ranking', label: 'Ranking', icon: Target, show: !!user },
-    { href: '/metas', label: 'Metas', icon: Target, show: Role.verLeads(user) || isSuper },
+    { href: '/metricas', label: t('nav.metricas'), icon: BarChart3, show: Role.verMetricas(user) || isSuper },
+    { href: '/equipe', label: t('nav.equipe'), icon: Users, show: Role.isGerente(user) || isSuper },
+    { href: '/feed', label: t('nav.feed'), icon: Sparkles, show: !!user },
+    { href: '/ranking', label: t('nav.ranking'), icon: Target, show: !!user },
+    { href: '/metas', label: t('nav.metas'), icon: Target, show: Role.verLeads(user) || isSuper },
     { href: '/processos', label: 'Transferencias', icon: ArrowRightLeft, show: Role.verDocumental(user) || isSuper },
-    { href: '/oficina', label: 'Oficina', icon: Wrench, show: !!user },
-    { href: '/faturamento', label: 'Faturamento', icon: Receipt, show: !!user },
-    { href: '/configuracoes', label: 'Configurações', icon: Settings, show: !!user },
+    { href: '/oficina', label: t('nav.oficina'), icon: Wrench, show: !!user },
+    { href: '/faturamento', label: t('nav.faturamento'), icon: Receipt, show: !!user },
+    { href: '/configuracoes', label: t('nav.config'), icon: Settings, show: !!user },
   ];
 
   return (

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { useI18n } from '@/contexts/i18n-context';
+import { Lang, LANG_LABELS } from '@/lib/i18n';
 
 function comprimir(file: File): Promise<Blob> {
   return new Promise((resolve) => {
@@ -23,6 +25,7 @@ function comprimir(file: File): Promise<Blob> {
 }
 
 export default function MinhaContaPage() {
+  const { t, setLang } = useI18n();
   const [dados, setDados] = useState<any>({});
   const [login, setLogin] = useState('');
   const [nome, setNome] = useState('');
@@ -49,6 +52,7 @@ export default function MinhaContaPage() {
       await api.patch('/conta', { telefone, email, nome, idioma });
       try {
         await api.patch('/preferencias', { idioma });
+      await setLang(idioma as Lang);
       } catch { /* ok */ }
       toast.success('Salvo');
       setEditLogin(false);
@@ -89,7 +93,7 @@ export default function MinhaContaPage() {
 
   return (
     <div className="mx-auto max-w-lg space-y-5">
-      <h1 className="text-2xl font-bold">Minha conta</h1>
+      <h1 className="text-2xl font-bold">{t('account.title')}</h1>
       <div className="flex items-center gap-4">
         <label className="cursor-pointer">
           <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full bg-primary text-2xl font-bold text-primary-foreground">
@@ -97,22 +101,22 @@ export default function MinhaContaPage() {
           </div>
           <input type="file" accept="image/*" className="hidden" onChange={(e) => foto(e.target.files?.[0])} />
         </label>
-        <span className="text-sm text-muted-foreground">Toque na foto para trocar</span>
+        <span className="text-sm text-muted-foreground">{t('account.photo_hint')}</span>
       </div>
       <div className="space-y-3 rounded-xl border border-border bg-card p-4">
         <div>
-          <Label>Nome</Label>
+          <Label>{t('account.name')}</Label>
           <div className="flex gap-2">
             <Input value={nome} onChange={(e) => setNome(e.target.value)} disabled={!editLogin} />
-            <Button type="button" variant="outline" onClick={() => setEditLogin((v) => !v)}>{editLogin ? 'Cancelar' : 'Alterar'}</Button>
+            <Button type="button" variant="outline" onClick={() => setEditLogin((v) => !v)}>{editLogin ? t('common.cancel') : t('common.edit')}</Button>
           </div>
           <div className="mt-1 text-xs text-muted-foreground">Login: {login}</div>
         </div>
-        <div><Label>Perfil</Label><Input value={dados.tipo || ''} disabled className="capitalize" /></div>
-        <div><Label>Telefone</Label><Input value={telefone} onChange={(e) => setTelefone(e.target.value)} disabled={!editLogin} /></div>
-        <div><Label>E-mail</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editLogin} /></div>
+        <div><Label>{t('account.profile')}</Label><Input value={dados.tipo || ''} disabled className="capitalize" /></div>
+        <div><Label>{t('account.phone')}</Label><Input value={telefone} onChange={(e) => setTelefone(e.target.value)} disabled={!editLogin} /></div>
+        <div><Label>{t('account.email')}</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editLogin} /></div>
         <div>
-          <Label>Idioma</Label>
+          <Label>{t('account.language')}</Label>
           <select
             className="mt-1 flex h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
             value={idioma}
@@ -124,10 +128,10 @@ export default function MinhaContaPage() {
             <option value="de">Deutsch (Alemão)</option>
           </select>
           <p className="mt-1 text-xs text-muted-foreground">
-            Preferência salva na conta (tradução completa da interface em etapas).
+            {t('account.language_hint')}
           </p>
         </div>
-        <Button onClick={salvar} disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar'}</Button>
+        <Button onClick={salvar} disabled={salvando}>{salvando ? t('common.saving') : t('common.save')}</Button>
       </div>
     </div>
   );
