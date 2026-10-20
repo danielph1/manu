@@ -13,7 +13,7 @@ import { CarLoader } from '@/components/car-loader';
 import { toast } from 'sonner';
 import { Building2, Plus, Power, PowerOff, X, Trash2 } from 'lucide-react';
 
-type LojaField = { codigo: string; nome: string };
+type LojaField = { codigo: string; nome: string; plano?: string };
 
 export default function AuroxPage() {
   const { user } = useAuth();
@@ -32,8 +32,9 @@ export default function AuroxPage() {
     admin_nome: '',
     admin_login: '',
     admin_senha: '',
+    plano: 'black',
   });
-  const [lojas, setLojas] = useState<LojaField[]>([{ codigo: '001', nome: '' }]);
+  const [lojas, setLojas] = useState<LojaField[]>([{ codigo: '001', nome: '', plano: 'black' }]);
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
 
@@ -69,7 +70,11 @@ export default function AuroxPage() {
       return;
     }
     const lojasValidas = lojas
-      .map((l) => ({ codigo: l.codigo.trim(), nome: (l.nome || l.codigo).trim() }))
+      .map((l) => ({
+        codigo: l.codigo.trim(),
+        nome: (l.nome || l.codigo).trim(),
+        plano: l.plano || form.plano || 'black',
+      }))
       .filter((l) => l.codigo);
     if (!lojasValidas.length) {
       toast.error('Informe ao menos uma loja');
@@ -80,6 +85,7 @@ export default function AuroxPage() {
       const { data } = await api.post('/aurox/empresas', {
         nome: form.nome,
         slug: form.slug || undefined,
+        plano: form.plano || 'black',
         lojas: lojasValidas,
         admin: {
           nome: form.admin_nome || form.admin_login,
@@ -88,8 +94,8 @@ export default function AuroxPage() {
         },
       });
       toast.success(`Empresa criada: ${data.empresa?.nome}`);
-      setForm({ nome: '', slug: '', admin_nome: '', admin_login: '', admin_senha: '' });
-      setLojas([{ codigo: '001', nome: '' }]);
+      setForm({ nome: '', slug: '', admin_nome: '', admin_login: '', admin_senha: '', plano: 'black' });
+      setLojas([{ codigo: '001', nome: '', plano: 'black' }]);
       qc.invalidateQueries({ queryKey: ['aurox-empresas'] });
     } catch (e: any) {
       toast.error(e?.response?.data?.error || 'Erro ao criar');
@@ -203,6 +209,26 @@ export default function AuroxPage() {
               />
             </div>
           </div>
+
+          <div>
+              <Label>Plano padrão das lojas *</Label>
+              <select
+                className="mt-1 flex h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+                value={form.plano}
+                onChange={(e) => {
+                  const plano = e.target.value;
+                  setForm({ ...form, plano });
+                  setLojas((prev) => prev.map((l) => ({ ...l, plano })));
+                }}
+              >
+                <option value="vanguard">Vanguard</option>
+                <option value="command">Command</option>
+                <option value="black">Black</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Pode ajustar o plano de cada loja depois no detalhe.
+              </p>
+            </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">

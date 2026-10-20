@@ -22,7 +22,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const isSuper = tipo === 'superadmin';
 
   const items: Array<{ href: string; label: string; icon: any; show: boolean }> = [
-    { href: '/aurox', label: 'Aurox (empresas)', icon: Building2, show: isSuper },
+    { href: '/aurox', label: 'Aurox', icon: Building2, show: isSuper },
     { href: '/triagem', label: 'Triagem', icon: Inbox, show: Role.isAdmin(user) || isSuper },
     { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) || isSuper },
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) || isSuper },

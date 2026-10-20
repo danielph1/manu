@@ -30,6 +30,7 @@ export default function MinhaContaPage() {
   const [email, setEmail] = useState('');
   const [editLogin, setEditLogin] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [idioma, setIdioma] = useState('pt');
 
   useEffect(() => {
     api.get('/conta').then((r) => {
@@ -38,13 +39,17 @@ export default function MinhaContaPage() {
       setNome(r.data?.nome || '');
       setTelefone(r.data?.telefone || '');
       setEmail(r.data?.email || '');
+      setIdioma(r.data?.idioma || 'pt');
     }).catch(() => {});
   }, []);
 
   async function salvar() {
     setSalvando(true);
     try {
-      await api.patch('/conta', { telefone, email, nome });
+      await api.patch('/conta', { telefone, email, nome, idioma });
+      try {
+        await api.patch('/preferencias', { idioma });
+      } catch { /* ok */ }
       toast.success('Salvo');
       setEditLogin(false);
     } catch (e: any) {
@@ -106,6 +111,22 @@ export default function MinhaContaPage() {
         <div><Label>Perfil</Label><Input value={dados.tipo || ''} disabled className="capitalize" /></div>
         <div><Label>Telefone</Label><Input value={telefone} onChange={(e) => setTelefone(e.target.value)} disabled={!editLogin} /></div>
         <div><Label>E-mail</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} disabled={!editLogin} /></div>
+        <div>
+          <Label>Idioma</Label>
+          <select
+            className="mt-1 flex h-10 w-full rounded-md border border-border bg-background px-3 text-sm"
+            value={idioma}
+            onChange={(e) => setIdioma(e.target.value)}
+          >
+            <option value="pt">Português</option>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+            <option value="de">Deutsch (Alemão)</option>
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Preferência salva na conta (tradução completa da interface em etapas).
+          </p>
+        </div>
         <Button onClick={salvar} disabled={salvando}>{salvando ? 'Salvando…' : 'Salvar'}</Button>
       </div>
     </div>

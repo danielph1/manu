@@ -8,11 +8,15 @@ export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
+  try {
+    await query(`ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS idioma text DEFAULT 'pt'`);
+  } catch { /* ok */ }
   const { rows } = await query(
     `SELECT id, login, nome, tipo, loja,
             COALESCE(telefone,'') AS telefone,
             COALESCE(email,'') AS email,
-            COALESCE(foto_url,'') AS foto_url
+            COALESCE(foto_url,'') AS foto_url,
+            COALESCE(idioma,'pt') AS idioma
      FROM public.usuarios WHERE id = $1`,
     [u.id],
   );
@@ -26,7 +30,21 @@ export async function PATCH(req: NextRequest) {
   const telefone = String(body.telefone || '').trim();
   const email = String(body.email || '').trim();
   const nome = body.nome != null ? String(body.nome).trim() : null;
-  await query('UPDATE public.usuarios SET telefone = $1, email = $2, nome = COALESCE($3, nome) WHERE id = $4', [telefone, email, nome, u.id]);
+  const idioma = body.idioma != null ? String(body.idioma).toLowerCase().slice(0, 5) : null;
+  try {
+    await query(`ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS idioma text DEFAULT 'pt'`);
+  } catch { /* ok */ }
+  if (idioma && ['pt', 'en', 'es', 'de'].includes(idioma)) {
+    await query(
+      'UPDATE public.usuarios SET telefone = $1, email = $2, nome = COALESCE($3, nome), idioma = $4 WHERE id = $5',
+      [telefone, email, nome, idioma, u.id],
+    );
+  } else {
+    await query(
+      'UPDATE public.usuarios SET telefone = $1, email = $2, nome = COALESCE($3, nome) WHERE id = $4',
+      [telefone, email, nome, u.id],
+    );
+  }
   return NextResponse.json({ ok: true });
 }
 

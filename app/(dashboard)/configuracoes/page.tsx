@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { User, Heart, Palette, Info, Shield, ChevronRight } from 'lucide-react';
+import { User, Heart, Palette, Info, Shield, ChevronRight, Bell } from 'lucide-react';
 
 const Item = ({ href, icon: Icon, label }: { href: string; icon: any; label: string }) => (
   <Link href={href} className="flex items-center justify-between border-b border-border px-4 py-4 text-sm last:border-0">
@@ -23,6 +23,7 @@ export default function ConfiguracoesPage() {
           <Item href="/minha-conta" icon={User} label="Minha conta" />
           <Item href="/favoritos" icon={Heart} label="Meus favoritos" />
           <Item href="/temas" icon={Palette} label="Tema" />
+          <Item href="/configuracoes/notificacoes" icon={Bell} label="Notificações" />
         </div>
       </section>
 

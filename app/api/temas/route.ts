@@ -5,7 +5,7 @@ import { requireUser } from '@/lib/session';
 export const runtime = 'nodejs';
 
 const TODOS = ['escuro', 'claro', 'azul', 'verde', 'rosa', 'preto', 'ambar', 'grafite', 'vinho', 'platinum'];
-const LIVRE = ['admin', 'gerente', 'documento', 'documentista', 'elfenai', 'marketing'];
+const LIVRE = ['admin', 'gerente', 'documento', 'documentista', 'elfenai', 'marketing', 'superadmin'];
 
 export async function GET(req: NextRequest) {
   const u = await requireUser(req);

@@ -59,11 +59,12 @@ export async function POST(req: NextRequest) {
       slug = `${slug}-${Date.now().toString(36).slice(-4)}`;
     }
 
+    const planoPadrao = String(body.plano || 'black').toLowerCase();
     const emp = await queryOne(
       `INSERT INTO public.empresas (nome, slug, ativo, plano, contrato_inicio)
-       VALUES ($1,$2,TRUE,'basico', CURRENT_DATE)
+       VALUES ($1,$2,TRUE,$3, CURRENT_DATE)
        RETURNING *`,
-      [nome, slug],
+      [nome, slug, planoPadrao],
     );
     if (!emp?.id) return NextResponse.json({ error: 'falha ao criar empresa' }, { status: 500 });
 
