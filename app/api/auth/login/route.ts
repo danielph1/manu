@@ -104,6 +104,16 @@ export async function POST(req: NextRequest) {
     };
     tipo = aliases[tipo] || tipo;
 
+    // plano da loja
+    let loja_plano = 'black';
+    try {
+      const pl = await queryOne<{ plano: string | null }>(
+        `SELECT plano FROM public.lojas WHERE UPPER(codigo) = UPPER($1) LIMIT 1`,
+        [loja],
+      );
+      if (pl?.plano) loja_plano = String(pl.plano).toLowerCase();
+    } catch { /* ok */ }
+
     const payload = {
       id: Number(user.id),
       login: user.login,
@@ -112,6 +122,8 @@ export async function POST(req: NextRequest) {
       vendedor_id: user.vendedor_id != null ? Number(user.vendedor_id) : null,
       loja,
       ativo: true,
+      plano: loja_plano,
+      loja_plano,
       empresa_id: user.empresa_id != null ? Number(user.empresa_id) : null,
       status: st,
       empresa_nome: user.empresa_nome || null,

@@ -154,7 +154,7 @@ export default function AuroxPage() {
           <Building2 className="h-8 w-8 text-primary" /> Aurox — Empresas
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Contratos B2B · cada empresa isolada · desativar corta o acesso e preserva os dados
+          Contratos B2B · planos por loja: Vanguard · Command · Black · desativar corta acesso e preserva dados
         </p>
       </header>
 

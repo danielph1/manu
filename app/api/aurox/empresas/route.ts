@@ -74,9 +74,9 @@ export async function POST(req: NextRequest) {
       if (!codigo) continue;
       try {
         const row = await queryOne(
-          `INSERT INTO public.lojas (empresa_id, codigo, nome, ativo)
-           VALUES ($1,$2,$3,TRUE) RETURNING *`,
-          [emp.id, codigo, String(L.nome || codigo)],
+          `INSERT INTO public.lojas (empresa_id, codigo, nome, ativo, plano)
+           VALUES ($1,$2,$3,TRUE,COALESCE($4,'black')) RETURNING *`,
+          [emp.id, codigo, String(L.nome || codigo), String(L.plano || body.plano || 'black').toLowerCase()],
         );
         if (row) lojasCriadas.push(row);
       } catch (e: any) {
