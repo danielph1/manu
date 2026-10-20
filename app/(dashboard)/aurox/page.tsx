@@ -43,7 +43,7 @@ export default function AuroxPage() {
   const [confirming, setConfirming] = useState(false);
 
   // nova loja no detalhe
-  const [novaLoja, setNovaLoja] = useState({ codigo: '', nome: '' });
+  const [novaLoja, setNovaLoja] = useState({ codigo: '', nome: '', plano: 'black' });
   const [addLojaBusy, setAddLojaBusy] = useState(false);
 
   const { data: detalhe } = useQuery({
@@ -135,9 +135,10 @@ export default function AuroxPage() {
         acao: 'loja',
         codigo: novaLoja.codigo.trim(),
         nome: novaLoja.nome.trim() || novaLoja.codigo.trim(),
+        plano: novaLoja.plano || 'black',
       });
       toast.success('Loja adicionada');
-      setNovaLoja({ codigo: '', nome: '' });
+      setNovaLoja({ codigo: '', nome: '', plano: 'black' });
       qc.invalidateQueries({ queryKey: ['aurox-empresa', selected] });
       qc.invalidateQueries({ queryKey: ['aurox-empresas'] });
     } catch (e: any) {
@@ -316,12 +317,39 @@ export default function AuroxPage() {
             <h3 className="font-semibold">{detalhe.nome} — detalhe</h3>
 
             <div>
-              <div className="mb-2 text-xs text-muted-foreground">Lojas</div>
-              <ul className="mb-3 space-y-1 text-sm">
+              <div className="mb-2 text-xs text-muted-foreground">Lojas e planos</div>
+              <ul className="mb-3 space-y-2 text-sm">
                 {(detalhe.lojas || []).map((l: any) => (
-                  <li key={l.id}>
-                    <code className="rounded bg-muted px-1">{l.codigo}</code> {l.nome || ''}
-                    {!l.ativo && <span className="text-rose-400"> (inativa)</span>}
+                  <li
+                    key={l.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 px-2 py-1.5"
+                  >
+                    <div>
+                      <code className="rounded bg-muted px-1">{l.codigo}</code>{' '}
+                      {l.nome || ''}
+                      {!l.ativo && <span className="text-rose-400"> (inativa)</span>}
+                    </div>
+                    <select
+                      className="rounded border border-border bg-background px-2 py-1 text-xs"
+                      value={String(l.plano || 'black').toLowerCase()}
+                      onChange={async (e) => {
+                        try {
+                          await api.post(`/aurox/empresas/${selected}`, {
+                            acao: 'plano_loja',
+                            loja_id: l.id,
+                            plano: e.target.value,
+                          });
+                          toast.success(`Plano da loja ${l.codigo}: ${e.target.value}`);
+                          qc.invalidateQueries({ queryKey: ['aurox-empresa', selected] });
+                        } catch (err: any) {
+                          toast.error(err?.response?.data?.error || 'Erro ao mudar plano');
+                        }
+                      }}
+                    >
+                      <option value="vanguard">Vanguard</option>
+                      <option value="command">Command</option>
+                      <option value="black">Black</option>
+                    </select>
                   </li>
                 ))}
               </ul>
@@ -334,13 +362,25 @@ export default function AuroxPage() {
                     placeholder="NITER"
                   />
                 </div>
-                <div className="min-w-[140px] flex-[2]">
+                <div className="min-w-[120px] flex-[2]">
                   <Label className="text-xs">Nome</Label>
                   <Input
                     value={novaLoja.nome}
                     onChange={(e) => setNovaLoja({ ...novaLoja, nome: e.target.value })}
                     placeholder="Unidade Niterói"
                   />
+                </div>
+                <div>
+                  <Label className="text-xs">Plano</Label>
+                  <select
+                    className="block rounded border border-border bg-background px-2 py-2 text-sm"
+                    value={novaLoja.plano}
+                    onChange={(e) => setNovaLoja({ ...novaLoja, plano: e.target.value })}
+                  >
+                    <option value="vanguard">Vanguard</option>
+                    <option value="command">Command</option>
+                    <option value="black">Black</option>
+                  </select>
                 </div>
                 <Button size="sm" onClick={addLojaNaEmpresa} disabled={addLojaBusy}>
                   <Plus className="mr-1 h-3 w-3" /> Adicionar

@@ -52,7 +52,7 @@ async function virarLead(triagemId: number, vendedorId: number) {
 
 export async function GET(req: NextRequest) {
   const u = await requireUser(req);
-  if (!u || u.tipo !== 'admin') return NextResponse.json({ error: 'sem acesso' }, { status: 403 });
+  if (!u || (u.tipo !== 'admin' && u.tipo !== 'superadmin')) return NextResponse.json({ error: 'sem acesso' }, { status: 403 });
   await expirar();
   try {
     await fetch(new URL('/api/leads/auto-passar', req.url).toString(), {
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const u = await requireUser(req);
-  if (!u || u.tipo !== 'admin') return NextResponse.json({ error: 'sem acesso' }, { status: 403 });
+  if (!u || (u.tipo !== 'admin' && u.tipo !== 'superadmin')) return NextResponse.json({ error: 'sem acesso' }, { status: 403 });
   const b = await req.json();
   const id = Number(b.id);
   let vendedorId = b.vendedor_id ? Number(b.vendedor_id) : 0;

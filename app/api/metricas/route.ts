@@ -137,27 +137,86 @@ export async function GET(req: NextRequest) {
       porBanco = [];
     }
 
+    // Financeiro a partir do "gerou venda" (fichas comprou) — mais completo que só faturamento
     let fin: any = {};
     try {
       fin =
         (await queryOne(
           `SELECT
-             COALESCE(SUM(COALESCE(fc.valor_liberado, (
-               SELECT fb.valor_financiado FROM public.ficha_bancos fb
-               WHERE fb.ficha_id = fc.id AND LOWER(fb.status) LIKE 'aprov%' LIMIT 1
-             ), 0)),0)::float AS valor_liberado,
-             COALESCE(SUM(COALESCE(f.entrada_total,0)),0)::float AS entrada_paga,
-             COALESCE(SUM(COALESCE(f.entrada_boleto,0)),0)::float AS total_boletos,
-             COALESCE(SUM(COALESCE(f.entrada_boleto,0)),0)::float AS valor_pendente,
-             COUNT(*) FILTER (WHERE COALESCE(f.entrada_boleto,0) > 0)::int AS clientes_com_boleto
-           FROM public.faturamentos f
-           LEFT JOIN public.fichas_credito fc ON fc.id = f.ficha_id
-           WHERE ($1::date IS NULL OR f.created_at::date >= $1)
-             AND ($2::date IS NULL OR f.created_at::date < $2)`,
+             COALESCE(SUM(
+               COALESCE(fc.valor_liberado, (
+                 SELECT fb.valor_financiado FROM public.ficha_bancos fb
+                 WHERE fb.ficha_id = fc.id AND LOWER(COALESCE(fb.status,'')) LIKE 'aprov%'
+                 ORDER BY fb.id DESC LIMIT 1
+               ), 0)
+             ), 0)::float AS valor_liberado,
+             COALESCE(SUM(
+               COALESCE(fc.entrada_paga, fc.valor_entrada, fc.entrada_total, 0)
+             ), 0)::float AS entrada_paga,
+             COALESCE(SUM(
+               COALESCE(fc.valor_pendente, fc.boleto_total, fc.boleto_valor, 0)
+             ), 0)::float AS valor_pendente,
+             COALESCE(SUM(
+               COALESCE(fc.boleto_total, fc.boleto_valor, 0)
+             ), 0)::float AS total_boletos,
+             COUNT(*) FILTER (
+               WHERE COALESCE(fc.valor_pendente, fc.boleto_total, fc.boleto_valor, 0) > 0
+             )::int AS clientes_com_boleto,
+             COUNT(*)::int AS vendas
+           FROM public.fichas_credito fc
+           WHERE COALESCE(fc.comprou, FALSE) = TRUE
+             AND ($1::date IS NULL OR COALESCE(fc.data_compra, fc.created_at)::date >= $1::date)
+             AND ($2::date IS NULL OR COALESCE(fc.data_compra, fc.created_at)::date < $2::date)`,
           [di, df],
         )) || {};
     } catch {
-      fin = {};
+      // fallback faturamentos
+      try {
+        fin =
+          (await queryOne(
+            `SELECT
+               COALESCE(SUM(COALESCE(fc.valor_liberado,0)),0)::float AS valor_liberado,
+               COALESCE(SUM(COALESCE(f.entrada_total,0)),0)::float AS entrada_paga,
+               COALESCE(SUM(COALESCE(f.entrada_boleto,0)),0)::float AS total_boletos,
+               COALESCE(SUM(COALESCE(f.entrada_boleto,0)),0)::float AS valor_pendente,
+               COUNT(*) FILTER (WHERE COALESCE(f.entrada_boleto,0) > 0)::int AS clientes_com_boleto
+             FROM public.faturamentos f
+             LEFT JOIN public.fichas_credito fc ON fc.id = f.ficha_id
+             WHERE ($1::date IS NULL OR f.created_at::date >= $1)
+               AND ($2::date IS NULL OR f.created_at::date < $2)`,
+            [di, df],
+          )) || {};
+      } catch {
+        fin = {};
+      }
+    }
+
+    // gasto oficina (valor_final / valor_carro no período)
+    let gasto_oficina = 0;
+    try {
+      const g = await queryOne(
+        `SELECT COALESCE(SUM(
+           COALESCE(
+             NULLIF(regexp_replace(COALESCE(valor_final::text,''), '[^0-9,.-]', '', 'g'), '')::float,
+             NULLIF(regexp_replace(COALESCE(valor_carro::text,''), '[^0-9,.-]', '', 'g'), '')::float,
+             0
+           )
+         ),0)::float AS g
+         FROM public.oficina_carros
+         WHERE ($1::date IS NULL OR COALESCE(created_at, now())::date >= $1::date)
+           AND ($2::date IS NULL OR COALESCE(created_at, now())::date < $2::date)`,
+        [di, df],
+      );
+      gasto_oficina = Number(g?.g || 0);
+    } catch {
+      try {
+        const g = await queryOne(
+          `SELECT COALESCE(SUM(COALESCE(valor_carro,0)),0)::float AS g FROM public.oficina_carros`,
+        );
+        gasto_oficina = Number(g?.g || 0);
+      } catch {
+        gasto_oficina = 0;
+      }
     }
 
     // --- Série mensal (6 meses) para projeção ---
@@ -443,12 +502,16 @@ export async function GET(req: NextRequest) {
       },
       por_banco: porBanco,
       financeiro: {
+        // regra: valor bruto = entrada paga + valor liberado
         valor_bruto: valorLiberado + entrada,
         valor_liberado: valorLiberado,
         entrada_paga: entrada,
         total_boletos: boletos,
         valor_pendente: Number(fin.valor_pendente || 0),
         clientes_com_boleto: Number(fin.clientes_com_boleto || 0),
+        gasto_oficina,
+        gasto: gasto_oficina, // + campos futuros
+        vendas: Number(fin.vendas || 0),
       },
       taxas: {
         ...taxas,

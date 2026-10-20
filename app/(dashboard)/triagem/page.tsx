@@ -13,14 +13,14 @@ export default function TriagemPage() {
     queryKey: ['triagem'],
     queryFn: async () => (await api.get('/triagem')).data,
     refetchInterval: 3000,
-    enabled: user?.tipo === 'admin',
+    enabled: (user?.tipo === 'admin' || user?.tipo === 'superadmin'),
   });
   const { data: vendedores = [] } = useQuery({
     queryKey: ['vendedores'],
     queryFn: async () => (await api.get('/equipe')).data,
   });
 
-  if (user?.tipo !== 'admin') return <p className="text-muted-foreground">Somente admin.</p>;
+  if ((user?.tipo !== 'admin' && user?.tipo !== 'superadmin')) return <p className="text-muted-foreground">Somente admin.</p>;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">

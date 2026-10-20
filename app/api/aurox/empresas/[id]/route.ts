@@ -72,12 +72,30 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (acao === 'loja') {
       const codigo = String(body.codigo || '').trim().toUpperCase();
       if (!codigo) return NextResponse.json({ error: 'codigo obrigatório' }, { status: 400 });
+      const plano = String(body.plano || 'black').toLowerCase();
       const row = await queryOne(
-        `INSERT INTO public.lojas (empresa_id, codigo, nome, ativo)
-         VALUES ($1,$2,$3,TRUE) RETURNING *`,
-        [id, codigo, String(body.nome || codigo)],
+        `INSERT INTO public.lojas (empresa_id, codigo, nome, ativo, plano)
+         VALUES ($1,$2,$3,TRUE,$4) RETURNING *`,
+        [id, codigo, String(body.nome || codigo), plano],
       );
       return NextResponse.json(row, { status: 201 });
+    }
+
+    if (acao === 'plano_loja') {
+      const lojaId = Number(body.loja_id);
+      const plano = String(body.plano || 'black').toLowerCase();
+      if (!lojaId) return NextResponse.json({ error: 'loja_id obrigatório' }, { status: 400 });
+      if (!['vanguard', 'command', 'black'].includes(plano)) {
+        return NextResponse.json({ error: 'plano inválido' }, { status: 400 });
+      }
+      const row = await queryOne(
+        `UPDATE public.lojas SET plano = $1
+         WHERE id = $2 AND empresa_id = $3
+         RETURNING *`,
+        [plano, lojaId, id],
+      );
+      if (!row) return NextResponse.json({ error: 'loja não encontrada' }, { status: 404 });
+      return NextResponse.json(row);
     }
 
     if (acao === 'usuario') {
