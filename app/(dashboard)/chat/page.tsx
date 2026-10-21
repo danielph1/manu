@@ -3,6 +3,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { useI18n } from '@/contexts/i18n-context';
 import { compressGallery } from '@/lib/compress-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -192,7 +193,7 @@ function ChatPageInner() {
     const lidos = (() => { try { return JSON.parse(localStorage.getItem('manu.lidos') || '{}'); } catch { return {}; } })();
     return (
       <div className="mx-auto max-w-2xl space-y-3">
-        <h1 className="text-2xl font-bold">Conversas</h1>
+        <h1 className="text-2xl font-bold">{t('page.chat.title')}</h1>
         {(Array.isArray(conversas) ? conversas : []).map((c: any) => {
           const nao = Math.max(0, Number(c.total || 0) - Number(lidos[c.id] || 0));
           return (
@@ -339,6 +340,7 @@ function ChatPageInner() {
 }
 
 export default function ChatPage() {
+  const { t } = useI18n();
   return (
     <Suspense fallback={null}>
       <ChatPageInner />

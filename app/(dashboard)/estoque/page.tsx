@@ -21,6 +21,7 @@ import { CARROCERIAS, matchCarroceria } from '@/lib/carroceria';
 import { compressGallery } from '@/lib/compress-image';
 import { useAuth } from '@/contexts/auth-context';
 import { toast } from 'sonner';
+import { useI18n } from '@/contexts/i18n-context';
 
 type Ordem = 'preco_asc' | 'preco_desc' | 'chegada_desc' | 'chegada_asc' | 'marca';
 
@@ -71,7 +72,7 @@ function FotoViewer({
       <div className="flex h-56 items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">
         <div className="flex flex-col items-center gap-2">
           <ImageIcon className="h-8 w-8 opacity-40" />
-          Sem fotos ainda
+          {t('page.estoque.no_photos')}
         </div>
       </div>
     );
@@ -139,6 +140,7 @@ function FotoViewer({
 
 export default function EstoquePage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const [ordem, setOrdem] = useState<Ordem>('preco_asc');
@@ -219,9 +221,9 @@ export default function EstoquePage() {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <header>
-        <h1 className="text-4xl font-bold tracking-tight">Estoque</h1>
+        <h1 className="text-4xl font-bold tracking-tight">{t('page.estoque.title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Pesquise e ordene do jeito que precisar. Clique no carro para ver fotos.
+          {t('page.estoque.sub')}
         </p>
       </header>
 
@@ -230,7 +232,7 @@ export default function EstoquePage() {
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Buscar por modelo, placa, cor, carroceria..."
+            placeholder={t('page.estoque.search')}
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -284,22 +286,22 @@ export default function EstoquePage() {
               </div>
               <div className="grid grid-cols-2 gap-1 text-sm text-muted-foreground">
                 <div>
-                  Ano: <span className="text-foreground">{c.ano || c.ano_modelo || '—'}</span>
+                  {t('common.year')}: <span className="text-foreground">{c.ano || c.ano_modelo || '—'}</span>
                 </div>
                 <div>
-                  Cor: <span className="text-foreground">{c.cor || '—'}</span>
+                  {t('common.color')}: <span className="text-foreground">{c.cor || '—'}</span>
                 </div>
                 <div>
-                  KM:{' '}
+                  {t('common.km')}:{' '}
                   <span className="text-foreground">
                     {c.km != null ? Number(c.km).toLocaleString('pt-BR') : '—'}
                   </span>
                 </div>
                 <div>
-                  Placa: <span className="text-foreground font-mono">{c.placa || '—'}</span>
+                  {t('common.plate')}: <span className="text-foreground font-mono">{c.placa || '—'}</span>
                 </div>
                 <div className="col-span-2">
-                  Pátio:{' '}
+                  {t('common.yard')}:{' '}
                   <span className="text-foreground">
                     {limpo(c.patio || c.onde_esta || c.local)}
                   </span>
@@ -316,7 +318,7 @@ export default function EstoquePage() {
         ))}
       </div>
       {!isLoading && lista.length === 0 && (
-        <p className="py-8 text-center text-muted-foreground">Nenhum veículo encontrado.</p>
+        <p className="py-8 text-center text-muted-foreground">{t('page.estoque.empty')}</p>
       )}
 
       {sel && (
@@ -360,7 +362,7 @@ export default function EstoquePage() {
               <div className="mt-3">
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border py-3 text-sm hover:bg-muted/40">
                   <Upload className="h-4 w-4" />
-                  {uploading ? 'Comprimindo e enviando…' : 'Adicionar foto(s)'}
+                  {uploading ? t('common.loading') : t('page.estoque.add_photos')}
                   <input
                     type="file"
                     accept="image/*"
@@ -374,20 +376,20 @@ export default function EstoquePage() {
                   />
                 </label>
                 <p className="mt-1 text-center text-[11px] text-muted-foreground">
-                  Fotos são comprimidas no celular (~250 KB) antes de subir.
+                  {t('page.estoque.compress_hint')}
                 </p>
               </div>
             )}
 
             <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
               <div>
-                Ano: <strong>{sel.ano || sel.ano_modelo || '—'}</strong>
+                {t('common.year')}: <strong>{sel.ano || sel.ano_modelo || '—'}</strong>
               </div>
               <div>
-                Cor: <strong>{sel.cor || '—'}</strong>
+                {t('common.color')}: <strong>{sel.cor || '—'}</strong>
               </div>
               <div>
-                KM:{' '}
+                {t('common.km')}:{' '}
                 <strong>
                   {sel.km != null ? Number(sel.km).toLocaleString('pt-BR') : '—'}
                 </strong>
@@ -396,7 +398,7 @@ export default function EstoquePage() {
                 Combustível: <strong>{sel.combustivel || '—'}</strong>
               </div>
               <div className="col-span-2">
-                Pátio: <strong>{limpo(sel.patio || sel.onde_esta || sel.local)}</strong>
+                {t('common.yard')}: <strong>{limpo(sel.patio || sel.onde_esta || sel.local)}</strong>
               </div>
               <div className="col-span-2 text-lg font-bold text-primary">
                 R${' '}

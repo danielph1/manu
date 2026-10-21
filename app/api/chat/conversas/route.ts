@@ -36,8 +36,14 @@ export async function GET(req: NextRequest) {
             (SELECT MAX(id) FROM public.chat_geral_mensagens m WHERE m.lead_id = l.id) AS ultimo_id
      FROM public.leads l
      WHERE ${where.join(' AND ')}
-     ORDER BY l.created_at DESC
-     LIMIT 100`,
+     ORDER BY
+       COALESCE(
+         (SELECT MIN(m.created_at) FROM public.chat_geral_mensagens m WHERE m.lead_id = l.id),
+         l.created_at,
+         l.data_lead
+       ) ASC NULLS LAST,
+       l.id ASC
+     LIMIT 150`,
     params,
   );
   return NextResponse.json(rows);

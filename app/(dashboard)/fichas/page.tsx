@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FileText, Store, CheckCircle2, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { useI18n } from '@/contexts/i18n-context';
 import { FichaEditDialog } from '@/components/ficha-edit-dialog';
 import { useAuth } from '@/contexts/auth-context';
 import { chanceAprovacao } from '@/lib/credito-chance';
@@ -43,6 +44,7 @@ const statusColor: Record<string, string> = {
 };
 
 export default function FichasPage() {
+  const { t } = useI18n();
   const { user } = useAuth();
   const [selected, setSelected] = useState<number | null>(null);
   const [periodo, setPeriodo] = useState('todas');
@@ -60,33 +62,54 @@ export default function FichasPage() {
   const nAprov = todas.filter((f) => st(f).startsWith('aprov')).length;
   const nNeg = todas.filter((f) => ['negada', 'reprovada', 'negado', 'recusada'].includes(st(f))).length;
   const nPend = todas.filter((f) => !st(f).startsWith('aprov') && !['negada', 'reprovada', 'negado', 'recusada'].includes(st(f))).length;
-  const lista = todas.filter((f) => {
-    if (status === 'aprovadas' && !st(f).startsWith('aprov')) return false;
-    if (status === 'negadas' && !['negada', 'reprovada', 'negado', 'recusada'].includes(st(f))) return false;
-    if (status === 'pendentes' && (st(f).startsWith('aprov') || ['negada', 'reprovada', 'negado', 'recusada'].includes(st(f)))) return false;
-    if (carroceria && carroceria !== 'todas') {
-      const blob = `${f.carroceria || ''} ${f.produto_interesse || ''} ${f.marca_carro || ''} ${f.modelo || ''}`.toLowerCase();
-      if (!blob.includes(carroceria.toLowerCase())) return false;
-    }
-    return true;
-  });
+  const lista = todas
+    .filter((f) => {
+      if (status === 'aprovadas' && !st(f).startsWith('aprov')) return false;
+      if (status === 'negadas' && !['negada', 'reprovada', 'negado', 'recusada'].includes(st(f))) return false;
+      if (status === 'pendentes' && (st(f).startsWith('aprov') || ['negada', 'reprovada', 'negado', 'recusada'].includes(st(f)))) return false;
+      if (carroceria && carroceria !== 'todas') {
+        const blob = `${f.carroceria || ''} ${f.produto_interesse || ''} ${f.marca_carro || ''} ${f.modelo || ''}`.toLowerCase();
+        if (!blob.includes(carroceria.toLowerCase())) return false;
+      }
+      return true;
+    })
+    .slice()
+    .sort((a, b) => {
+      // cliente na loja no topo
+      const lojaA = a.cliente_na_loja || a.na_loja ? 0 : 1;
+      const lojaB = b.cliente_na_loja || b.na_loja ? 0 : 1;
+      if (lojaA !== lojaB) return lojaA - lojaB;
+      // concluídas (aprov/recus/venda) no fundo
+      const done = (f: any) => {
+        const s = st(f);
+        if (s.startsWith('aprov') || ['negada','reprovada','negado','recusada','recusado'].includes(s)) return 1;
+        if (f.comprou || f.venda_concluida || s.includes('venda') || s.includes('pago')) return 1;
+        return 0; // pendente
+      };
+      const dA = done(a), dB = done(b);
+      if (dA !== dB) return dA - dB;
+      // entre pendentes: mais antigas primeiro (chegaram primeiro)
+      const tA = new Date(a.created_at || a.data_ficha || 0).getTime() || Number(a.id) || 0;
+      const tB = new Date(b.created_at || b.data_ficha || 0).getTime() || Number(b.id) || 0;
+      return tA - tB;
+    });
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight">Fichas de Credito</h1>
+          <h1 className="text-4xl font-bold tracking-tight">{t('page.fichas.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Admin, gerente e elfenAI veem todas. Cliente na loja fica no topo.
+            {t('page.fichas.sub')}
           </p>
         </div>
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar nome, CPF, placa, vendedor..." className="mr-2 rounded border border-border bg-card px-3 py-1.5 text-sm" />
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder={t('page.fichas.search')} className="mr-2 rounded border border-border bg-card px-3 py-1.5 text-sm" />
         <select
           className="mr-2 rounded border border-border bg-card px-3 py-1.5 text-sm"
           value={carroceria}
           onChange={(e) => setCarroceria(e.target.value)}
         >
-          <option value="todas">Carroceria: todas</option>
+          <option value="todas">{t('page.fichas.body_all')}</option>
           <option value="hatch">hatch</option>
           <option value="sedan">sedan</option>
           <option value="suv">suv</option>
@@ -97,25 +120,25 @@ export default function FichasPage() {
         <Select value={periodo} onValueChange={setPeriodo}>
           <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="todas">Todo período</SelectItem>
-            <SelectItem value="mes">Este mês</SelectItem>
-            <SelectItem value="mes_passado">Mês passado</SelectItem>
+            <SelectItem value="todas">{t('page.fichas.all_period')}</SelectItem>
+            <SelectItem value="mes">{t('page.fichas.this_month')}</SelectItem>
+            <SelectItem value="mes_passado">{t('page.fichas.last_month')}</SelectItem>
           </SelectContent>
         </Select>
       </header>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <button onClick={() => setStatus('todos')} className={`rounded-lg border p-3 text-left ${status === 'todos' ? 'border-primary' : 'border-border'}`}>
-          <div className="text-xs text-muted-foreground">Fichas</div><div className="text-2xl font-bold">{todas.length}</div>
+          <div className="text-xs text-muted-foreground">{t('page.fichas.total')}</div><div className="text-2xl font-bold">{todas.length}</div>
         </button>
         <button onClick={() => setStatus('pendentes')} className={`rounded-lg border p-3 text-left ${status === 'pendentes' ? 'border-primary' : 'border-border'}`}>
-          <div className="text-xs text-muted-foreground">Pendentes</div><div className="text-2xl font-bold">{nPend}</div>
+          <div className="text-xs text-muted-foreground">{t('page.fichas.pending')}</div><div className="text-2xl font-bold">{nPend}</div>
         </button>
         <button onClick={() => setStatus('aprovadas')} className={`rounded-lg border p-3 text-left ${status === 'aprovadas' ? 'border-primary' : 'border-border'}`}>
-          <div className="text-xs text-muted-foreground">Aprovadas</div><div className="text-2xl font-bold text-emerald-400">{nAprov}</div>
+          <div className="text-xs text-muted-foreground">{t('page.fichas.approved')}</div><div className="text-2xl font-bold text-emerald-400">{nAprov}</div>
         </button>
         <button onClick={() => setStatus('negadas')} className={`rounded-lg border p-3 text-left ${status === 'negadas' ? 'border-primary' : 'border-border'}`}>
-          <div className="text-xs text-muted-foreground">Recusadas</div><div className="text-2xl font-bold text-rose-400">{nNeg}</div>
+          <div className="text-xs text-muted-foreground">{t('page.fichas.rejected')}</div><div className="text-2xl font-bold text-rose-400">{nNeg}</div>
         </button>
       </div>
 

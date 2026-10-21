@@ -3,6 +3,7 @@
 import { CarLoader } from '@/components/car-loader';
 import { useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { useI18n } from '@/contexts/i18n-context';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -19,17 +20,20 @@ import type { Lead, LeadFiltros } from '@/types';
 import { LeadEditDialog } from '@/components/lead-edit-dialog';
 import { useFavoritos } from '@/contexts/favoritos-context';
 
-const FILTROS = [
-  { value: 'todos', label: 'Todos' },
-  { value: 'responderam', label: 'Responderam' },
-  { value: 'nao_responderam', label: 'Nao responderam' },
-  { value: 'fichas', label: 'Fichas' },
-  { value: 'aprovados', label: 'Aprovados' },
-  { value: 'vendidos', label: 'Vendidos' },
-] as const;
+// labels via t() no componente
 
 export default function PainelPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
+  const FILTROS = [
+    { value: 'todos', label: t('page.painel.all') },
+    { value: 'responderam', label: t('page.painel.replied') },
+    { value: 'nao_responderam', label: t('page.painel.not_replied') },
+    { value: 'fichas', label: t('page.painel.sheets') },
+    { value: 'aprovados', label: t('page.painel.approved') },
+    { value: 'vendidos', label: t('page.painel.sold') },
+  ] as const;
+
   const [filtro, setFiltro] = useState<LeadFiltros['filtro']>('todos');
   const [periodo, setPeriodo] = useState<LeadFiltros['periodo']>('mes');
   const [busca, setBusca] = useState('');
@@ -91,17 +95,17 @@ export default function PainelPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <header>
-        <h1 className="text-4xl font-bold tracking-tight">Painel de Controle</h1>
+        <h1 className="text-4xl font-bold tracking-tight">{t('page.painel.title')}</h1>
         <Link href="/novo-lead">
           <Button className="mt-4" size="lg">
-            <PlusCircle className="mr-2 h-4 w-4" /> Adicionar lead
+            <PlusCircle className="mr-2 h-4 w-4" /> {t('page.painel.add_lead')}
           </Button>
         </Link>
       </header>
 
       <section className="space-y-4">
         <div>
-          <Label className="text-base">Filtro</Label>
+          <Label className="text-base">{t('page.painel.filter')}</Label>
           <RadioGroup
             className="mt-2 flex flex-wrap gap-5"
             value={filtro} onValueChange={(v) => setFiltro(v as any)}
@@ -135,34 +139,34 @@ export default function PainelPage() {
           </div>
         )}
         <div className="max-w-xs">
-          <Label className="text-sm">Periodo</Label>
+          <Label className="text-sm">{t('page.painel.period')}</Label>
           <Select value={periodo} onValueChange={(v) => setPeriodo(v as any)}>
             <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas as datas</SelectItem>
               <SelectItem value="hoje">Hoje</SelectItem>
               <SelectItem value="semana">Esta semana</SelectItem>
-              <SelectItem value="mes">Este mes</SelectItem>
-              <SelectItem value="mes_passado">Mes passado</SelectItem>
+              <SelectItem value="mes">{t('page.painel.this_month')}</SelectItem>
+              <SelectItem value="mes_passado">{t('page.painel.last_month')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </section>
 
       <section className="grid grid-cols-2 gap-6 md:grid-cols-5">
-        <StatCard label="Total de leads" value={totalLeads} />
-        <StatCard label="Responderam" value={totalResp} />
-        <StatCard label="Fichas geradas" value={totalFichas} />
-        <StatCard label="Aprovados" value={totalAprov} />
-        <StatCard label="Vendidos" value={totalVend} />
+        <StatCard label={t('page.painel.total_leads')} value={totalLeads} />
+        <StatCard label={t('page.painel.replied_n')} value={totalResp} />
+        <StatCard label={t('page.painel.sheets_n')} value={totalFichas} />
+        <StatCard label={t('page.painel.approved_n')} value={totalAprov} />
+        <StatCard label={t('page.painel.sold_n')} value={totalVend} />
       </section>
 
       <section className="space-y-3">
-        <Label>Buscar lead</Label>
+        <Label>{t('page.painel.search_lead')}</Label>
         <div className="flex flex-wrap gap-3">
           <div className="relative min-w-[200px] flex-1">
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-9" placeholder="Nome, CPF, telefone..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+            <Input className="pl-9" placeholder={t('page.painel.search_ph')} value={busca} onChange={(e) => setBusca(e.target.value)} />
           </div>
           <select
             className="rounded-md border border-border bg-background px-3 text-sm"
@@ -181,7 +185,7 @@ export default function PainelPage() {
       </section>
 
       <section>
-        <h2 className="text-2xl font-semibold">Leads cadastrados</h2>
+        <h2 className="text-2xl font-semibold">{t('page.painel.leads_list')}</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           {isLoading ? 'Carregando...' : `Exibindo ${filteredLeads.length} de ${leads.length} leads.`}
         </p>
