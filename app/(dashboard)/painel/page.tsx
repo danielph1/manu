@@ -15,7 +15,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import {
   PlusCircle, Search, Phone, MessageSquare, UserCircle2, Loader2, Store,
-  Info, Heart, ListPlus, Trash2, Calendar, X, Plus,
+  Info, Heart, ListPlus, Trash2, Calendar, X, Plus, Pin,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { leadsService } from '@/lib/services';
@@ -416,6 +416,7 @@ export default function PainelPage() {
                 pinned={pins.includes(Number(lead.id))}
                 onOpen={() => setSelected(lead)}
                 onMenu={() => setMenuLead(lead)}
+                onPin={togglePin}
               />
             ))}
           </div>
@@ -463,7 +464,7 @@ export default function PainelPage() {
               }}
             />
             <ActionRow
-              icon={<span className="text-base">📌</span>}
+              icon={<Pin className="h-5 w-5" />}
               label={pins.includes(Number(menuLead.id)) ? 'Desafixar' : 'Fixar (máx. 3)'}
               onClick={() => {
                 togglePin(Number(menuLead.id));
@@ -644,11 +645,13 @@ function LeadCard({
   pinned,
   onOpen,
   onMenu,
+  onPin,
 }: {
   lead: Lead;
   pinned?: boolean;
   onOpen: () => void;
   onMenu: () => void;
+  onPin?: (id: number) => void;
 }) {
   const fav = useFavoritos();
   const marcado = fav.tem(Number(lead.id));
@@ -659,31 +662,28 @@ function LeadCard({
   const moved = useRef(false);
   const dxRef = useRef(0);
 
-  // clique fora → fecha o swipe travado
   useEffect(() => {
     if (!locked) return;
     const close = (e: Event) => {
       const target = e.target as HTMLElement | null;
-      // se clicou num botão de ação do próprio card, não fecha ainda
       if (target?.closest?.('[data-swipe-action]')) return;
       setLocked(null);
       setDx(0);
       dxRef.current = 0;
     };
-    // delay pra não fechar no mesmo toque que travou
-    const t = window.setTimeout(() => {
+    const tmr = window.setTimeout(() => {
       window.addEventListener('click', close);
       window.addEventListener('touchstart', close, { passive: true });
-    }, 50);
+    }, 80);
     return () => {
-      window.clearTimeout(t);
+      window.clearTimeout(tmr);
       window.removeEventListener('click', close);
       window.removeEventListener('touchstart', close);
     };
   }, [locked]);
 
   const onTouchStart = (e: React.TouchEvent) => {
-    if (locked) return; // já travado — próximo toque fora fecha
+    if (locked) return;
     startX.current = e.touches[0].clientX;
     startY.current = e.touches[0].clientY;
     moved.current = false;
@@ -708,12 +708,10 @@ function LeadCard({
     }
     const x = dxRef.current;
     if (moved.current && x <= -56) {
-      // esquerda → trava revelando ações
       setLocked('left');
       setDx(-88);
       dxRef.current = -88;
     } else if (moved.current && x >= 56) {
-      // direita → trava revelando fixar/favorito
       setLocked('right');
       setDx(88);
       dxRef.current = 88;
@@ -727,44 +725,48 @@ function LeadCard({
   };
 
   const agendado = !!(lead as any).data_hora_visita || !!(lead as any).data_agendamento;
+  const showRight = locked === 'right' || dx > 12;
+  const showLeft = locked === 'left' || dx < -12;
 
   return (
-    <div className="relative overflow-hidden rounded-xl">
-      {/* fundo ESQUERDA (aparece ao arrastar p/ direita) */}
+    <div className="relative overflow-hidden rounded-xl bg-card">
+      {/* arrastar DIREITA → Fixar (painel na esquerda) */}
       <div
-        className="absolute inset-y-0 left-0 flex w-[88px] flex-col items-center justify-center gap-1 bg-amber-600 text-[11px] font-medium text-white"
-        style={{ opacity: locked === 'right' || dx > 20 ? 1 : 0 }}
+        className={`absolute inset-y-0 left-0 z-0 flex w-[88px] items-stretch ${showRight ? 'opacity-100' : 'opacity-0'} transition-opacity`}
+        aria-hidden={!showRight}
       >
         <button
           type="button"
           data-swipe-action
-          className="flex flex-col items-center gap-0.5 px-2"
+          className="flex w-full flex-col items-center justify-center gap-1 bg-amber-600 text-[11px] font-medium text-white"
           onClick={(e) => {
             e.stopPropagation();
-            fav.toggle(Number(lead.id));
+            onPin?.(Number(lead.id));
             setLocked(null);
             setDx(0);
+            dxRef.current = 0;
           }}
         >
-          <Heart className="h-5 w-5" />
-          Favorito
+          <Pin className="h-5 w-5" />
+          {pinned ? 'Desafixar' : 'Fixar'}
         </button>
       </div>
 
-      {/* fundo DIREITA (aparece ao arrastar p/ esquerda) */}
+      {/* arrastar ESQUERDA → Ações (painel na direita) */}
       <div
-        className="absolute inset-y-0 right-0 flex w-[88px] flex-col items-center justify-center gap-1 bg-sky-600 text-[11px] font-medium text-white"
-        style={{ opacity: locked === 'left' || dx < -20 ? 1 : 0 }}
+        className={`absolute inset-y-0 right-0 z-0 flex w-[88px] items-stretch ${showLeft ? 'opacity-100' : 'opacity-0'} transition-opacity`}
+        aria-hidden={!showLeft}
       >
         <button
           type="button"
           data-swipe-action
-          className="flex flex-col items-center gap-0.5 px-2"
+          className="flex w-full flex-col items-center justify-center gap-1 bg-sky-600 text-[11px] font-medium text-white"
           onClick={(e) => {
             e.stopPropagation();
             onMenu();
             setLocked(null);
             setDx(0);
+            dxRef.current = 0;
           }}
         >
           <Info className="h-5 w-5" />
@@ -773,15 +775,17 @@ function LeadCard({
       </div>
 
       <Card
-        className="relative cursor-pointer bg-card transition hover:border-primary/60 hover:shadow-lg"
+        className="relative z-10 cursor-pointer border-border bg-card shadow-none transition hover:border-primary/60"
         style={{
           transform: `translateX(${dx}px)`,
           transition: startX.current != null ? 'none' : 'transform 180ms ease',
+          borderRadius: '0.75rem',
         }}
         onClick={() => {
           if (locked) {
             setLocked(null);
             setDx(0);
+            dxRef.current = 0;
             return;
           }
           if (!moved.current) onOpen();
@@ -797,7 +801,7 @@ function LeadCard({
           startX.current = null;
         }}
       >
-        <CardContent className="space-y-3 p-5">
+        <CardContent className="space-y-3 bg-card p-5">
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2 text-lg font-semibold">
               <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
