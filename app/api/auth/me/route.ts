@@ -9,8 +9,14 @@ export async function GET(req: NextRequest) {
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   try {
     const row = await queryOne(
-      `SELECT id, login, nome, tipo, vendedor_id, loja, COALESCE(ativo,TRUE) AS ativo, COALESCE(foto_url,'') AS foto_url
-       FROM public.usuarios WHERE id = $1`,
+      `SELECT u.id, u.login, u.nome, u.tipo, u.vendedor_id, u.loja,
+              COALESCE(u.ativo,TRUE) AS ativo,
+              COALESCE(u.foto_url,'') AS foto_url,
+              u.empresa_id,
+              e.nome AS empresa_nome
+       FROM public.usuarios u
+       LEFT JOIN public.empresas e ON e.id = u.empresa_id
+       WHERE u.id = $1`,
       [u.id],
     );
     return NextResponse.json(row || u);

@@ -1,7 +1,7 @@
 'use client';
 // Painel de Leads - integrado com API real
 import { CarLoader } from '@/components/car-loader';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useI18n } from '@/contexts/i18n-context';
 import Link from 'next/link';
@@ -41,7 +41,37 @@ export default function PainelPage() {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [loja, setLoja] = useState('');
   const [vendedorId, setVendedorId] = useState('');
+  const [pins, setPins] = useState<number[]>([]);
+  useEffect(() => { setPins(loadPins()); }, []);
+  const togglePin = (id: number) => {
+    setPins((prev) => {
+      let next: number[];
+      if (prev.includes(id)) next = prev.filter((x) => x !== id);
+      else if (prev.length >= 3) {
+        // max 3 — remove o mais antigo e adiciona
+        next = [...prev.slice(1), id];
+      } else next = [...prev, id];
+      savePins(next);
+      return next;
+    });
+  };
+  const handleDeleteLead = async (id: number) => {
+    if (!confirm('Apagar este lead? Esta ação não pode ser desfeita.')) return;
+    try {
+      await api.delete(`/leads/${id}`);
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      setPins((prev) => {
+        const next = prev.filter((x) => x !== id);
+        savePins(next);
+        return next;
+      });
+    } catch (e: any) {
+      alert(e?.response?.data?.error || 'Falha ao apagar lead');
+    }
+  };
 
+
+  const qc = useQueryClient();
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads', filtro, periodo, loja, vendedorId],
     queryFn: () => leadsService.list({ filtro, periodo, loja: loja || undefined, vendedor_id: vendedorId || undefined }),
@@ -89,8 +119,14 @@ export default function PainelPage() {
         return blob.includes(f);
       });
     }
-    return arr;
-  }, [leads, busca, carroceria]);
+    // fixados primeiro (máx 3)
+    const pinSet = new Set(pins);
+    const pinned = arr.filter((l) => pinSet.has(Number(l.id)));
+    const rest = arr.filter((l) => !pinSet.has(Number(l.id)));
+    // mantém ordem dos pins conforme gravado
+    pinned.sort((a, b) => pins.indexOf(Number(a.id)) - pins.indexOf(Number(b.id)));
+    return [...pinned, ...rest];
+  }, [leads, busca, carroceria, pins]);
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -192,7 +228,7 @@ export default function PainelPage() {
         {isLoading && <CarLoader compact />}
         <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredLeads.map((lead) => (
-            <LeadCard key={lead.id} lead={lead} onClick={() => setSelected(lead)} />
+            <LeadCard key={lead.id} lead={lead} onClick={() => setSelected(lead)} pinned={pins.includes(Number(lead.id))} onPin={togglePin} onDelete={handleDeleteLead} />
           ))}
         </div>
       </section>
@@ -211,59 +247,181 @@ function StatCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function LeadCard({ lead, onClick }: { lead: Lead; onClick: () => void }) {
-  const fav = useFavoritos();
-  const marcado = fav.tem(Number(lead.id));
-  return (
-    <Card className="cursor-pointer transition hover:border-primary/60 hover:shadow-lg" onClick={onClick}>
-      <CardContent className="space-y-3 p-5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 text-lg font-semibold min-w-0">
-            <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
-            <span className="truncate">{lead.nome_lead}</span>
-          </div>
-          <a href={`/chat?lead=${lead.id}`} onClick={(e) => e.stopPropagation()} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-foreground" aria-label="Chat">
-            <MessageSquare className="h-4 w-4" />
-          </a>
-          <button
-            type="button"
-            aria-label="Favoritar"
-            onClick={(e) => { e.stopPropagation(); fav.toggle(Number(lead.id)); }}
-            className="shrink-0 rounded-full p-1"
-          >
-            <svg viewBox="0 0 24 24" className="h-6 w-6" style={{ fill: marcado ? 'rgb(220,72,127)' : 'rgb(167,167,167)', transform: marcado ? 'scale(1.15)' : 'scale(1)', transition: 'all 200ms' }}>
-              <path d="M12 21.35l-1.45-1.32c-5.15-4.67-8.55-7.75-8.55-11.53 0-3.08 2.42-5.5 5.5-5.5 1.74 0 3.41.81 4.5 2.09 1.09-1.28 2.76-2.09 4.5-2.09 3.08 0 5.5 2.42 5.5 5.5 0 3.78-3.4 6.86-8.55 11.54l-1.45 1.31z"/>
-            </svg>
-          </button>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {lead.venda_concluida && <Badge className="bg-emerald-600 hover:bg-emerald-600">VENDA CONCLUIDA</Badge>}
-          {(lead as any).em_loja && <Badge variant="outline" className="gap-1"><Store className="h-3 w-3" />Na loja</Badge>}
-        </div>
-        <div className="space-y-1 text-sm text-muted-foreground">
-          <div>Vendedor: <span className="text-foreground capitalize">{lead.vendedor_nome ?? '-'}</span></div>
-          {lead.produto_interesse && <div>Interesse: <span className="text-foreground">{lead.produto_interesse}</span></div>}
-          {lead.telefone && <a href={`https://wa.me/55${String(lead.telefone).replace(/\D/g,'')}`} target="_blank" onClick={(e) => e.stopPropagation()} className="flex items-center gap-1 text-primary"><Phone className="h-3 w-3" />{lead.telefone}</a>}
-        </div>
-        <div className="flex flex-wrap gap-2 pt-1">
-          <StatusChip label="Respondeu" ok={!!lead.respondeu} />
-          <StatusChip label="Ficha" ok={!!lead.gerou_ficha} />
-          {(lead as any).aprovado
-            ? <StatusChip label="Aprovado" ok />
-            : ['negada','negado','reprovada','recusada'].includes(String((lead as any).status_ficha || '').toLowerCase())
-              ? <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-xs text-red-400">Recusado</span>
-              : <StatusChip label="Aprovado" ok={false} />}
-        </div>
-      </CardContent>
-    </Card>
-  );
+
+const PINS_KEY = 'manu.lead.pins';
+function loadPins(): number[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PINS_KEY) || '[]');
+    return Array.isArray(raw) ? raw.map(Number).filter(Boolean).slice(0, 3) : [];
+  } catch {
+    return [];
+  }
+}
+function savePins(ids: number[]) {
+  localStorage.setItem(PINS_KEY, JSON.stringify(ids.slice(0, 3)));
 }
 
-function StatusChip({ label, ok }: { label: string; ok: boolean }) {
-  const Icon = ok ? CheckCircle2 : XCircle;
+function LeadCard({
+  lead,
+  onClick,
+  pinned,
+  onPin,
+  onDelete,
+}: {
+  lead: Lead;
+  onClick: () => void;
+  pinned?: boolean;
+  onPin?: (id: number) => void;
+  onDelete?: (id: number) => void;
+}) {
+  const fav = useFavoritos();
+  const marcado = fav.tem(Number(lead.id));
+  const [dx, setDx] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+  const startX = useRef<number | null>(null);
+  const startY = useRef<number | null>(null);
+  const moved = useRef(false);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    startX.current = e.touches[0].clientX;
+    startY.current = e.touches[0].clientY;
+    moved.current = false;
+    setSwiping(true);
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (startX.current == null || startY.current == null) return;
+    const x = e.touches[0].clientX - startX.current;
+    const y = Math.abs(e.touches[0].clientY - startY.current);
+    if (y > 30 && Math.abs(x) < 20) {
+      // scroll vertical — cancela
+      startX.current = null;
+      setDx(0);
+      setSwiping(false);
+      return;
+    }
+    if (Math.abs(x) > 8) moved.current = true;
+    // limita arrasto visual
+    setDx(Math.max(-110, Math.min(110, x)));
+  };
+  const onTouchEnd = () => {
+    if (moved.current) {
+      if (dx > 70) onPin?.(Number(lead.id)); // direita → fixar
+      if (dx < -70) onDelete?.(Number(lead.id)); // esquerda → apagar
+    }
+    setDx(0);
+    setSwiping(false);
+    startX.current = null;
+    startY.current = null;
+  };
+
   return (
-    <div className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${ok ? 'bg-emerald-500/10 text-emerald-400' : 'bg-muted text-muted-foreground'}`}>
-      <Icon className="h-3 w-3" />{label}
+    <div className="relative overflow-hidden rounded-xl">
+      {/* ações de fundo */}
+      <div className="pointer-events-none absolute inset-0 flex">
+        <div className="flex w-1/2 items-center justify-start bg-amber-600/90 pl-4 text-sm font-medium text-white">
+          {pinned ? 'Desafixar' : 'Fixar'}
+        </div>
+        <div className="flex w-1/2 items-center justify-end bg-rose-600/90 pr-4 text-sm font-medium text-white">
+          Apagar
+        </div>
+      </div>
+      <Card
+        className="relative cursor-pointer transition hover:border-primary/60 hover:shadow-lg"
+        style={{
+          transform: `translateX(${dx}px)`,
+          transition: swiping ? 'none' : 'transform 180ms ease',
+        }}
+        onClick={() => {
+          if (!moved.current) onClick();
+        }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
+      >
+        <CardContent className="space-y-3 p-5">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 text-lg font-semibold min-w-0">
+              <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
+              <span className="truncate">{lead.nome_lead}</span>
+              {pinned && (
+                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                  FIXO
+                </span>
+              )}
+            </div>
+            <a
+              href={`/chat?lead=${lead.id}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-foreground"
+              aria-label="Chat"
+            >
+              <MessageSquare className="h-4 w-4" />
+            </a>
+            <button
+              type="button"
+              aria-label="Favoritar"
+              onClick={(e) => {
+                e.stopPropagation();
+                fav.toggle(Number(lead.id));
+              }}
+              className="shrink-0 rounded-full p-1"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-6 w-6"
+                style={{
+                  fill: marcado ? 'rgb(220,72,127)' : 'rgb(167,167,167)',
+                  transform: marcado ? 'scale(1.15)' : 'scale(1)',
+                  transition: 'all 200ms',
+                }}
+              >
+                <path d="M12 21.35l-1.45-1.32c-5.15-4.67-8.55-7.75-8.55-11.53 0-3.08 2.42-5.5 5.5-5.5 1.74 0 3.41.81 4.5 2.09 1.09-1.28 2.76-2.09 4.5-2.09 3.08 0 5.5 2.42 5.5 5.5 0 3.78-3.4 6.86-8.55 11.54l-1.45 1.31z" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {lead.venda_concluida && (
+              <Badge className="bg-emerald-600 hover:bg-emerald-600">VENDA CONCLUIDA</Badge>
+            )}
+            {(lead as any).em_loja && (
+              <Badge variant="outline" className="gap-1">
+                <Store className="h-3 w-3" />
+                Na loja
+              </Badge>
+            )}
+            {(lead as any).aprovado === true && (
+              <Badge className="bg-blue-600 hover:bg-blue-600">Aprovado</Badge>
+            )}
+            {(lead as any).aprovado === false && lead.gerou_ficha && (
+              <Badge className="bg-rose-600 hover:bg-rose-600">Recusado</Badge>
+            )}
+          </div>
+          <div className="space-y-1 text-sm text-muted-foreground">
+            <div>
+              Vendedor:{' '}
+              <span className="text-foreground capitalize">{lead.vendedor_nome ?? '-'}</span>
+            </div>
+            {lead.produto_interesse && (
+              <div>
+                Interesse: <span className="text-foreground">{lead.produto_interesse}</span>
+              </div>
+            )}
+            {lead.telefone && (
+              <div className="flex items-center gap-1">
+                <Phone className="h-3.5 w-3.5" />
+                <a
+                  href={`https://wa.me/55${String(lead.telefone).replace(/\\D/g, '')}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-primary underline-offset-2 hover:underline"
+                >
+                  {lead.telefone}
+                </a>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

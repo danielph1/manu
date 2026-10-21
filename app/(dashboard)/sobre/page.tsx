@@ -1,17 +1,23 @@
+'use client';
+import { useAuth } from '@/contexts/auth-context';
+
 export default function SobrePage() {
+  const { user } = useAuth();
+  const empresa = (user as any)?.empresa_nome || 'sua empresa';
+
   return (
     <div className="mx-auto max-w-2xl space-y-6 text-sm leading-relaxed">
       <h1 className="text-2xl font-bold">Sobre nós</h1>
 
       <p>
         A <b>Aurox</b> desenvolve sistemas de operação para o varejo automotivo.
-        O que você usa aqui foi feito para a <b>Manu Automóveis</b>: um ambiente único
+        O que você usa aqui foi feito para a <b>{empresa}</b>: um ambiente único
         onde lead, ficha, estoque, oficina e faturamento andam juntos, com cada pessoa
         vendo só o que o cargo permite.
       </p>
 
       <p>
-        Não somos a loja. Somos quem constrói a ferramenta. A Manu Automóveis é a
+        Não somos a loja. Somos quem constrói a ferramenta. A <b>{empresa}</b> é a
         contratante e a responsável pelos dados dos clientes. Os funcionários usam o
         sistema a serviço dela, dentro das funções definidas.
       </p>
@@ -25,7 +31,7 @@ export default function SobrePage() {
       </ul>
 
       <p className="text-muted-foreground">
-        Aurox Sistemas · ferramenta de uso interno da Manu Automóveis.
+        Aurox Sistemas · ferramenta de uso interno da {empresa}.
       </p>
     </div>
   );

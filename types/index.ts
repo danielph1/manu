@@ -9,11 +9,14 @@ export interface User {
   id: number;
   login: string;
   nome?: string | null;
-  tipo: UserTipo;
+  tipo: UserTipo | string;
   vendedor_id?: number | null;
   ativo: boolean;
   loja?: string | null;
   created_at?: string;
+  empresa_id?: number | null;
+  empresa_nome?: string | null;
+  foto_url?: string | null;
 }
 
 export interface AuthResponse {

@@ -55,7 +55,17 @@ function ChatPageInner() {
     },
     refetchInterval: 4000,
   });
-  const conversas = Array.isArray(conversasRaw) ? conversasRaw : [];
+  const conversasAll = Array.isArray(conversasRaw) ? conversasRaw : [];
+  // filtro local de reforço (se API não filtrar por algum motivo)
+  const conversas = !buscaConv.trim()
+    ? conversasAll
+    : conversasAll.filter((c: any) => {
+        const q = buscaConv.trim().toLowerCase();
+        const blob = [
+          c.nome, c.telefone, c.email, c.interesse, c.ultima, c.cpf, c.cpf_cnpj, c.placa,
+        ].map((x) => String(x || '').toLowerCase()).join(' ');
+        return blob.includes(q);
+      });
   useEffect(() => {
     if (!leadId || !Array.isArray(data) || !data.length) return;
     const lidos = JSON.parse(localStorage.getItem('manu.lidos') || '{}');
