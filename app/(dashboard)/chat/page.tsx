@@ -28,6 +28,7 @@ function ChatPageInner() {
   const [recording, setRecording] = useState(false);
   const [audioPendente, setAudioPendente] = useState<Blob | null>(null);
   const [editando, setEditando] = useState<{ id: number; texto: string } | null>(null);
+  const [buscaConv, setBuscaConv] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -40,11 +41,21 @@ function ChatPageInner() {
     refetchInterval: 4000,
     enabled: !!leadId,
   });
-  const { data: conversas = [] } = useQuery({
-    queryKey: ['conversas'],
-    queryFn: async () => (await api.get('/chat/conversas')).data,
+  const { data: conversasRaw = [] } = useQuery({
+    queryKey: ['conversas', buscaConv],
+    queryFn: async () => {
+      try {
+        const r = await api.get('/chat/conversas', {
+          params: buscaConv.trim() ? { busca: buscaConv.trim() } : {},
+        });
+        return Array.isArray(r.data) ? r.data : [];
+      } catch {
+        return [];
+      }
+    },
     refetchInterval: 4000,
   });
+  const conversas = Array.isArray(conversasRaw) ? conversasRaw : [];
   useEffect(() => {
     if (!leadId || !Array.isArray(data) || !data.length) return;
     const lidos = JSON.parse(localStorage.getItem('manu.lidos') || '{}');
@@ -195,6 +206,12 @@ function ChatPageInner() {
     return (
       <div className="mx-auto max-w-2xl space-y-3">
         <h1 className="text-2xl font-bold">{t('page.chat.title')}</h1>
+        <input
+          className="mb-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          placeholder="Buscar nome, telefone, e-mail, CPF, carro..."
+          value={buscaConv}
+          onChange={(e) => setBuscaConv(e.target.value)}
+        />
         {(Array.isArray(conversas) ? conversas : []).map((c: any) => {
           const nao = Math.max(0, Number(c.total || 0) - Number(lidos[c.id] || 0));
           return (

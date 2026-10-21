@@ -30,12 +30,16 @@ export async function GET(req: NextRequest) {
     // Garante processos a partir de faturamentos liberados/emitidos sem processo
     try {
       await query(`
-        INSERT INTO public.processos_transferencia (ficha_id, lead_id, placa, nome_lead, status, observacao)
+        INSERT INTO public.processos_transferencia (ficha_id, lead_id, placa, nome_lead, marca, modelo, ano, cor, status, observacao)
         SELECT
           fat.ficha_id,
           fat.lead_id,
           fat.placa,
           fat.nome,
+          fat.marca,
+          COALESCE(fat.modelo, fat.carro),
+          COALESCE(fat.ano_modelo, fat.ano),
+          fat.cor,
           'em_andamento',
           'auto: liberado no faturamento'
         FROM public.faturamentos fat
@@ -65,10 +69,10 @@ export async function GET(req: NextRequest) {
          f.vendedor_id,
          COALESCE(NULLIF(TRIM(p.nome_lead),''), fat.nome, l.nome_lead, l.nome_completo, '—') AS nome_lead,
          COALESCE(NULLIF(TRIM(p.placa),''), fat.placa, l.placa_carro, '') AS placa,
-         COALESCE(fat.marca, l.marca_carro, '') AS marca,
-         COALESCE(fat.modelo, l.modelo, l.produto_interesse, '') AS modelo,
-         COALESCE(fat.ano_modelo, l.ano_carro, '') AS ano,
-         COALESCE(fat.cor, l.cor_carro, '') AS cor,
+         COALESCE(NULLIF(TRIM(p.marca),''), fat.marca, est.marca, l.marca_carro, '') AS marca,
+         COALESCE(NULLIF(TRIM(p.modelo),''), fat.modelo, fat.carro, est.modelo, est.carro, l.modelo, l.produto_interesse, '') AS modelo,
+         COALESCE(NULLIF(TRIM(p.ano),''), fat.ano_modelo, fat.ano, est.ano, est.ano_modelo, l.ano_carro, '') AS ano,
+         COALESCE(NULLIF(TRIM(p.cor),''), fat.cor, est.cor, l.cor_carro, '') AS cor,
          fat.created_at AS compra_em,
          fat.status AS fat_status,
          COALESCE(fat.liberado, FALSE) AS liberado,
@@ -78,6 +82,14 @@ export async function GET(req: NextRequest) {
        LEFT JOIN public.fichas_credito f ON f.id = p.ficha_id
        LEFT JOIN public.leads l ON l.id = COALESCE(f.lead_id, p.lead_id)
        LEFT JOIN public.vendedores v ON v.id = COALESCE(f.vendedor_id, l.vendedor_id)
+       LEFT JOIN LATERAL (
+         SELECT marca, modelo, carro, ano, ano_modelo, cor, placa
+         FROM public.estoque_carros e
+         WHERE COALESCE(p.placa,'') <> ''
+           AND REPLACE(REPLACE(UPPER(COALESCE(e.placa,'')),'-',''),' ','')
+             = REPLACE(REPLACE(UPPER(p.placa),'-',''),' ','')
+         LIMIT 1
+       ) est ON TRUE
        LEFT JOIN LATERAL (
          SELECT *
          FROM public.faturamentos fat2

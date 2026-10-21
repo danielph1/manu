@@ -149,22 +149,34 @@ export default function EstoquePage() {
   const [fotoIdx, setFotoIdx] = useState(0);
   const [uploading, setUploading] = useState(false);
 
-  const canEdit = podeEditarFotos(user?.tipo);
+  const canEdit = podeEditarFotos(user?.tipo as string | undefined);
 
-  const { data: carros = [], isLoading } = useQuery({
+  const { data: carrosRaw = [], isLoading } = useQuery({
     queryKey: ['estoque', q],
-    queryFn: async () => (await api.get('/estoque', { params: { busca: q || undefined } })).data,
+    queryFn: async () => {
+      try {
+        const r = await api.get('/estoque', { params: { busca: q || undefined } });
+        return Array.isArray(r.data) ? r.data : [];
+      } catch {
+        return [];
+      }
+    },
   });
+  const carros = Array.isArray(carrosRaw) ? carrosRaw : [];
 
-  const { data: fotos = [], isFetching: loadingFotos } = useQuery({
+  const { data: fotosRaw = [], isFetching: loadingFotos } = useQuery({
     queryKey: ['estoque-fotos', sel?.id],
     enabled: !!sel?.id,
-    queryFn: async () =>
-      (await api.get('/estoque/fotos', { params: { carro_id: sel.id } })).data as {
-        id: number;
-        url: string;
-      }[],
+    queryFn: async () => {
+      try {
+        const r = await api.get('/estoque/fotos', { params: { carro_id: sel.id } });
+        return Array.isArray(r.data) ? r.data : [];
+      } catch {
+        return [];
+      }
+    },
   });
+  const fotos = Array.isArray(fotosRaw) ? fotosRaw : [];
 
   const lista = useMemo(() => {
     let arr = [...(carros as any[])].filter((c) => matchCarroceria(c, carroceria));
