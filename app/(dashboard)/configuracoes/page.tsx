@@ -1,5 +1,4 @@
 'use client';
-
 import Link from 'next/link';
 import {
   User, Heart, Palette, Info, Shield, ChevronRight, Bell, Languages,

@@ -296,6 +296,29 @@ html[data-theme="aurora"] {
   --ring: 275 70% 58%;
 }
 
+
+
+html[data-theme="cristal"] {
+  /* gelo / ciano luminoso — tema raro */
+  --background: 200 25% 4%;
+  --foreground: 190 30% 96%;
+  --card: 200 22% 7%;
+  --card-foreground: 190 30% 96%;
+  --popover: 200 22% 7%;
+  --popover-foreground: 190 30% 96%;
+  --primary: 185 80% 48%;
+  --primary-foreground: 200 30% 6%;
+  --secondary: 200 18% 12%;
+  --secondary-foreground: 190 30% 96%;
+  --muted: 200 16% 12%;
+  --muted-foreground: 200 12% 62%;
+  --accent: 185 40% 16%;
+  --accent-foreground: 190 30% 96%;
+  --border: 200 18% 16%;
+  --input: 200 18% 16%;
+  --ring: 185 80% 48%;
+}
+
 html[data-theme="platinum"] {
   --background: 220 6% 4%;
   --foreground: 210 20% 92%;

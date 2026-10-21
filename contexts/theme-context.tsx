@@ -4,12 +4,13 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 export const TEMAS = [
   { id: 'escuro', nome: 'Escuro', desc: 'O padrão atual' },
   { id: 'preto', nome: 'Preto', desc: 'Quase tudo preto, minimalista' },
-  { id: 'claro', nome: 'Claro Manu', desc: 'Fundo claro com azul' },
+  { id: 'claro', nome: 'Claro', desc: 'Fundo claro com azul' },
   { id: 'azul', nome: 'Azul escuro', desc: 'Fundo azul marinho' },
   { id: 'rosa', nome: 'Rosa', desc: 'Escuro com rosa' },
   { id: 'verde', nome: 'Verde', desc: 'Escuro com verde' },
   { id: 'ambar', nome: 'Âmbar', desc: '3 vendas no mês' },
   { id: 'aurora', nome: 'Aurora', desc: '4 vendas no mês · violeta noturno' },
+  { id: 'cristal', nome: 'Cristal', desc: '5 vendas no mês · gelo e luz' },
   { id: 'grafite', nome: 'Grafite', desc: 'Cinza chumbo, sóbrio' },
   { id: 'platinum', nome: 'Platinum', desc: 'Escuro com platina' },
 ] as const;

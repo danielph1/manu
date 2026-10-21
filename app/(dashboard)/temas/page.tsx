@@ -11,6 +11,7 @@ const REGRA: Record<string, string> = {
   preto: '2 vendas no total',
   ambar: '3 vendas no mês',
   aurora: '4 vendas no mês',
+  cristal: '5 vendas no mês',
 };
 
 export default function TemasPage() {

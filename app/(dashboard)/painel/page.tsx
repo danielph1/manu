@@ -656,7 +656,7 @@ function LeadCard({
   const fav = useFavoritos();
   const marcado = fav.tem(Number(lead.id));
   const [dx, setDx] = useState(0);
-  const [locked, setLocked] = useState<'left' | 'right' | null>(null);
+  const [locked, setLocked] = useState(false);
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
   const moved = useRef(false);
@@ -667,7 +667,7 @@ function LeadCard({
     const close = (e: Event) => {
       const target = e.target as HTMLElement | null;
       if (target?.closest?.('[data-swipe-action]')) return;
-      setLocked(null);
+      setLocked(false);
       setDx(0);
       dxRef.current = 0;
     };
@@ -697,7 +697,8 @@ function LeadCard({
       return;
     }
     if (Math.abs(x) > 12) moved.current = true;
-    const clamped = Math.max(-100, Math.min(100, x));
+    // só direita (fixar)
+    const clamped = Math.max(0, Math.min(100, x));
     dxRef.current = clamped;
     setDx(clamped);
   };
@@ -707,42 +708,37 @@ function LeadCard({
       return;
     }
     const x = dxRef.current;
-    if (moved.current && x <= -56) {
-      setLocked('left');
-      setDx(-88);
-      dxRef.current = -88;
-    } else if (moved.current && x >= 56) {
-      setLocked('right');
+    if (moved.current && x >= 56) {
+      setLocked(true);
       setDx(88);
       dxRef.current = 88;
     } else {
       setDx(0);
       dxRef.current = 0;
-      setLocked(null);
+      setLocked(false);
     }
     startX.current = null;
     startY.current = null;
   };
 
   const agendado = !!(lead as any).data_hora_visita || !!(lead as any).data_agendamento;
-  const showRight = locked === 'right' || dx > 12;
-  const showLeft = locked === 'left' || dx < -12;
+  const showPin = locked || dx > 12;
 
   return (
-    <div className="relative overflow-hidden rounded-xl bg-card">
-      {/* arrastar DIREITA → Fixar (painel na esquerda) */}
+    <div className="relative overflow-hidden rounded-xl">
+      {/* fundo fixar — só aparece ao arrastar para a direita */}
       <div
-        className={`absolute inset-y-0 left-0 z-0 flex w-[88px] items-stretch ${showRight ? 'opacity-100' : 'opacity-0'} transition-opacity`}
-        aria-hidden={!showRight}
+        className="absolute inset-y-0 left-0 flex w-[88px] items-stretch"
+        style={{ opacity: showPin ? 1 : 0 }}
       >
         <button
           type="button"
           data-swipe-action
-          className="flex w-full flex-col items-center justify-center gap-1 bg-amber-600 text-[11px] font-medium text-white"
+          className="flex w-full flex-col items-center justify-center gap-1 rounded-l-xl bg-amber-600 text-[11px] font-medium text-white"
           onClick={(e) => {
             e.stopPropagation();
             onPin?.(Number(lead.id));
-            setLocked(null);
+            setLocked(false);
             setDx(0);
             dxRef.current = 0;
           }}
@@ -752,38 +748,15 @@ function LeadCard({
         </button>
       </div>
 
-      {/* arrastar ESQUERDA → Ações (painel na direita) */}
-      <div
-        className={`absolute inset-y-0 right-0 z-0 flex w-[88px] items-stretch ${showLeft ? 'opacity-100' : 'opacity-0'} transition-opacity`}
-        aria-hidden={!showLeft}
-      >
-        <button
-          type="button"
-          data-swipe-action
-          className="flex w-full flex-col items-center justify-center gap-1 bg-sky-600 text-[11px] font-medium text-white"
-          onClick={(e) => {
-            e.stopPropagation();
-            onMenu();
-            setLocked(null);
-            setDx(0);
-            dxRef.current = 0;
-          }}
-        >
-          <Info className="h-5 w-5" />
-          Ações
-        </button>
-      </div>
-
       <Card
-        className="relative z-10 cursor-pointer border-border bg-card shadow-none transition hover:border-primary/60"
+        className="relative cursor-pointer bg-card transition hover:border-primary/60 hover:shadow-lg"
         style={{
           transform: `translateX(${dx}px)`,
           transition: startX.current != null ? 'none' : 'transform 180ms ease',
-          borderRadius: '0.75rem',
         }}
         onClick={() => {
           if (locked) {
-            setLocked(null);
+            setLocked(false);
             setDx(0);
             dxRef.current = 0;
             return;
@@ -801,7 +774,7 @@ function LeadCard({
           startX.current = null;
         }}
       >
-        <CardContent className="space-y-3 bg-card p-5">
+        <CardContent className="space-y-3 p-5">
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2 text-lg font-semibold">
               <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
