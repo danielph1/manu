@@ -72,11 +72,29 @@ export default function PainelPage() {
   const [agendarLead, setAgendarLead] = useState<Lead | null>(null);
   const [agendarValor, setAgendarValor] = useState('');
   const [pickListaLead, setPickListaLead] = useState<Lead | null>(null);
+  const [pins, setPins] = useState<number[]>([]);
+
 
   useEffect(() => {
     if (!uid) return;
     setListas(loadListas(uid));
+    try {
+      const raw = JSON.parse(localStorage.getItem('manu.lead.pins') || '[]');
+      setPins(Array.isArray(raw) ? raw.map(Number).filter(Boolean).slice(0, 3) : []);
+    } catch { setPins([]); }
   }, [uid]);
+
+  const togglePin = (id: number) => {
+    setPins((prev) => {
+      let next: number[];
+      if (prev.includes(id)) next = prev.filter((x) => x !== id);
+      else if (prev.length >= 3) next = [...prev.slice(1), id];
+      else next = [...prev, id];
+      localStorage.setItem('manu.lead.pins', JSON.stringify(next));
+      return next;
+    });
+  };
+
 
   const persistListas = useCallback(
     (next: Lista[]) => {
@@ -156,8 +174,16 @@ export default function PainelPage() {
       arr = arr.filter((l) => ids.has(Number(l.id)));
     }
 
+    // fixados no topo
+    if (pins.length) {
+      const pinSet = new Set(pins);
+      const pinned = arr.filter((l) => pinSet.has(Number(l.id)));
+      const rest = arr.filter((l) => !pinSet.has(Number(l.id)));
+      pinned.sort((a, b) => pins.indexOf(Number(a.id)) - pins.indexOf(Number(b.id)));
+      arr = [...pinned, ...rest];
+    }
     return arr;
-  }, [leads, busca, carroceria, listaAtiva, listas]);
+  }, [leads, busca, carroceria, listaAtiva, listas, pins]);
 
   function criarLista() {
     const nome = prompt('Nome da nova lista:');
@@ -166,6 +192,16 @@ export default function PainelPage() {
     persistListas([...listas, { id, nome: nome.trim(), leadIds: [] }]);
     setListaAtiva(id);
   }
+
+  function removerLista(id: string) {
+    if (id === 'todos' || id === AGENDADOS_ID) return;
+    const L = listas.find((x) => x.id === id);
+    if (!L) return;
+    if (!confirm(`Remover a lista "${L.nome}"? Os leads não são apagados — só a lista.`)) return;
+    persistListas(listas.filter((x) => x.id !== id));
+    if (listaAtiva === id) setListaAtiva('todos');
+  }
+
 
   function addLeadNaLista(leadId: number, listaId: string) {
     persistListas(
@@ -217,28 +253,7 @@ export default function PainelPage() {
         </Link>
       </header>
 
-      {/* chips de listas — estilo WhatsApp */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-        <Chip active={listaAtiva === 'todos'} onClick={() => setListaAtiva('todos')}>
-          Todos
-        </Chip>
-        <Chip active={listaAtiva === AGENDADOS_ID} onClick={() => setListaAtiva(AGENDADOS_ID)}>
-          <Calendar className="mr-1 h-3.5 w-3.5" /> Agendados
-        </Chip>
-        {listas.map((L) => (
-          <Chip key={L.id} active={listaAtiva === L.id} onClick={() => setListaAtiva(L.id)}>
-            {L.nome}
-          </Chip>
-        ))}
-        <button
-          type="button"
-          onClick={criarLista}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
-          title="Nova lista"
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-      </div>
+      
 
       <section className="space-y-4">
         <div>
@@ -353,7 +368,36 @@ export default function PainelPage() {
         </div>
       </section>
 
-      <section>
+      
+      {/* chips de listas — abaixo da busca, acima dos cards */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <Chip active={listaAtiva === 'todos'} onClick={() => setListaAtiva('todos')}>
+          Todos
+        </Chip>
+        <Chip active={listaAtiva === AGENDADOS_ID} onClick={() => setListaAtiva(AGENDADOS_ID)}>
+          <Calendar className="mr-1 h-3.5 w-3.5" /> Agendados
+        </Chip>
+        {listas.map((L) => (
+          <Chip
+            key={L.id}
+            active={listaAtiva === L.id}
+            onClick={() => setListaAtiva(L.id)}
+            onRemove={() => removerLista(L.id)}
+          >
+            {L.nome}
+          </Chip>
+        ))}
+        <button
+          type="button"
+          onClick={criarLista}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
+          title="Nova lista"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+
+<section>
         <h2 className="text-xl font-semibold">Leads cadastrados</h2>
         <p className="text-sm text-muted-foreground">
           Exibindo {filteredLeads.length} de {leads.length} leads.
@@ -369,6 +413,7 @@ export default function PainelPage() {
               <LeadCard
                 key={lead.id}
                 lead={lead}
+                pinned={pins.includes(Number(lead.id))}
                 onOpen={() => setSelected(lead)}
                 onMenu={() => setMenuLead(lead)}
               />
@@ -414,6 +459,14 @@ export default function PainelPage() {
               label="Adicionar à lista"
               onClick={() => {
                 setPickListaLead(menuLead);
+                setMenuLead(null);
+              }}
+            />
+            <ActionRow
+              icon={<span className="text-base">📌</span>}
+              label={pins.includes(Number(menuLead.id)) ? 'Desafixar' : 'Fixar (máx. 3)'}
+              onClick={() => {
+                togglePin(Number(menuLead.id));
                 setMenuLead(null);
               }}
             />
@@ -524,24 +577,39 @@ export default function PainelPage() {
 function Chip({
   active,
   onClick,
+  onRemove,
   children,
 }: {
   active?: boolean;
   onClick: () => void;
+  onRemove?: () => void;
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex shrink-0 items-center rounded-full border px-3 py-1.5 text-sm transition ${
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-3 py-1.5 text-sm transition ${
         active
           ? 'border-primary bg-primary/15 text-primary'
           : 'border-border bg-card text-muted-foreground hover:border-primary/50'
       }`}
     >
-      {children}
-    </button>
+      <button type="button" onClick={onClick} className="flex items-center">
+        {children}
+      </button>
+      {onRemove && (
+        <button
+          type="button"
+          title="Remover lista"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="ml-0.5 rounded-full p-0.5 opacity-70 hover:bg-rose-500/20 hover:text-rose-400 hover:opacity-100"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </span>
   );
 }
 
@@ -573,62 +641,86 @@ function ActionRow({
 /** Card com swipe só no touch; no desktop usa botão ⋯ */
 function LeadCard({
   lead,
+  pinned,
   onOpen,
   onMenu,
 }: {
   lead: Lead;
+  pinned?: boolean;
   onOpen: () => void;
   onMenu: () => void;
 }) {
   const fav = useFavoritos();
   const marcado = fav.tem(Number(lead.id));
   const [dx, setDx] = useState(0);
-  const [openSwipe, setOpenSwipe] = useState(false);
+  const [locked, setLocked] = useState<'left' | 'right' | null>(null);
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
   const moved = useRef(false);
-  const isTouch = useRef(false);
+  const dxRef = useRef(0);
 
-  // fecha se clicar fora
+  // clique fora → fecha o swipe travado
   useEffect(() => {
-    if (!openSwipe) return;
-    const close = () => {
-      setOpenSwipe(false);
+    if (!locked) return;
+    const close = (e: Event) => {
+      const target = e.target as HTMLElement | null;
+      // se clicou num botão de ação do próprio card, não fecha ainda
+      if (target?.closest?.('[data-swipe-action]')) return;
+      setLocked(null);
       setDx(0);
+      dxRef.current = 0;
     };
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, [openSwipe]);
+    // delay pra não fechar no mesmo toque que travou
+    const t = window.setTimeout(() => {
+      window.addEventListener('click', close);
+      window.addEventListener('touchstart', close, { passive: true });
+    }, 50);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('click', close);
+      window.removeEventListener('touchstart', close);
+    };
+  }, [locked]);
 
   const onTouchStart = (e: React.TouchEvent) => {
-    isTouch.current = true;
+    if (locked) return; // já travado — próximo toque fora fecha
     startX.current = e.touches[0].clientX;
     startY.current = e.touches[0].clientY;
     moved.current = false;
   };
   const onTouchMove = (e: React.TouchEvent) => {
-    if (startX.current == null || startY.current == null) return;
+    if (locked || startX.current == null || startY.current == null) return;
     const x = e.touches[0].clientX - startX.current;
     const y = Math.abs(e.touches[0].clientY - startY.current);
     if (y > 28 && Math.abs(x) < 16) {
       startX.current = null;
       return;
     }
-    if (Math.abs(x) > 10) moved.current = true;
-    // só esquerda abre menu
-    setDx(Math.max(-96, Math.min(0, x)));
+    if (Math.abs(x) > 12) moved.current = true;
+    const clamped = Math.max(-100, Math.min(100, x));
+    dxRef.current = clamped;
+    setDx(clamped);
   };
   const onTouchEnd = () => {
-    if (moved.current && dx < -48) {
-      setOpenSwipe(true);
+    if (locked) {
+      startX.current = null;
+      return;
+    }
+    const x = dxRef.current;
+    if (moved.current && x <= -56) {
+      // esquerda → trava revelando ações
+      setLocked('left');
       setDx(-88);
-      // não executa ação — usuário escolhe no menu
-      onMenu();
-      setOpenSwipe(false);
-      setDx(0);
+      dxRef.current = -88;
+    } else if (moved.current && x >= 56) {
+      // direita → trava revelando fixar/favorito
+      setLocked('right');
+      setDx(88);
+      dxRef.current = 88;
     } else {
       setDx(0);
-      setOpenSwipe(false);
+      dxRef.current = 0;
+      setLocked(null);
     }
     startX.current = null;
     startY.current = null;
@@ -638,12 +730,46 @@ function LeadCard({
 
   return (
     <div className="relative overflow-hidden rounded-xl">
-      {/* fundo do swipe — só visível enquanto arrasta no touch */}
+      {/* fundo ESQUERDA (aparece ao arrastar p/ direita) */}
       <div
-        className="pointer-events-none absolute inset-y-0 right-0 flex w-24 items-center justify-center bg-primary/80 text-xs font-medium text-white transition-opacity"
-        style={{ opacity: Math.min(1, Math.abs(dx) / 60) }}
+        className="absolute inset-y-0 left-0 flex w-[88px] flex-col items-center justify-center gap-1 bg-amber-600 text-[11px] font-medium text-white"
+        style={{ opacity: locked === 'right' || dx > 20 ? 1 : 0 }}
       >
-        Ações
+        <button
+          type="button"
+          data-swipe-action
+          className="flex flex-col items-center gap-0.5 px-2"
+          onClick={(e) => {
+            e.stopPropagation();
+            fav.toggle(Number(lead.id));
+            setLocked(null);
+            setDx(0);
+          }}
+        >
+          <Heart className="h-5 w-5" />
+          Favorito
+        </button>
+      </div>
+
+      {/* fundo DIREITA (aparece ao arrastar p/ esquerda) */}
+      <div
+        className="absolute inset-y-0 right-0 flex w-[88px] flex-col items-center justify-center gap-1 bg-sky-600 text-[11px] font-medium text-white"
+        style={{ opacity: locked === 'left' || dx < -20 ? 1 : 0 }}
+      >
+        <button
+          type="button"
+          data-swipe-action
+          className="flex flex-col items-center gap-0.5 px-2"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMenu();
+            setLocked(null);
+            setDx(0);
+          }}
+        >
+          <Info className="h-5 w-5" />
+          Ações
+        </button>
       </div>
 
       <Card
@@ -653,13 +779,21 @@ function LeadCard({
           transition: startX.current != null ? 'none' : 'transform 180ms ease',
         }}
         onClick={() => {
+          if (locked) {
+            setLocked(null);
+            setDx(0);
+            return;
+          }
           if (!moved.current) onOpen();
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         onTouchCancel={() => {
-          setDx(0);
+          if (!locked) {
+            setDx(0);
+            dxRef.current = 0;
+          }
           startX.current = null;
         }}
       >
@@ -668,6 +802,11 @@ function LeadCard({
             <div className="flex min-w-0 items-center gap-2 text-lg font-semibold">
               <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
               <span className="truncate">{lead.nome_lead}</span>
+              {pinned && (
+                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
+                  FIXO
+                </span>
+              )}
               {agendado && (
                 <span title="Agendado">
                   <Calendar className="h-4 w-4 shrink-0 text-amber-400" />
@@ -704,7 +843,6 @@ function LeadCard({
                   <path d="M12 21.35l-1.45-1.32c-5.15-4.67-8.55-7.75-8.55-11.53 0-3.08 2.42-5.5 5.5-5.5 1.74 0 3.41.81 4.5 2.09 1.09-1.28 2.76-2.09 4.5-2.09 3.08 0 5.5 2.42 5.5 5.5 0 3.78-3.4 6.86-8.55 11.54l-1.45 1.31z" />
                 </svg>
               </button>
-              {/* menu ⋯ — funciona no PC e no mobile */}
               <button
                 type="button"
                 aria-label="Mais ações"

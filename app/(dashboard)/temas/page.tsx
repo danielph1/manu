@@ -10,7 +10,7 @@ const REGRA: Record<string, string> = {
   rosa: '2 vendas no total',
   preto: '2 vendas no total',
   ambar: '3 vendas no mês',
-  vinho: '4 vendas no mês',
+  aurora: '4 vendas no mês',
 };
 
 export default function TemasPage() {

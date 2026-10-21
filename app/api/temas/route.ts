@@ -4,7 +4,7 @@ import { requireUser } from '@/lib/session';
 
 export const runtime = 'nodejs';
 
-const TODOS = ['escuro', 'claro', 'azul', 'verde', 'rosa', 'preto', 'ambar', 'grafite', 'vinho', 'platinum'];
+const TODOS = ['escuro', 'claro', 'azul', 'verde', 'rosa', 'preto', 'ambar', 'grafite', 'aurora', 'platinum'];
 const LIVRE = ['admin', 'gerente', 'documento', 'documentista', 'elfenai', 'marketing', 'superadmin'];
 
 export async function GET(req: NextRequest) {
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   if (total >= 1) ['azul', 'verde'].forEach((t) => liberados.add(t));
   if (total >= 2) ['rosa', 'preto'].forEach((t) => liberados.add(t));
   if (mes >= 3) liberados.add('ambar');
-  if (mes >= 4) liberados.add('vinho');
+  if (mes >= 4) liberados.add('aurora');
   if (total >= 10) liberados.add('platinum');
 
   // aviso seco, uma vez por tema

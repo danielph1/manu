@@ -9,7 +9,7 @@ export const TEMAS = [
   { id: 'rosa', nome: 'Rosa', desc: 'Escuro com rosa' },
   { id: 'verde', nome: 'Verde', desc: 'Escuro com verde' },
   { id: 'ambar', nome: 'Âmbar', desc: '3 vendas no mês' },
-  { id: 'vinho', nome: 'Vinho', desc: '4 vendas no mês' },
+  { id: 'aurora', nome: 'Aurora', desc: '4 vendas no mês · violeta noturno' },
   { id: 'grafite', nome: 'Grafite', desc: 'Cinza chumbo, sóbrio' },
   { id: 'platinum', nome: 'Platinum', desc: 'Escuro com platina' },
 ] as const;
