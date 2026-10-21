@@ -151,7 +151,17 @@ export function LeadEditDialog({ lead, onClose }: { lead: Lead | null; onClose: 
             />
           </div>
 
-          <DialogFooter className="gap-2">
+          
+          <div className="space-y-2">
+            <Label>Agendamento (data/hora)</Label>
+            <Input
+              type="datetime-local"
+              value={String(form.data_hora_visita || '').slice(0, 16)}
+              onChange={(e) => setForm((f: any) => ({ ...f, data_hora_visita: e.target.value }))}
+              disabled={!canEdit}
+            />
+          </div>
+<DialogFooter className="gap-2">
             {canDelete && (
               <Button type="button" variant="outline" onClick={del}>
                 <Trash2 className="mr-2 h-4 w-4" />Excluir

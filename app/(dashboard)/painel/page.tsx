@@ -1,7 +1,7 @@
 'use client';
-// Painel de Leads - integrado com API real
+// Painel de Leads — swipe estilo WhatsApp, listas pessoais, fixar/agendar
 import { CarLoader } from '@/components/car-loader';
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useI18n } from '@/contexts/i18n-context';
 import Link from 'next/link';
@@ -13,18 +13,43 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
-import { PlusCircle, Search, Phone, MessageSquare, UserCircle2, CheckCircle2, XCircle, Loader2, Edit, Store } from 'lucide-react';
+import {
+  PlusCircle, Search, Phone, MessageSquare, UserCircle2, Loader2, Store,
+  Info, Heart, ListPlus, Trash2, Calendar, X, Plus,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { leadsService } from '@/lib/services';
 import type { Lead, LeadFiltros } from '@/types';
 import { LeadEditDialog } from '@/components/lead-edit-dialog';
 import { useFavoritos } from '@/contexts/favoritos-context';
+import { toast } from 'sonner';
 
-// labels via t() no componente
+/* ───────── listas pessoais (por usuário, localStorage) ───────── */
+type Lista = { id: string; nome: string; leadIds: number[]; sistema?: boolean };
+
+function listasKey(uid: number | string) {
+  return `manu.listas.${uid}`;
+}
+function loadListas(uid: number | string): Lista[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(listasKey(uid)) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+function saveListas(uid: number | string, listas: Lista[]) {
+  localStorage.setItem(listasKey(uid), JSON.stringify(listas));
+}
+
+const AGENDADOS_ID = '__agendados__';
 
 export default function PainelPage() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const qc = useQueryClient();
+  const uid = user?.id ?? 0;
+
   const FILTROS = [
     { value: 'todos', label: t('page.painel.all') },
     { value: 'responderam', label: t('page.painel.replied') },
@@ -41,40 +66,35 @@ export default function PainelPage() {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [loja, setLoja] = useState('');
   const [vendedorId, setVendedorId] = useState('');
-  const [pins, setPins] = useState<number[]>([]);
-  useEffect(() => { setPins(loadPins()); }, []);
-  const togglePin = (id: number) => {
-    setPins((prev) => {
-      let next: number[];
-      if (prev.includes(id)) next = prev.filter((x) => x !== id);
-      else if (prev.length >= 3) {
-        // max 3 — remove o mais antigo e adiciona
-        next = [...prev.slice(1), id];
-      } else next = [...prev, id];
-      savePins(next);
-      return next;
-    });
-  };
-  const handleDeleteLead = async (id: number) => {
-    if (!confirm('Apagar este lead? Esta ação não pode ser desfeita.')) return;
-    try {
-      await api.delete(`/leads/${id}`);
-      qc.invalidateQueries({ queryKey: ['leads'] });
-      setPins((prev) => {
-        const next = prev.filter((x) => x !== id);
-        savePins(next);
-        return next;
-      });
-    } catch (e: any) {
-      alert(e?.response?.data?.error || 'Falha ao apagar lead');
-    }
-  };
+  const [listaAtiva, setListaAtiva] = useState<string>('todos');
+  const [listas, setListas] = useState<Lista[]>([]);
+  const [menuLead, setMenuLead] = useState<Lead | null>(null); // menu de ações (swipe/⋯)
+  const [agendarLead, setAgendarLead] = useState<Lead | null>(null);
+  const [agendarValor, setAgendarValor] = useState('');
+  const [pickListaLead, setPickListaLead] = useState<Lead | null>(null);
 
+  useEffect(() => {
+    if (!uid) return;
+    setListas(loadListas(uid));
+  }, [uid]);
 
-  const qc = useQueryClient();
+  const persistListas = useCallback(
+    (next: Lista[]) => {
+      setListas(next);
+      if (uid) saveListas(uid, next);
+    },
+    [uid],
+  );
+
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads', filtro, periodo, loja, vendedorId],
-    queryFn: () => leadsService.list({ filtro, periodo, loja: loja || undefined, vendedor_id: vendedorId || undefined }),
+    queryFn: () =>
+      leadsService.list({
+        filtro,
+        periodo,
+        loja: loja || undefined,
+        vendedor_id: vendedorId || undefined,
+      }),
     refetchInterval: 5000,
     refetchOnWindowFocus: true,
   });
@@ -100,16 +120,17 @@ export default function PainelPage() {
   const totalVend = (stats?.total_vendidos ?? stats?.vendidos ?? 0) || (usarLista ? daLista.vend : 0);
 
   const filteredLeads = useMemo(() => {
-    let arr = leads;
+    let arr = [...leads];
     if (busca) {
       const q = busca.toLowerCase();
-      arr = arr.filter((l) =>
-        l.nome_lead?.toLowerCase().includes(q) ||
-        l.telefone?.toLowerCase().includes(q) ||
-        l.cpf?.toLowerCase().includes(q) ||
-        (l as any).observacao?.toLowerCase?.().includes(q) ||
-        (l as any).produto_interesse?.toLowerCase?.().includes(q) ||
-        (l as any).carroceria?.toLowerCase?.().includes(q),
+      arr = arr.filter(
+        (l) =>
+          l.nome_lead?.toLowerCase().includes(q) ||
+          l.telefone?.toLowerCase().includes(q) ||
+          l.cpf?.toLowerCase().includes(q) ||
+          (l as any).observacao?.toLowerCase?.().includes(q) ||
+          (l as any).produto_interesse?.toLowerCase?.().includes(q) ||
+          (l as any).carroceria?.toLowerCase?.().includes(q),
       );
     }
     if (carroceria && carroceria !== 'todas') {
@@ -119,17 +140,74 @@ export default function PainelPage() {
         return blob.includes(f);
       });
     }
-    // fixados primeiro (máx 3)
-    const pinSet = new Set(pins);
-    const pinned = arr.filter((l) => pinSet.has(Number(l.id)));
-    const rest = arr.filter((l) => !pinSet.has(Number(l.id)));
-    // mantém ordem dos pins conforme gravado
-    pinned.sort((a, b) => pins.indexOf(Number(a.id)) - pins.indexOf(Number(b.id)));
-    return [...pinned, ...rest];
-  }, [leads, busca, carroceria, pins]);
+
+    // filtro por lista
+    if (listaAtiva === AGENDADOS_ID) {
+      arr = arr.filter((l) => !!(l as any).data_hora_visita || !!(l as any).data_agendamento);
+      // mais próximo primeiro
+      arr.sort((a, b) => {
+        const da = new Date((a as any).data_hora_visita || (a as any).data_agendamento || 0).getTime();
+        const db = new Date((b as any).data_hora_visita || (b as any).data_agendamento || 0).getTime();
+        return da - db;
+      });
+    } else if (listaAtiva !== 'todos') {
+      const L = listas.find((x) => x.id === listaAtiva);
+      const ids = new Set(L?.leadIds || []);
+      arr = arr.filter((l) => ids.has(Number(l.id)));
+    }
+
+    return arr;
+  }, [leads, busca, carroceria, listaAtiva, listas]);
+
+  function criarLista() {
+    const nome = prompt('Nome da nova lista:');
+    if (!nome?.trim()) return;
+    const id = `l_${Date.now()}`;
+    persistListas([...listas, { id, nome: nome.trim(), leadIds: [] }]);
+    setListaAtiva(id);
+  }
+
+  function addLeadNaLista(leadId: number, listaId: string) {
+    persistListas(
+      listas.map((L) =>
+        L.id === listaId
+          ? { ...L, leadIds: L.leadIds.includes(leadId) ? L.leadIds : [...L.leadIds, leadId] }
+          : L,
+      ),
+    );
+    toast.success('Lead adicionado à lista');
+    setPickListaLead(null);
+    setMenuLead(null);
+  }
+
+  async function handleDeleteLead(id: number) {
+    if (!confirm('Apagar este lead? Esta ação não pode ser desfeita.')) return;
+    try {
+      await api.delete(`/leads/${id}`);
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      toast.success('Lead apagado');
+      setMenuLead(null);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error || 'Falha ao apagar');
+    }
+  }
+
+  async function salvarAgendamento() {
+    if (!agendarLead || !agendarValor) return;
+    try {
+      await leadsService.update(agendarLead.id, { data_hora_visita: agendarValor });
+      toast.success('Agendamento salvo');
+      qc.invalidateQueries({ queryKey: ['leads'] });
+      setAgendarLead(null);
+      setMenuLead(null);
+      setListaAtiva(AGENDADOS_ID);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error || 'Erro ao agendar');
+    }
+  }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-8">
+    <div className="mx-auto max-w-7xl space-y-6">
       <header>
         <h1 className="text-4xl font-bold tracking-tight">{t('page.painel.title')}</h1>
         <Link href="/novo-lead">
@@ -139,28 +217,61 @@ export default function PainelPage() {
         </Link>
       </header>
 
+      {/* chips de listas — estilo WhatsApp */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+        <Chip active={listaAtiva === 'todos'} onClick={() => setListaAtiva('todos')}>
+          Todos
+        </Chip>
+        <Chip active={listaAtiva === AGENDADOS_ID} onClick={() => setListaAtiva(AGENDADOS_ID)}>
+          <Calendar className="mr-1 h-3.5 w-3.5" /> Agendados
+        </Chip>
+        {listas.map((L) => (
+          <Chip key={L.id} active={listaAtiva === L.id} onClick={() => setListaAtiva(L.id)}>
+            {L.nome}
+          </Chip>
+        ))}
+        <button
+          type="button"
+          onClick={criarLista}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
+          title="Nova lista"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+
       <section className="space-y-4">
         <div>
           <Label className="text-base">{t('page.painel.filter')}</Label>
           <RadioGroup
             className="mt-2 flex flex-wrap gap-5"
-            value={filtro} onValueChange={(v) => setFiltro(v as any)}
+            value={filtro}
+            onValueChange={(v) => setFiltro(v as any)}
           >
             {FILTROS.map((f) => (
               <div key={f.value} className="flex items-center gap-2">
                 <RadioGroupItem value={f.value} id={`f-${f.value}`} />
-                <Label htmlFor={`f-${f.value}`} className="cursor-pointer font-normal">{f.label}</Label>
+                <Label htmlFor={`f-${f.value}`} className="cursor-pointer font-normal">
+                  {f.label}
+                </Label>
               </div>
             ))}
           </RadioGroup>
         </div>
 
-        {(user?.tipo === 'admin' || user?.tipo === 'gerente' || user?.tipo === 'marketing') && (
+        {(user?.tipo === 'admin' ||
+          user?.tipo === 'gerente' ||
+          user?.tipo === 'marketing' ||
+          user?.tipo === 'superadmin') && (
           <div className="flex flex-wrap gap-3">
-            {(user?.tipo === 'admin' || user?.tipo === 'marketing') && (
+            {(user?.tipo === 'admin' || user?.tipo === 'marketing' || user?.tipo === 'superadmin') && (
               <div>
                 <Label className="text-sm">Loja</Label>
-                <select className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm" value={loja} onChange={(e) => setLoja(e.target.value)}>
+                <select
+                  className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm"
+                  value={loja}
+                  onChange={(e) => setLoja(e.target.value)}
+                >
                   <option value="">Todas</option>
                   <option value="381">381</option>
                   <option value="764">764</option>
@@ -170,216 +281,444 @@ export default function PainelPage() {
             )}
             <div>
               <Label className="text-sm">Vendedor</Label>
-              <VendedorSelect loja={user?.tipo === 'gerente' ? user.loja : loja} value={vendedorId} onChange={setVendedorId} />
+              <VendedorSelect
+                loja={user?.tipo === 'gerente' ? user.loja || undefined : loja}
+                value={vendedorId}
+                onChange={setVendedorId}
+              />
             </div>
           </div>
         )}
+
         <div className="max-w-xs">
           <Label className="text-sm">{t('page.painel.period')}</Label>
           <Select value={periodo} onValueChange={(v) => setPeriodo(v as any)}>
-            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todas">Todas as datas</SelectItem>
               <SelectItem value="hoje">Hoje</SelectItem>
               <SelectItem value="semana">Esta semana</SelectItem>
-              <SelectItem value="mes">{t('page.painel.this_month')}</SelectItem>
-              <SelectItem value="mes_passado">{t('page.painel.last_month')}</SelectItem>
+              <SelectItem value="mes">Este mês</SelectItem>
+              <SelectItem value="todas">Todo período</SelectItem>
             </SelectContent>
           </Select>
         </div>
-      </section>
 
-      <section className="grid grid-cols-2 gap-6 md:grid-cols-5">
-        <StatCard label={t('page.painel.total_leads')} value={totalLeads} />
-        <StatCard label={t('page.painel.replied_n')} value={totalResp} />
-        <StatCard label={t('page.painel.sheets_n')} value={totalFichas} />
-        <StatCard label={t('page.painel.approved_n')} value={totalAprov} />
-        <StatCard label={t('page.painel.sold_n')} value={totalVend} />
-      </section>
+        {/* métricas */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {[
+            ['Leads', totalLeads],
+            ['Responderam', totalResp],
+            ['Fichas', totalFichas],
+            ['Aprovados', totalAprov],
+            ['Vendidos', totalVend],
+          ].map(([lab, val]) => (
+            <Card key={String(lab)}>
+              <CardContent className="p-3 text-center">
+                <div className="text-2xl font-bold">{val as any}</div>
+                <div className="text-xs text-muted-foreground">{lab}</div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-      <section className="space-y-3">
-        <Label>{t('page.painel.search_lead')}</Label>
-        <div className="flex flex-wrap gap-3">
-          <div className="relative min-w-[200px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input className="pl-9" placeholder={t('page.painel.search_ph')} value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[200px] flex-1">
+            <Label className="text-sm">Buscar lead</Label>
+            <div className="relative mt-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Nome, CPF, telefone..."
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+              />
+            </div>
           </div>
-          <select
-            className="rounded-md border border-border bg-background px-3 text-sm"
-            value={carroceria}
-            onChange={(e) => setCarroceria(e.target.value)}
-          >
-            <option value="todas">Carroceria: todas</option>
-            <option value="hatch">hatch</option>
-            <option value="sedan">sedan</option>
-            <option value="suv">suv</option>
-            <option value="pickup">pickup</option>
-            <option value="utilitario">utilitario</option>
-            <option value="van">van</option>
-          </select>
+          <div>
+            <Label className="text-sm">Carroceria</Label>
+            <select
+              className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm"
+              value={carroceria}
+              onChange={(e) => setCarroceria(e.target.value)}
+            >
+              <option value="todas">todas</option>
+              <option value="hatch">hatch</option>
+              <option value="sedan">sedan</option>
+              <option value="suv">suv</option>
+              <option value="pickup">pickup</option>
+            </select>
+          </div>
         </div>
       </section>
 
       <section>
-        <h2 className="text-2xl font-semibold">{t('page.painel.leads_list')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {isLoading ? 'Carregando...' : `Exibindo ${filteredLeads.length} de ${leads.length} leads.`}
+        <h2 className="text-xl font-semibold">Leads cadastrados</h2>
+        <p className="text-sm text-muted-foreground">
+          Exibindo {filteredLeads.length} de {leads.length} leads.
         </p>
-        {isLoading && <CarLoader compact />}
-        <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredLeads.map((lead) => (
-            <LeadCard key={lead.id} lead={lead} onClick={() => setSelected(lead)} pinned={pins.includes(Number(lead.id))} onPin={togglePin} onDelete={handleDeleteLead} />
-          ))}
-        </div>
+
+        {isLoading ? (
+          <div className="flex justify-center py-16">
+            <CarLoader />
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredLeads.map((lead) => (
+              <LeadCard
+                key={lead.id}
+                lead={lead}
+                onOpen={() => setSelected(lead)}
+                onMenu={() => setMenuLead(lead)}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       <LeadEditDialog lead={selected} onClose={() => setSelected(null)} />
+
+      {/* menu de ações — estilo WhatsApp (abre no swipe ESQ no mobile ou no ⋯) */}
+      {menuLead && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center"
+          onClick={() => setMenuLead(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl border border-border bg-card p-2 shadow-xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-1 px-3 py-2 text-sm font-medium text-muted-foreground truncate">
+              {menuLead.nome_lead}
+            </div>
+            <ActionRow
+              icon={<Info className="h-5 w-5" />}
+              label="Informações"
+              onClick={() => {
+                setSelected(menuLead);
+                setMenuLead(null);
+              }}
+            />
+            <ActionRow
+              icon={<Heart className="h-5 w-5" />}
+              label="Adicionar aos favoritos"
+              onClick={() => {
+                fav.toggle(Number(menuLead.id));
+                toast.success('Favoritos atualizado');
+                setMenuLead(null);
+              }}
+            />
+            <ActionRow
+              icon={<ListPlus className="h-5 w-5" />}
+              label="Adicionar à lista"
+              onClick={() => {
+                setPickListaLead(menuLead);
+                setMenuLead(null);
+              }}
+            />
+            <ActionRow
+              icon={<Calendar className="h-5 w-5" />}
+              label="Agendar"
+              onClick={() => {
+                setAgendarLead(menuLead);
+                setAgendarValor(
+                  String((menuLead as any).data_hora_visita || '').slice(0, 16) || '',
+                );
+                setMenuLead(null);
+              }}
+            />
+            <ActionRow
+              icon={<Trash2 className="h-5 w-5 text-rose-500" />}
+              label="Deletar lead"
+              danger
+              onClick={() => handleDeleteLead(Number(menuLead.id))}
+            />
+            <button
+              type="button"
+              className="mt-1 w-full rounded-xl py-3 text-sm text-muted-foreground hover:bg-muted"
+              onClick={() => setMenuLead(null)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* escolher lista */}
+      {pickListaLead && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center"
+          onClick={() => setPickListaLead(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-t-2xl border border-border bg-card p-3 shadow-xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 text-sm font-semibold">Escolher lista</div>
+            <button
+              type="button"
+              className="mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted"
+              onClick={() => {
+                criarLista();
+              }}
+            >
+              <Plus className="h-4 w-4" /> Nova lista
+            </button>
+            {listas.length === 0 && (
+              <p className="px-3 py-2 text-sm text-muted-foreground">Nenhuma lista ainda.</p>
+            )}
+            {listas.map((L) => (
+              <button
+                key={L.id}
+                type="button"
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted"
+                onClick={() => addLeadNaLista(Number(pickListaLead.id), L.id)}
+              >
+                <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                {L.nome}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="mt-2 w-full rounded-xl py-2 text-sm text-muted-foreground"
+              onClick={() => setPickListaLead(null)}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* agendar */}
+      {agendarLead && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center"
+          onClick={() => setAgendarLead(null)}
+        >
+          <div
+            className="w-full max-w-sm space-y-3 rounded-t-2xl border border-border bg-card p-4 shadow-xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="font-semibold">Agendar — {agendarLead.nome_lead}</div>
+            <Input
+              type="datetime-local"
+              value={agendarValor}
+              onChange={(e) => setAgendarValor(e.target.value)}
+            />
+            <div className="flex gap-2">
+              <Button className="flex-1" onClick={salvarAgendamento} disabled={!agendarValor}>
+                Salvar
+              </Button>
+              <Button variant="outline" onClick={() => setAgendarLead(null)}>
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <div className="text-sm text-muted-foreground">{label}</div>
-      <div className="mt-1 text-3xl font-semibold">{value}</div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex shrink-0 items-center rounded-full border px-3 py-1.5 text-sm transition ${
+        active
+          ? 'border-primary bg-primary/15 text-primary'
+          : 'border-border bg-card text-muted-foreground hover:border-primary/50'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
-
-const PINS_KEY = 'manu.lead.pins';
-function loadPins(): number[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(PINS_KEY) || '[]');
-    return Array.isArray(raw) ? raw.map(Number).filter(Boolean).slice(0, 3) : [];
-  } catch {
-    return [];
-  }
+function ActionRow({
+  icon,
+  label,
+  onClick,
+  danger,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm hover:bg-muted ${
+        danger ? 'text-rose-500' : ''
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
+    </button>
+  );
 }
-function savePins(ids: number[]) {
-  localStorage.setItem(PINS_KEY, JSON.stringify(ids.slice(0, 3)));
-}
 
+/** Card com swipe só no touch; no desktop usa botão ⋯ */
 function LeadCard({
   lead,
-  onClick,
-  pinned,
-  onPin,
-  onDelete,
+  onOpen,
+  onMenu,
 }: {
   lead: Lead;
-  onClick: () => void;
-  pinned?: boolean;
-  onPin?: (id: number) => void;
-  onDelete?: (id: number) => void;
+  onOpen: () => void;
+  onMenu: () => void;
 }) {
   const fav = useFavoritos();
   const marcado = fav.tem(Number(lead.id));
   const [dx, setDx] = useState(0);
-  const [swiping, setSwiping] = useState(false);
+  const [openSwipe, setOpenSwipe] = useState(false);
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
   const moved = useRef(false);
+  const isTouch = useRef(false);
+
+  // fecha se clicar fora
+  useEffect(() => {
+    if (!openSwipe) return;
+    const close = () => {
+      setOpenSwipe(false);
+      setDx(0);
+    };
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [openSwipe]);
 
   const onTouchStart = (e: React.TouchEvent) => {
+    isTouch.current = true;
     startX.current = e.touches[0].clientX;
     startY.current = e.touches[0].clientY;
     moved.current = false;
-    setSwiping(true);
   };
   const onTouchMove = (e: React.TouchEvent) => {
     if (startX.current == null || startY.current == null) return;
     const x = e.touches[0].clientX - startX.current;
     const y = Math.abs(e.touches[0].clientY - startY.current);
-    if (y > 30 && Math.abs(x) < 20) {
-      // scroll vertical — cancela
+    if (y > 28 && Math.abs(x) < 16) {
       startX.current = null;
-      setDx(0);
-      setSwiping(false);
       return;
     }
-    if (Math.abs(x) > 8) moved.current = true;
-    // limita arrasto visual
-    setDx(Math.max(-110, Math.min(110, x)));
+    if (Math.abs(x) > 10) moved.current = true;
+    // só esquerda abre menu
+    setDx(Math.max(-96, Math.min(0, x)));
   };
   const onTouchEnd = () => {
-    if (moved.current) {
-      if (dx > 70) onPin?.(Number(lead.id)); // direita → fixar
-      if (dx < -70) onDelete?.(Number(lead.id)); // esquerda → apagar
+    if (moved.current && dx < -48) {
+      setOpenSwipe(true);
+      setDx(-88);
+      // não executa ação — usuário escolhe no menu
+      onMenu();
+      setOpenSwipe(false);
+      setDx(0);
+    } else {
+      setDx(0);
+      setOpenSwipe(false);
     }
-    setDx(0);
-    setSwiping(false);
     startX.current = null;
     startY.current = null;
   };
 
+  const agendado = !!(lead as any).data_hora_visita || !!(lead as any).data_agendamento;
+
   return (
     <div className="relative overflow-hidden rounded-xl">
-      {/* ações de fundo */}
-      <div className="pointer-events-none absolute inset-0 flex">
-        <div className="flex w-1/2 items-center justify-start bg-amber-600/90 pl-4 text-sm font-medium text-white">
-          {pinned ? 'Desafixar' : 'Fixar'}
-        </div>
-        <div className="flex w-1/2 items-center justify-end bg-rose-600/90 pr-4 text-sm font-medium text-white">
-          Apagar
-        </div>
+      {/* fundo do swipe — só visível enquanto arrasta no touch */}
+      <div
+        className="pointer-events-none absolute inset-y-0 right-0 flex w-24 items-center justify-center bg-primary/80 text-xs font-medium text-white transition-opacity"
+        style={{ opacity: Math.min(1, Math.abs(dx) / 60) }}
+      >
+        Ações
       </div>
+
       <Card
-        className="relative cursor-pointer transition hover:border-primary/60 hover:shadow-lg"
+        className="relative cursor-pointer bg-card transition hover:border-primary/60 hover:shadow-lg"
         style={{
           transform: `translateX(${dx}px)`,
-          transition: swiping ? 'none' : 'transform 180ms ease',
+          transition: startX.current != null ? 'none' : 'transform 180ms ease',
         }}
         onClick={() => {
-          if (!moved.current) onClick();
+          if (!moved.current) onOpen();
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
-        onTouchCancel={onTouchEnd}
+        onTouchCancel={() => {
+          setDx(0);
+          startX.current = null;
+        }}
       >
         <CardContent className="space-y-3 p-5">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 text-lg font-semibold min-w-0">
+            <div className="flex min-w-0 items-center gap-2 text-lg font-semibold">
               <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
               <span className="truncate">{lead.nome_lead}</span>
-              {pinned && (
-                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
-                  FIXO
+              {agendado && (
+                <span title="Agendado">
+                  <Calendar className="h-4 w-4 shrink-0 text-amber-400" />
                 </span>
               )}
             </div>
-            <a
-              href={`/chat?lead=${lead.id}`}
-              onClick={(e) => e.stopPropagation()}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-foreground"
-              aria-label="Chat"
-            >
-              <MessageSquare className="h-4 w-4" />
-            </a>
-            <button
-              type="button"
-              aria-label="Favoritar"
-              onClick={(e) => {
-                e.stopPropagation();
-                fav.toggle(Number(lead.id));
-              }}
-              className="shrink-0 rounded-full p-1"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-6 w-6"
-                style={{
-                  fill: marcado ? 'rgb(220,72,127)' : 'rgb(167,167,167)',
-                  transform: marcado ? 'scale(1.15)' : 'scale(1)',
-                  transition: 'all 200ms',
-                }}
+            <div className="flex shrink-0 items-center gap-1">
+              <a
+                href={`/chat?lead=${lead.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-border"
+                aria-label="Chat"
               >
-                <path d="M12 21.35l-1.45-1.32c-5.15-4.67-8.55-7.75-8.55-11.53 0-3.08 2.42-5.5 5.5-5.5 1.74 0 3.41.81 4.5 2.09 1.09-1.28 2.76-2.09 4.5-2.09 3.08 0 5.5 2.42 5.5 5.5 0 3.78-3.4 6.86-8.55 11.54l-1.45 1.31z" />
-              </svg>
-            </button>
+                <MessageSquare className="h-4 w-4" />
+              </a>
+              <button
+                type="button"
+                aria-label="Favoritar"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fav.toggle(Number(lead.id));
+                }}
+                className="rounded-full p-1"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-6 w-6"
+                  style={{
+                    fill: marcado ? 'rgb(220,72,127)' : 'rgb(167,167,167)',
+                    transform: marcado ? 'scale(1.15)' : 'scale(1)',
+                    transition: 'all 200ms',
+                  }}
+                >
+                  <path d="M12 21.35l-1.45-1.32c-5.15-4.67-8.55-7.75-8.55-11.53 0-3.08 2.42-5.5 5.5-5.5 1.74 0 3.41.81 4.5 2.09 1.09-1.28 2.76-2.09 4.5-2.09 3.08 0 5.5 2.42 5.5 5.5 0 3.78-3.4 6.86-8.55 11.54l-1.45 1.31z" />
+                </svg>
+              </button>
+              {/* menu ⋯ — funciona no PC e no mobile */}
+              <button
+                type="button"
+                aria-label="Mais ações"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMenu();
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-border text-muted-foreground hover:text-foreground"
+              >
+                ⋯
+              </button>
+            </div>
           </div>
+
           <div className="flex flex-wrap gap-1.5">
             {lead.venda_concluida && (
               <Badge className="bg-emerald-600 hover:bg-emerald-600">VENDA CONCLUIDA</Badge>
@@ -397,10 +736,11 @@ function LeadCard({
               <Badge className="bg-rose-600 hover:bg-rose-600">Recusado</Badge>
             )}
           </div>
+
           <div className="space-y-1 text-sm text-muted-foreground">
             <div>
               Vendedor:{' '}
-              <span className="text-foreground capitalize">{lead.vendedor_nome ?? '-'}</span>
+              <span className="capitalize text-foreground">{lead.vendedor_nome ?? '-'}</span>
             </div>
             {lead.produto_interesse && (
               <div>
@@ -411,12 +751,20 @@ function LeadCard({
               <div className="flex items-center gap-1">
                 <Phone className="h-3.5 w-3.5" />
                 <a
-                  href={`https://wa.me/55${String(lead.telefone).replace(/\\D/g, '')}`}
+                  href={`https://wa.me/55${String(lead.telefone).replace(/\D/g, '')}`}
                   onClick={(e) => e.stopPropagation()}
                   className="text-primary underline-offset-2 hover:underline"
                 >
                   {lead.telefone}
                 </a>
+              </div>
+            )}
+            {agendado && (
+              <div className="text-amber-400">
+                Agendado:{' '}
+                {new Date(
+                  (lead as any).data_hora_visita || (lead as any).data_agendamento,
+                ).toLocaleString('pt-BR')}
               </div>
             )}
           </div>
@@ -426,16 +774,34 @@ function LeadCard({
   );
 }
 
-function VendedorSelect({ loja, value, onChange }: { loja?: string; value: string; onChange: (v: string) => void }) {
+function VendedorSelect({
+  loja,
+  value,
+  onChange,
+}: {
+  loja?: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const { data } = useQuery({
     queryKey: ['vendedores-filtro', loja],
     queryFn: async () => (await api.get('/equipe')).data,
   });
-  const lista = (Array.isArray(data) ? data : data?.vendedores || data?.equipe || []).filter((v: any) => !loja || String(v.loja || '').toUpperCase() === String(loja).toUpperCase());
+  const lista = (Array.isArray(data) ? data : data?.vendedores || data?.equipe || []).filter(
+    (v: any) => !loja || String(v.loja || '').toUpperCase() === String(loja).toUpperCase(),
+  );
   return (
-    <select className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm" value={value} onChange={(e) => onChange(e.target.value)}>
+    <select
+      className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
       <option value="">Todos</option>
-      {lista.map((v: any) => <option key={v.id} value={v.id}>{v.nome}</option>)}
+      {lista.map((v: any) => (
+        <option key={v.id} value={v.id}>
+          {v.nome}
+        </option>
+      ))}
     </select>
   );
 }

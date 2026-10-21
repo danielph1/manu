@@ -16,10 +16,11 @@ export const Role = {
 
   editarLead: (u?: User | null, leadVendedorId?: number) => {
     if (!u) return false;
-    if (u.tipo === 'admin' || u.tipo === 'gerente') return true;
+    // superadmin, admin, gerente, marketing — qualquer lead
+    if (['superadmin', 'admin', 'gerente', 'marketing'].includes(String(u.tipo))) return true;
     if (u.tipo === 'vendedor' && u.vendedor_id === leadVendedorId) return true;
     return false;
   },
-  editarFichaBanco: (u?: User | null) => ['admin','gerente','elfenai'].includes(u?.tipo ?? ''),
-  editarDocumental: (u?: User | null) => ['admin','gerente','documento'].includes(u?.tipo ?? ''),
+  editarFichaBanco: (u?: User | null) => ['admin','gerente','elfenai','superadmin'].includes(u?.tipo ?? ''),
+  editarDocumental: (u?: User | null) => ['admin','gerente','documento','documentista','superadmin'].includes(u?.tipo ?? ''),
 };
