@@ -12,6 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import { compressGallery } from '@/lib/compress-image';
 import { Role } from '@/lib/roles';
 import { useAuth } from '@/contexts/auth-context';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
@@ -389,15 +390,20 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
 
           <div className="space-y-2">
             <div className="text-sm font-medium">Anexos</div>
-            <input type="file" onChange={async (e) => {
-              const f = e.target.files?.[0];
+<input type="file" accept="image/*,.pdf,.doc,.docx" onChange={async (e) => {
+              let f = e.target.files?.[0];
               if (!f) return;
+              try {
+                if (f.type.startsWith('image/')) {
+                  f = await compressGallery(f);
+                }
+              } catch { /* segue original */ }
               const reader = new FileReader();
               reader.onload = async () => {
                 const data = String(reader.result || '');
                 const b64 = data.includes(',') ? data.split(',')[1] : data;
                 try {
-                  await api.post(`/fichas/${fichaId}/anexos`, { nome: f.name, mime: f.type, arquivo_b64: b64 });
+                  await api.post(`/fichas/${fichaId}/anexos`, { nome: f.name, mime: f.type || 'application/octet-stream', arquivo_b64: b64 });
                   toast.success('Anexo salvo. elfenAI avisado.');
                 } catch (err: any) { toast.error(err?.response?.data?.error || 'Erro no anexo'); }
               };

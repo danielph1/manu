@@ -3,6 +3,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { compressGallery } from '@/lib/compress-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Camera, Mic, Paperclip, Smile } from 'lucide-react';
@@ -166,8 +167,14 @@ function ChatPageInner() {
     }
   }
 
-  function onArquivo(f: File | undefined) {
+  async function onArquivo(f: File | undefined) {
     if (!f) return;
+    try {
+      if (f.type.startsWith('image/')) {
+        const { compressGallery } = await import('@/lib/compress-image');
+        f = await compressGallery(f);
+      }
+    } catch { /* mantém original */ }
     sendBlob(f, f.name, f.type || 'application/octet-stream');
   }
 

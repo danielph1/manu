@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
+import { compressAvatar } from '@/lib/compress-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -79,9 +80,9 @@ export default function MinhaContaPage() {
 
   async function foto(f?: File) {
     if (!f) return;
-    const blob = await quadrado(f);
+    const compressed = await compressAvatar(f);
     const fd = new FormData();
-    fd.append('foto', new File([blob], 'perfil.jpg', { type: 'image/jpeg' }));
+    fd.append('foto', compressed);
     try {
       const { data } = await api.post('/conta', fd);
       setDados((d: any) => ({ ...d, foto_url: data.foto_url }));

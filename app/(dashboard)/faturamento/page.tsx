@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { compressGallery } from '@/lib/compress-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -145,8 +146,9 @@ export default function FaturamentoPage() {
               <div className="space-y-1">
                 <Label className="text-xs">Anexar comprovante</Label>
                 <input type="file" accept="image/*,.pdf" onChange={async (e) => {
-                  const f = e.target.files?.[0];
+                  let f = e.target.files?.[0];
                   if (!f) return;
+                  try { if (f.type.startsWith('image/')) f = await compressGallery(f); } catch {}
                   const reader = new FileReader();
                   reader.onload = async () => {
                     const data = String(reader.result || '');
