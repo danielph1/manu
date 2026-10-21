@@ -67,6 +67,7 @@ function FotoViewer({
   canEdit: boolean;
   onDelete: (id: number) => void;
 }) {
+  const { t } = useI18n();
   if (!fotos.length) {
     return (
       <div className="flex h-56 items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">

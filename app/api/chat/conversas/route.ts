@@ -63,13 +63,13 @@ export async function GET(req: NextRequest) {
      FROM public.leads l
      WHERE ${where.join(' AND ')}
      ORDER BY
-       -- quem chegou primeiro no topo (primeira msg ou criação do lead)
+       -- último a chegar / última mensagem no topo (estilo redes sociais)
        COALESCE(
-         (SELECT MIN(m.created_at) FROM public.chat_geral_mensagens m WHERE m.lead_id = l.id),
+         (SELECT MAX(m.created_at) FROM public.chat_geral_mensagens m WHERE m.lead_id = l.id),
          l.created_at,
          l.data_lead
-       ) ASC NULLS LAST,
-       l.id ASC
+       ) DESC NULLS LAST,
+       l.id DESC
      LIMIT 300`,
     params,
   );
