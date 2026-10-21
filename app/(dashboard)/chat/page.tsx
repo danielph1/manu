@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/auth-context';
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
 
 function ChatPageInner() {
+  const { t } = useI18n();
   const qc = useQueryClient();
   const { user } = useAuth();
   const sp = useSearchParams();
@@ -340,7 +341,6 @@ function ChatPageInner() {
 }
 
 export default function ChatPage() {
-  const { t } = useI18n();
   return (
     <Suspense fallback={null}>
       <ChatPageInner />
