@@ -656,7 +656,7 @@ function LeadCard({
   const fav = useFavoritos();
   const marcado = fav.tem(Number(lead.id));
   const [dx, setDx] = useState(0);
-  const [locked, setLocked] = useState(false);
+  const [locked, setLocked] = useState<'left' | 'right' | null>(null);
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
   const moved = useRef(false);
@@ -667,7 +667,7 @@ function LeadCard({
     const close = (e: Event) => {
       const target = e.target as HTMLElement | null;
       if (target?.closest?.('[data-swipe-action]')) return;
-      setLocked(false);
+      setLocked(null);
       setDx(0);
       dxRef.current = 0;
     };
@@ -697,8 +697,7 @@ function LeadCard({
       return;
     }
     if (Math.abs(x) > 12) moved.current = true;
-    // só direita (fixar)
-    const clamped = Math.max(0, Math.min(100, x));
+    const clamped = Math.max(-100, Math.min(100, x));
     dxRef.current = clamped;
     setDx(clamped);
   };
@@ -708,25 +707,32 @@ function LeadCard({
       return;
     }
     const x = dxRef.current;
-    if (moved.current && x >= 56) {
-      setLocked(true);
+    if (moved.current && x <= -56) {
+      // esquerda → Ações
+      setLocked('left');
+      setDx(-88);
+      dxRef.current = -88;
+    } else if (moved.current && x >= 56) {
+      // direita → Fixar
+      setLocked('right');
       setDx(88);
       dxRef.current = 88;
     } else {
       setDx(0);
       dxRef.current = 0;
-      setLocked(false);
+      setLocked(null);
     }
     startX.current = null;
     startY.current = null;
   };
 
   const agendado = !!(lead as any).data_hora_visita || !!(lead as any).data_agendamento;
-  const showPin = locked || dx > 12;
+  const showPin = locked === 'right' || dx > 12;
+  const showAct = locked === 'left' || dx < -12;
 
   return (
     <div className="relative overflow-hidden rounded-xl">
-      {/* fundo fixar — só aparece ao arrastar para a direita */}
+      {/* direita do dedo = Fixar (faixa à esquerda) */}
       <div
         className="absolute inset-y-0 left-0 flex w-[88px] items-stretch"
         style={{ opacity: showPin ? 1 : 0 }}
@@ -734,17 +740,39 @@ function LeadCard({
         <button
           type="button"
           data-swipe-action
-          className="flex w-full flex-col items-center justify-center gap-1 rounded-l-xl bg-amber-600 text-[11px] font-medium text-white"
+          className="flex w-full flex-col items-center justify-center gap-1 bg-amber-600 text-[11px] font-medium text-white"
           onClick={(e) => {
             e.stopPropagation();
             onPin?.(Number(lead.id));
-            setLocked(false);
+            setLocked(null);
             setDx(0);
             dxRef.current = 0;
           }}
         >
           <Pin className="h-5 w-5" />
           {pinned ? 'Desafixar' : 'Fixar'}
+        </button>
+      </div>
+
+      {/* esquerda do dedo = Ações (faixa à direita) */}
+      <div
+        className="absolute inset-y-0 right-0 flex w-[88px] items-stretch"
+        style={{ opacity: showAct ? 1 : 0 }}
+      >
+        <button
+          type="button"
+          data-swipe-action
+          className="flex w-full flex-col items-center justify-center gap-1 bg-sky-600 text-[11px] font-medium text-white"
+          onClick={(e) => {
+            e.stopPropagation();
+            onMenu();
+            setLocked(null);
+            setDx(0);
+            dxRef.current = 0;
+          }}
+        >
+          <Info className="h-5 w-5" />
+          Ações
         </button>
       </div>
 
@@ -756,7 +784,7 @@ function LeadCard({
         }}
         onClick={() => {
           if (locked) {
-            setLocked(false);
+            setLocked(null);
             setDx(0);
             dxRef.current = 0;
             return;
