@@ -8,6 +8,7 @@ import {
   Plus, Copy, RefreshCcw, AlertTriangle, Link2, ChevronDown, ChevronUp,
   Facebook, MessageCircle, Store, Shield,
 } from 'lucide-react';
+import { MetaEmbeddedSignup } from '@/components/meta-embedded-signup';
 
 interface Empresa { id: number; nome: string }
 interface Integracao {
@@ -249,23 +250,35 @@ export default function IntegracoesPage() {
           Se der erro: confira se o <strong>último zip</strong> foi ao Vercel e se houve <strong>Redeploy</strong> depois das env.
           <button type="button" className="ml-2 underline" onClick={verDiagnostico}>Diagnosticar WhatsApp</button>
         </p>
-        <button
-          type="button"
-          disabled={!!busyCard}
-          onClick={conectarWhatsAppQr}
-          className="flex items-center gap-4 rounded-2xl border bg-card p-5 text-left hover:border-emerald-500/50 transition disabled:opacity-60"
-        >
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-white">
-            <MessageCircle className="h-7 w-7" />
+        <MetaEmbeddedSignup
+          empresaId={empresa}
+          onConnected={() => carregar()}
+        />
+
+        <details className="rounded-xl border bg-card/50 px-4 py-3 text-sm">
+          <summary className="cursor-pointer font-medium text-muted-foreground">
+            Outras formas (Cloud token manual / QR Evolution)
+          </summary>
+          <div className="mt-3 space-y-2">
+            <button
+              type="button"
+              disabled={!!busyCard}
+              onClick={conectarWhatsAppQr}
+              className="flex w-full items-center gap-4 rounded-2xl border bg-card p-4 text-left hover:border-emerald-500/50 transition disabled:opacity-60"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600/80 text-white">
+                <MessageCircle className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <div className="font-semibold">WhatsApp via token no servidor</div>
+                <p className="text-xs text-muted-foreground">
+                  Usa WHATSAPP_TOKEN + PHONE_NUMBER_ID do Vercel (teste) ou Evolution QR
+                </p>
+              </div>
+              {busyCard === 'wa' && <span className="text-xs">…</span>}
+            </button>
           </div>
-          <div className="flex-1">
-            <div className="font-semibold text-lg">Conectar WhatsApp</div>
-            <p className="text-sm text-muted-foreground">
-              QR Code na tela · celular da loja em Aparelhos conectados · pronto em segundos
-            </p>
-          </div>
-          {busyCard === 'wa' && <span className="text-xs">…</span>}
-        </button>
+        </details>
 
         <div className="flex items-center gap-4 rounded-2xl border border-dashed bg-card/50 p-5 opacity-90">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-600/80 text-white">
