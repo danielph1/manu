@@ -101,7 +101,8 @@ export default function IntegracoesPage() {
       toast.error(r.data.message || 'Não foi possível iniciar');
     } catch (e: any) {
       const d = e?.response?.data;
-      toast.error(d?.message || d?.error || 'Meta OAuth indisponível (configure App no servidor Aurox)');
+      toast.error(d?.message || d?.error || 'Meta OAuth indisponível');
+      if (d?.missing) toast.message('Faltando: ' + d.missing.join(', '));
     } finally {
       setBusyCard('');
     }
@@ -153,6 +154,30 @@ export default function IntegracoesPage() {
       }
     } finally {
       setBusyCard('');
+    }
+  }
+
+  async function verDiagnosticoMeta() {
+    try {
+      const r = await api.get('/integracoes/oauth/meta/diagnostico');
+      const o = r.data.oauth_facebook_pages;
+      const e = r.data.embedded_signup;
+      alert(
+        `Meta OAuth\n` +
+          `pronto: ${o.pronto}\n` +
+          `APP_ID: ${o.META_APP_ID_or_equiv}\n` +
+          `SECRET: ${o.META_APP_SECRET}\n` +
+          `URL: ${o.app_url}\n` +
+          `redirect: ${o.redirect_uri_esperado || '-'}\n` +
+          `${o.dica}\n\n` +
+          `Embedded Signup\n` +
+          `pronto: ${e.pronto}\n` +
+          `PUBLIC_APP_ID: ${e.NEXT_PUBLIC_META_APP_ID}\n` +
+          `CONFIG_ID: ${e.NEXT_PUBLIC_META_CONFIG_ID}\n` +
+          `${e.dica}`,
+      );
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Diagnóstico Meta falhou — deploy v133?');
     }
   }
 
@@ -249,6 +274,7 @@ export default function IntegracoesPage() {
         <p className="text-xs text-muted-foreground">
           Se der erro: confira se o <strong>último zip</strong> foi ao Vercel e se houve <strong>Redeploy</strong> depois das env.
           <button type="button" className="ml-2 underline" onClick={verDiagnostico}>Diagnosticar WhatsApp</button>
+          <button type="button" className="ml-2 underline" onClick={verDiagnosticoMeta}>Diagnosticar Meta OAuth</button>
         </p>
         <MetaEmbeddedSignup
           empresaId={empresa}
