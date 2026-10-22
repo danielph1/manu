@@ -73,31 +73,64 @@ function ChatPageInner() {
     localStorage.setItem('manu.lidos', JSON.stringify(lidos));
   }, [leadId, Array.isArray(data) ? data.length : 0]);
 
+  const enviandoRef = useRef(false);
+  const [enviando, setEnviando] = useState(false);
+
   async function enviar(extra?: { arquivo_b64: string; arquivo_nome: string; arquivo_mime: string }) {
+    if (enviandoRef.current) return;
+    enviandoRef.current = true;
+    setEnviando(true);
     try {
       if (audioPendente && !extra) {
         const blob = audioPendente;
         const reader = new FileReader();
-        reader.onload = async () => {
-          const data = String(reader.result || '');
-          const b64 = data.includes(',') ? data.split(',')[1] : data;
-          await api.post('/chat', { mensagem: texto || 'Áudio', arquivo_b64: b64, arquivo_nome: 'audio.webm', arquivo_mime: 'audio/webm', lead_id: leadId ? Number(leadId) : null });
-          setTexto('');
-          setAudioPendente(null);
-          qc.invalidateQueries({ queryKey: ['chat'] });
+        const done = () => {
+          enviandoRef.current = false;
+          setEnviando(false);
         };
+        reader.onload = async () => {
+          try {
+            const data = String(reader.result || '');
+            const b64 = data.includes(',') ? data.split(',')[1] : data;
+            await api.post('/chat', {
+              mensagem: texto || 'Áudio',
+              arquivo_b64: b64,
+              arquivo_nome: 'audio.webm',
+              arquivo_mime: 'audio/webm',
+              lead_id: leadId ? Number(leadId) : null,
+            });
+            setTexto('');
+            setAudioPendente(null);
+            qc.invalidateQueries({ queryKey: ['chat'] });
+          } catch (e: any) {
+            toast.error(e?.response?.data?.error || 'Erro ao enviar áudio');
+          } finally {
+            done();
+          }
+        };
+        reader.onerror = done;
         reader.readAsDataURL(blob);
         return;
       }
-      const r = await api.post('/chat', { mensagem: texto, lead_id: leadId ? Number(leadId) : null, ...extra });
+      const r = await api.post('/chat', {
+        mensagem: texto,
+        lead_id: leadId ? Number(leadId) : null,
+        ...extra,
+      });
       setTexto('');
       qc.invalidateQueries({ queryKey: ['chat'] });
       const w = r?.data?.whatsapp;
       if (w && w.ok === false) {
-        toast.error(w.skipped || w.error || 'WhatsApp não enviou (confira token/telefone no Vercel)');
+        toast.error(w.skipped || w.error || 'WhatsApp não enviou (confira token/telefone)');
       }
     } catch (e: any) {
       toast.error(e?.response?.data?.error || 'Erro ao enviar');
+    } finally {
+      // áudio libera no onload; texto libera aqui
+      if (!(audioPendente && !extra)) {
+        enviandoRef.current = false;
+        setEnviando(false);
+      }
     }
   }
 
@@ -360,8 +393,8 @@ function ChatPageInner() {
           <Mic className={`h-5 w-5 ${recording ? 'animate-pulse' : ''}`} />
         </Button>
         <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} title="Arquivo"><Paperclip className="h-5 w-5" /></Button>
-        <Input className="flex-1 rounded-full" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Mensagem" onKeyDown={(e) => e.key === 'Enter' && enviar()} />
-        <Button className="rounded-full" onClick={() => enviar()}>Enviar</Button>
+        <Input className="flex-1 rounded-full" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Mensagem" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
+        <Button className="rounded-full" disabled={enviando} onClick={() => enviar()}>{enviando ? "…" : "Enviar"}</Button>
       </div>
     </div>
   );

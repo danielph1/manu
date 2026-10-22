@@ -80,8 +80,8 @@ const PLATAFORMAS: {
   },
   {
     id: 'whatsapp',
-    label: 'WhatsApp (Z-API / similar)',
-    hint: 'No Z-API: Webhook “Ao receber” = URL Aurox. Token fica no Z-API; aqui só a URL.',
+    label: 'WhatsApp',
+    hint: 'Meta Cloud API ou provedor: cole a URL Aurox. Verify Token universal: aurox-meta-verify',
     map: { nome: 'senderName', telefone: 'phone', email: 'email', interesse: 'interest', mensagem: 'text.message', id_externo: 'messageId' },
   },
 ];
@@ -356,6 +356,25 @@ export default function IntegracoesPage() {
               <div className="flex flex-wrap gap-2">
                 <button type="button" onClick={() => toggleAtivo(i)} className="rounded-md border px-2 py-1 text-xs">
                   {i.ativo ? 'Pausar' : 'Ativar'}
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const senha = window.prompt('Digite sua senha para excluir esta conexão:');
+                    if (senha == null) return;
+                    if (!senha) return toast.error('Senha obrigatória');
+                    try {
+                      await api.delete(`/integracoes/${i.id}`, { data: { senha } });
+                      toast.success('Conexão excluída');
+                      if (selecionado === i.id) setSelecionado('');
+                      await carregar();
+                    } catch (err: any) {
+                      toast.error(err?.response?.data?.error || 'Não foi possível excluir');
+                    }
+                  }}
+                  className="rounded-md border border-red-500/40 px-2 py-1 text-xs text-red-600"
+                >
+                  Excluir
                 </button>
                 <button type="button" onClick={() => rotacionar(i.id)} className="rounded-md border px-2 py-1 text-xs">
                   Nova URL
