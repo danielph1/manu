@@ -1,0 +1,2 @@
+[functions.manu-webhook]
+verify_jwt = false

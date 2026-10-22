@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Car, LayoutDashboard, MessageSquare, Target, FileText,
   CheckSquare, ArrowRightLeft, PlusCircle, LogOut, UserCircle2,
-  FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox, Building2,
+  FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox, Building2, PlugZap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Role } from '@/lib/roles';
@@ -26,6 +26,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 
   const items: Array<{ href: string; label: string; icon: any; show: boolean }> = [
     { href: '/aurox', label: 'Aurox', icon: Building2, show: isSuper },
+    { href: '/marketplace', label: 'Marketplace', icon: Car, show: isSuper },
     { href: '/triagem', label: t('nav.triagem'), icon: Inbox, show: Role.isAdmin(user) || isSuper },
     { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) || isSuper },
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) || isSuper },
@@ -37,6 +38,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     { href: '/processos', label: 'Transferencias', icon: ArrowRightLeft, show: Role.verDocumental(user) || isSuper },
     { href: '/oficina', label: t('nav.oficina'), icon: Wrench, show: !!user },
     { href: '/faturamento', label: t('nav.faturamento'), icon: Receipt, show: !!user },
+    { href: '/integracoes', label: 'Integrações', icon: PlugZap, show: ['admin','marketing','superadmin'].includes(tipo) || isSuper },
     { href: '/configuracoes', label: t('nav.config'), icon: Settings, show: !!user },
   ];
 

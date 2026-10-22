@@ -135,6 +135,21 @@ export function LeadEditDialog({ lead, onClose }: { lead: Lead | null; onClose: 
           <div className="space-y-2">
             <Label>Observação</Label>
             <Textarea rows={2} value={form.observacao ?? ''} onChange={(e) => setForm({ ...form, observacao: e.target.value })} disabled={!canEdit} />
+            {(() => {
+              const m = String(form.observacao || '').match(/https?:\/\/(?:www\.)?facebook\.com\/[^\s]+/i);
+              const url = m ? m[0].replace(/[),.;]+$/, '') : null;
+              if (!url) return null;
+              return (
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex text-sm text-blue-600 underline dark:text-blue-400"
+                >
+                  Abrir anúncio no Facebook →
+                </a>
+              );
+            })()}
           </div>
 
           <div className="space-y-2 rounded border border-border p-3">

@@ -48,9 +48,20 @@ function texto(b: any): string {
 }
 
 function telefone(b: any): string {
-  return normTel(
-    b.phone || b.phoneNumber || b.senderPhone || b.from || b.chatId || b.participant || '',
-  );
+  // Z-API manda phone, às vezes chatLid / connectedPhone / momment
+  const raw =
+    b.phone ||
+    b.phoneNumber ||
+    b.senderPhone ||
+    b.from ||
+    b.chatId ||
+    b.participant ||
+    b.connectedPhone ||
+    (typeof b.chatLid === 'string' ? b.chatLid.split('@')[0] : '') ||
+    '';
+  // chatId tipo 5511999...@c.us
+  const fromChat = String(raw).includes('@') ? String(raw).split('@')[0] : String(raw);
+  return normTel(fromChat);
 }
 
 async function findLeadByPhone(tel: string) {
@@ -118,7 +129,9 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const b = await req.json().catch(() => ({}));
-    if (b.type && /status|connected|disconnected|presence/i.test(String(b.type))) {
+    // ignora só eventos de status de conexão / presença (não mensagens)
+    const tipoEv = String(b.type || b.event || '').toLowerCase();
+    if (tipoEv && /^(status|connected|disconnected|presence|qrcode)/i.test(tipoEv)) {
       return NextResponse.json({ ok: true, ignored: 'status' });
     }
     if (b.isGroup === true) return NextResponse.json({ ok: true, ignored: 'group' });
@@ -128,7 +141,7 @@ export async function POST(req: NextRequest) {
       String(b.senderName || b.chatName || b.notification || b.pushName || '').trim() || 'WhatsApp';
     const tel = telefone(b);
     const keys = chavesTel(tel);
-    let msgRaw = texto(b).slice(0, 2000) || '[mensagem]';
+    const msg = texto(b).slice(0, 2000) || '[mensagem]';
     if (!keys.length) return NextResponse.json({ ok: true, ignored: 'sem telefone' });
 
     // 1) Já existe lead com esse telefone? → só mensagem no chat
@@ -192,8 +205,8 @@ export async function POST(req: NextRequest) {
     // 3) Novo contato → uma única triagem (telefone normalizado)
     const telStore = tel.length >= 10 ? tel : keys[0];
     const row = await queryOne(
-      `INSERT INTO public.triagem (nome, telefone, email, interesse, origem, mensagem)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      `INSERT INTO public.triagem (nome, telefone, email, interesse, origem, mensagem, status)
+       VALUES ($1,$2,$3,$4,$5,$6,'aguardando') RETURNING id`,
       [nome, telStore, null, null, 'whatsapp', msg],
     );
     try {

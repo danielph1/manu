@@ -640,6 +640,16 @@ function ActionRow({
 }
 
 /** Card com swipe só no touch; no desktop usa botão ⋯ */
+
+function extractMarketplaceLink(obs?: string | null, extra?: string | null): string | null {
+  const text = `${obs || ''}\n${extra || ''}`;
+  const m = text.match(/https?:\/\/(?:www\.)?facebook\.com\/[^\s]+/i);
+  if (m) return m[0].replace(/[),.;]+$/, '');
+  const m2 = text.match(/link:\s*(https?:\/\/\S+)/i);
+  if (m2) return m2[1].replace(/[),.;]+$/, '');
+  return null;
+}
+
 function LeadCard({
   lead,
   pinned,
@@ -727,6 +737,8 @@ function LeadCard({
   };
 
   const agendado = !!(lead as any).data_hora_visita || !!(lead as any).data_agendamento;
+  const fbLink = extractMarketplaceLink((lead as any).observacao, (lead as any).produto_interesse);
+
   const showPin = locked === 'right' || dx > 12;
   const showAct = locked === 'left' || dx < -12;
 
@@ -819,6 +831,19 @@ function LeadCard({
               )}
             </div>
             <div className="flex shrink-0 items-center gap-1">
+              {fbLink && (
+                <a
+                  href={fbLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex h-8 items-center gap-1 rounded-full border border-blue-500/40 bg-blue-500/10 px-2 text-[10px] font-medium text-blue-600 dark:text-blue-400"
+                  aria-label="Abrir no Facebook"
+                  title="Abrir anúncio / mensagem no Facebook"
+                >
+                  FB
+                </a>
+              )}
               <a
                 href={`/chat?lead=${lead.id}`}
                 onClick={(e) => e.stopPropagation()}
