@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Plus, Copy, RefreshCcw, AlertTriangle, Link2 } from 'lucide-react';
+import {
+  Plus, Copy, RefreshCcw, AlertTriangle, Link2, ChevronDown, ChevronUp,
+  Facebook, MessageCircle, Store, Shield,
+} from 'lucide-react';
 
 interface Empresa { id: number; nome: string }
 interface Integracao {
@@ -12,129 +15,140 @@ interface Integracao {
   plataforma: string; ativo: boolean; mapeamento: Record<string, string>;
   criado_em: string; ultimo_evento_em: string | null; eventos: number;
 }
-interface Evento {
-  id: string; recebido_em: string; status: string; nome: string; telefone: string;
-  email: string; interesse: string; triagem_id: number | null; erro: string | null;
+interface OauthConn {
+  id: string; empresa_id: number; empresa_nome: string; provedor: string;
+  status: string; label: string; external_id: string; criado_em: string;
 }
 
-/** Plataformas de anúncio / mensagens que EMPURRAM lead (webhook inbound) */
-const PLATAFORMAS: {
-  id: string;
-  label: string;
-  hint: string;
-  map: Record<string, string>;
-}[] = [
-  {
-    id: 'olx',
-    label: 'OLX',
-    hint: 'No painel OLX Profissional / parceiro, cole a URL de webhook da Aurox.',
-    map: { nome: 'name', telefone: 'phone', email: 'email', interesse: 'adsInfo.subject', mensagem: 'message', id_externo: 'externalId' },
-  },
-  {
-    id: 'webmotors',
-    label: 'Webmotors',
-    hint: 'Cadastre a URL de callback/webhook no painel Webmotors (ou integrador).',
-    map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'veiculo', mensagem: 'mensagem', id_externo: 'id' },
-  },
-  {
-    id: 'icarros',
-    label: 'iCarros',
-    hint: 'URL de notificação de lead no painel iCarros / API parceiro.',
-    map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'modelo', mensagem: 'observacao', id_externo: 'leadId' },
-  },
-  {
-    id: 'mercadolivre',
-    label: 'Mercado Livre',
-    hint: 'Notificações ML (topic leads/questions) apontando para esta URL.',
-    map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'titulo', mensagem: 'texto', id_externo: 'id' },
-  },
-  {
-    id: 'napista',
-    label: 'Na Pista',
-    hint: 'Webhook Na Pista → cole a URL gerada aqui.',
-    map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'veiculo', mensagem: 'mensagem', id_externo: 'id' },
-  },
-  {
-    id: 'chavesnamao',
-    label: 'Chaves na Mão',
-    hint: 'Callback de lead no painel Chaves na Mão.',
-    map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'veiculo', mensagem: 'mensagem', id_externo: 'id' },
-  },
-  {
-    id: 'facebook',
-    label: 'Facebook (Lead Ads / Página)',
-    hint: 'Meta Webhooks: assine leadgen / messages e use esta URL + verify token.',
-    map: { nome: 'full_name', telefone: 'phone_number', email: 'email', interesse: 'vehicle', mensagem: 'message', id_externo: 'leadgen_id' },
-  },
-  {
-    id: 'marketplace',
-    label: 'Facebook Marketplace',
-    hint: 'Só via mensagens da Página/Meta webhook (não scrape). Mesma ideia do Facebook.',
-    map: { nome: 'name', telefone: 'phone', email: 'email', interesse: 'item', mensagem: 'message', id_externo: 'id' },
-  },
-  {
-    id: 'instagram',
-    label: 'Instagram',
-    hint: 'Meta Webhooks (instagram / messages) na mesma app da Página.',
-    map: { nome: 'name', telefone: 'phone', email: 'email', interesse: 'interest', mensagem: 'message', id_externo: 'id' },
-  },
-  {
-    id: 'whatsapp',
-    label: 'WhatsApp',
-    hint: 'Meta Cloud API ou provedor: cole a URL Aurox. Verify Token universal: aurox-meta-verify',
-    map: { nome: 'senderName', telefone: 'phone', email: 'email', interesse: 'interest', mensagem: 'text.message', id_externo: 'messageId' },
-  },
+const PLATAFORMAS_AVANCADAS = [
+  { id: 'olx', label: 'OLX', map: { nome: 'name', telefone: 'phone', email: 'email', interesse: 'adsInfo.subject', mensagem: 'message', id_externo: 'externalId' } },
+  { id: 'webmotors', label: 'Webmotors', map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'veiculo', mensagem: 'mensagem', id_externo: 'id' } },
+  { id: 'icarros', label: 'iCarros', map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'modelo', mensagem: 'observacao', id_externo: 'leadId' } },
+  { id: 'mercadolivre', label: 'Mercado Livre', map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'titulo', mensagem: 'texto', id_externo: 'id' } },
+  { id: 'napista', label: 'Na Pista', map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'veiculo', mensagem: 'mensagem', id_externo: 'id' } },
+  { id: 'chavesnamao', label: 'Chaves na Mão', map: { nome: 'nome', telefone: 'telefone', email: 'email', interesse: 'veiculo', mensagem: 'mensagem', id_externo: 'id' } },
+  { id: 'facebook', label: 'Facebook (webhook manual)', map: { nome: 'name', telefone: 'phone', email: 'email', interesse: 'interest', mensagem: 'message', id_externo: 'id' } },
+  { id: 'instagram', label: 'Instagram (webhook manual)', map: { nome: 'name', telefone: 'phone', email: 'email', interesse: 'interest', mensagem: 'message', id_externo: 'id' } },
+  { id: 'whatsapp', label: 'WhatsApp (webhook manual)', map: { nome: 'senderName', telefone: 'phone', email: 'email', interesse: 'interest', mensagem: 'text.message', id_externo: 'messageId' } },
 ];
 
 const fields = [
-  ['nome', 'Nome'],
-  ['telefone', 'Telefone'],
-  ['email', 'E-mail'],
-  ['interesse', 'Veículo / interesse'],
-  ['mensagem', 'Mensagem'],
-  ['id_externo', 'Identificador externo'],
+  ['nome', 'Nome'], ['telefone', 'Telefone'], ['email', 'E-mail'],
+  ['interesse', 'Veículo / interesse'], ['mensagem', 'Mensagem'], ['id_externo', 'ID externo'],
 ] as const;
 
 export default function IntegracoesPage() {
   const { user, isLoading } = useAuth();
   const tipo = String(user?.tipo || '').toLowerCase();
   const autorizado = ['admin', 'marketing', 'superadmin'].includes(tipo);
+  const isSuper = tipo === 'superadmin';
+
   const [lista, setLista] = useState<Integracao[]>([]);
+  const [oauth, setOauth] = useState<OauthConn[]>([]);
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [empresa, setEmpresa] = useState('');
+  const [avancado, setAvancado] = useState(false);
   const [plataforma, setPlataforma] = useState('olx');
   const [nome, setNome] = useState('OLX');
-  const [mapeamento, setMapeamento] = useState<Record<string, string>>(PLATAFORMAS[0].map);
+  const [mapeamento, setMapeamento] = useState(PLATAFORMAS_AVANCADAS[0].map);
   const [webhook, setWebhook] = useState('');
-  const [selecionado, setSelecionado] = useState('');
-  const [eventos, setEventos] = useState<Evento[]>([]);
-  const [editando, setEditando] = useState('');
-  const [mapaEditado, setMapaEditado] = useState<Record<string, string>>({});
   const [salvando, setSalvando] = useState(false);
-  const [hint, setHint] = useState(PLATAFORMAS[0].hint);
+  const [qr, setQr] = useState<{ id: string; base64: string | null; instance: string } | null>(null);
+  const [busyCard, setBusyCard] = useState('');
 
   const carregar = useCallback(async () => {
-    const [a, b] = await Promise.all([api.get('/integracoes'), api.get('/integracoes/empresas')]);
+    const [a, b, c] = await Promise.all([
+      api.get('/integracoes'),
+      api.get('/integracoes/empresas'),
+      api.get('/integracoes/oauth').catch(() => ({ data: [] })),
+    ]);
     setLista(Array.isArray(a.data) ? a.data : []);
     setEmpresas(Array.isArray(b.data) ? b.data : []);
-    setEmpresa((c) => c || String(b.data?.[0]?.id ?? ''));
+    setEmpresa((x) => x || String(b.data?.[0]?.id ?? ''));
+    setOauth(Array.isArray(c.data) ? c.data : []);
   }, []);
 
   useEffect(() => {
-    if (!isLoading && autorizado) carregar().catch(() => toast.error('Falha ao carregar integrações'));
+    if (!isLoading && autorizado) carregar().catch(() => toast.error('Falha ao carregar'));
   }, [isLoading, autorizado, carregar]);
 
-  function escolherPlataforma(id: string) {
-    const p = PLATAFORMAS.find((x) => x.id === id) || PLATAFORMAS[0];
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('oauth') === 'ok') {
+      toast.success(`Facebook conectado: ${p.get('page') || 'página'}`);
+      window.history.replaceState({}, '', '/integracoes');
+      carregar();
+    }
+    if (p.get('oauth_error')) {
+      toast.error(`OAuth: ${p.get('oauth_error')}`);
+      window.history.replaceState({}, '', '/integracoes');
+    }
+  }, [carregar]);
+
+  async function conectarMeta() {
+    if (!empresa && !isSuper) return toast.error('Sem empresa');
+    setBusyCard('meta');
+    try {
+      const r = await api.post('/integracoes/oauth/meta/start', {
+        empresa_id: Number(empresa) || undefined,
+      });
+      if (r.data.auth_url) {
+        window.location.href = r.data.auth_url;
+        return;
+      }
+      toast.error(r.data.message || 'Não foi possível iniciar');
+    } catch (e: any) {
+      const d = e?.response?.data;
+      toast.error(d?.message || d?.error || 'Meta OAuth indisponível (configure App no servidor Aurox)');
+    } finally {
+      setBusyCard('');
+    }
+  }
+
+  async function conectarWhatsAppQr() {
+    setBusyCard('wa');
+    try {
+      const r = await api.post('/integracoes/oauth/whatsapp/qr', {
+        empresa_id: Number(empresa) || undefined,
+      });
+      setQr({
+        id: r.data.id,
+        base64: r.data.qrcode_base64,
+        instance: r.data.instance,
+      });
+      toast.message(r.data.message || 'QR gerado');
+      // poll status
+      const id = r.data.id;
+      const t = window.setInterval(async () => {
+        try {
+          const s = await api.get(`/integracoes/oauth/whatsapp/qr?id=${id}`);
+          if (s.data.status === 'conectado') {
+            toast.success('WhatsApp conectado!');
+            window.clearInterval(t);
+            setQr(null);
+            carregar();
+          }
+        } catch { /* ok */ }
+      }, 4000);
+      window.setTimeout(() => window.clearInterval(t), 120000);
+    } catch (e: any) {
+      const d = e?.response?.data;
+      toast.error(d?.message || d?.error || 'WhatsApp QR indisponível no servidor');
+    } finally {
+      setBusyCard('');
+    }
+  }
+
+  function escolherPlat(id: string) {
+    const p = PLATAFORMAS_AVANCADAS.find((x) => x.id === id)!;
     setPlataforma(p.id);
     setNome(p.label);
     setMapeamento({ ...p.map });
-    setHint(p.hint);
   }
 
-  async function criar(e: FormEvent) {
+  async function criarAvancado(e: FormEvent) {
     e.preventDefault();
-    if (!empresa) return toast.error('Escolha a empresa');
     setSalvando(true);
     try {
       const r = await api.post('/integracoes', {
@@ -144,295 +158,227 @@ export default function IntegracoesPage() {
         mapeamento,
       });
       setWebhook(r.data.webhook_url || '');
-      toast.success('Conexão criada — copie a URL e cole no painel da plataforma');
+      toast.success('URL gerada — use só se a plataforma exigir webhook manual');
       await carregar();
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Erro ao criar');
+      toast.error(err?.response?.data?.error || 'Erro');
     } finally {
       setSalvando(false);
     }
   }
 
-  async function copiar(txt: string) {
-    try {
-      await navigator.clipboard.writeText(txt);
-      toast.success('Copiado');
-    } catch {
-      toast.message(txt);
-    }
-  }
-
-  async function verEventos(id: string) {
-    setSelecionado(id);
-    try {
-      const r = await api.get(`/integracoes/${id}/eventos`);
-      setEventos(Array.isArray(r.data) ? r.data : []);
-    } catch {
-      toast.error('Falha ao listar eventos');
-    }
-  }
-
-  async function rotacionar(id: string) {
-    if (!confirm('Gerar nova URL? A anterior deixa de funcionar.')) return;
-    try {
-      const r = await api.post(`/integracoes/${id}/rotacionar`);
-      setWebhook(r.data.webhook_url || '');
-      toast.success('Nova URL gerada — atualize no painel da plataforma');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Erro');
-    }
-  }
-
-  async function toggleAtivo(i: Integracao) {
-    try {
-      await api.patch(`/integracoes/${i.id}`, { ativo: !i.ativo });
-      await carregar();
-    } catch {
-      toast.error('Não foi possível alterar');
-    }
-  }
-
-  async function salvarMapa(id: string) {
-    try {
-      await api.patch(`/integracoes/${id}`, { mapeamento: mapaEditado });
-      setEditando('');
-      toast.success('Mapeamento salvo');
-      await carregar();
-    } catch {
-      toast.error('Erro ao salvar campos');
-    }
-  }
-
   if (isLoading) return <div className="p-6">Carregando…</div>;
-  if (!autorizado) {
-    return <div className="p-6 text-muted-foreground">Apenas admin, marketing ou superadmin.</div>;
-  }
+  if (!autorizado) return <div className="p-6 text-muted-foreground">Apenas admin, marketing ou superadmin.</div>;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-28">
+    <div className="mx-auto max-w-3xl space-y-6 pb-28">
       <div>
-        <h1 className="text-2xl font-bold">Integrações de anúncios</h1>
+        <h1 className="text-2xl font-bold">Conectar canais</h1>
         <p className="text-sm text-muted-foreground">
-          A empresa cola a <strong>URL da Aurox</strong> no painel OLX, Webmotors, iCarros, etc. O lead chega na{' '}
-          <strong>Triagem</strong> com nome e telefone — modelo AutoCerto, sem login no Vercel.
+          Um clique. Sem copiar URL, sem JSON. Lead e mensagens ficam só na <strong>sua empresa</strong>.
         </p>
       </div>
 
-      <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-sm flex gap-3">
-        <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
-        <div>
-          <p className="font-medium">Como funciona</p>
-          <ol className="mt-1 list-decimal pl-4 text-muted-foreground space-y-1">
-            <li>Crie a conexão abaixo (empresa + plataforma).</li>
-            <li>Copie a <strong>URL de webhook</strong> gerada.</li>
-            <li>No site da plataforma (OLX, Webmotors…), cole essa URL onde pede webhook/callback.</li>
-            <li>Quando um cliente interessar no anúncio, a plataforma <em>envia</em> o lead → Aurox → Triagem.</li>
-          </ol>
-          <p className="mt-2 text-xs text-muted-foreground">
-            A Edge Function no Supabase recebe o POST (público). Nada de token da empresa no Vercel.
-          </p>
+      {(isSuper || empresas.length > 1) && (
+        <label className="block text-sm">
+          Empresa
+          <select
+            className="mt-1 w-full rounded-md border bg-background p-2"
+            value={empresa}
+            onChange={(e) => setEmpresa(e.target.value)}
+          >
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>{e.nome}</option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <div className="grid gap-3">
+        <button
+          type="button"
+          disabled={!!busyCard}
+          onClick={conectarMeta}
+          className="flex items-center gap-4 rounded-2xl border bg-card p-5 text-left hover:border-blue-500/50 transition disabled:opacity-60"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white">
+            <Facebook className="h-7 w-7" />
+          </div>
+          <div className="flex-1">
+            <div className="font-semibold text-lg">Conectar Facebook / Instagram</div>
+            <p className="text-sm text-muted-foreground">
+              Abre o login oficial da Meta · você escolhe a Página da loja · Aurox guarda só o token da Página
+            </p>
+          </div>
+          {busyCard === 'meta' && <span className="text-xs">…</span>}
+        </button>
+
+        <button
+          type="button"
+          disabled={!!busyCard}
+          onClick={conectarWhatsAppQr}
+          className="flex items-center gap-4 rounded-2xl border bg-card p-5 text-left hover:border-emerald-500/50 transition disabled:opacity-60"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600 text-white">
+            <MessageCircle className="h-7 w-7" />
+          </div>
+          <div className="flex-1">
+            <div className="font-semibold text-lg">Conectar WhatsApp</div>
+            <p className="text-sm text-muted-foreground">
+              QR Code na tela · celular da loja em Aparelhos conectados · pronto em segundos
+            </p>
+          </div>
+          {busyCard === 'wa' && <span className="text-xs">…</span>}
+        </button>
+
+        <div className="flex items-center gap-4 rounded-2xl border border-dashed bg-card/50 p-5 opacity-90">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-yellow-600/80 text-white">
+            <Store className="h-7 w-7" />
+          </div>
+          <div className="flex-1">
+            <div className="font-semibold text-lg">Mercado Livre / OLX Pro</div>
+            <p className="text-sm text-muted-foreground">
+              OAuth do parceiro em breve. Enquanto isso use a opção avançada (webhook) se o painel deles pedir URL.
+            </p>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <form onSubmit={criar} className="space-y-3 rounded-2xl border bg-card p-5">
-          <div className="flex items-center gap-2 font-semibold">
-            <Plus className="h-5 w-5" /> Nova conexão
-          </div>
+      {qr && (
+        <div className="rounded-2xl border border-emerald-500/40 bg-card p-5 space-y-3 text-center">
+          <p className="font-medium">Escaneie com o WhatsApp da loja</p>
+          {qr.base64 ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={qr.base64.startsWith('data:') ? qr.base64 : `data:image/png;base64,${qr.base64}`}
+              alt="QR WhatsApp"
+              className="mx-auto max-w-[240px] rounded-lg bg-white p-2"
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground">Aguardando QR… atualize ou tente de novo.</p>
+          )}
+          <p className="text-xs text-muted-foreground">Instância isolada: {qr.instance}</p>
+        </div>
+      )}
 
-          <label className="block text-sm">
-            Empresa
-            <select
-              required
-              value={empresa}
-              onChange={(e) => setEmpresa(e.target.value)}
-              className="mt-1 w-full rounded-md border bg-background p-2"
-            >
-              {empresas.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.nome}
-                </option>
-              ))}
-            </select>
-          </label>
+      <div className="rounded-xl border p-4 space-y-2">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Shield className="h-4 w-4 text-emerald-500" /> Segurança
+        </div>
+        <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1">
+          <li>Token/sessão fica ligado ao <code>empresa_id</code> — outra loja não enxerga.</li>
+          <li>Facebook: usa Page Access Token da Página, não o perfil pessoal como token operacional.</li>
+          <li>WhatsApp QR: instância <code>aurox_&#123;empresa&#125;_…</code> só daquela empresa.</li>
+          <li>API nunca devolve access_token para o navegador na listagem.</li>
+        </ul>
+      </div>
 
+      {oauth.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="font-semibold text-sm">Conexões rápidas</h2>
+          {oauth.map((o) => (
+            <div key={o.id} className="flex justify-between rounded-xl border px-4 py-3 text-sm">
+              <div>
+                <div className="font-medium">{o.label || o.provedor}</div>
+                <div className="text-xs text-muted-foreground">{o.provedor} · {o.empresa_nome}</div>
+              </div>
+              <span className={`text-xs self-center ${o.status === 'conectado' ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+                {o.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Avançado */}
+      <button
+        type="button"
+        onClick={() => setAvancado((v) => !v)}
+        className="flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium"
+      >
+        Integração via Webhook / API (avançado)
+        {avancado ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+      </button>
+
+      {avancado && (
+        <form onSubmit={criarAvancado} className="space-y-3 rounded-2xl border bg-card p-5">
+          <p className="text-xs text-muted-foreground">
+            Para ERP, AutoCerto-like, ou quando o portal exige URL. Verify Meta: <code>aurox-meta-verify</code>
+          </p>
           <label className="block text-sm">
             Plataforma
             <select
-              value={plataforma}
-              onChange={(e) => escolherPlataforma(e.target.value)}
               className="mt-1 w-full rounded-md border bg-background p-2"
+              value={plataforma}
+              onChange={(e) => escolherPlat(e.target.value)}
             >
-              {PLATAFORMAS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.label}
-                </option>
+              {PLATAFORMAS_AVANCADAS.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
               ))}
             </select>
-            <span className="mt-1 block text-xs text-muted-foreground">{hint}</span>
           </label>
-
           <label className="block text-sm">
-            Nome da conexão (ex.: loja 381 / anúncio X)
-            <input
-              className="mt-1 w-full rounded-md border bg-background p-2"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              required
-              minLength={2}
-            />
+            Nome
+            <input className="mt-1 w-full rounded-md border bg-background p-2" value={nome} onChange={(e) => setNome(e.target.value)} required />
           </label>
-
-          <div className="rounded-lg border p-3 space-y-2">
-            <div className="text-sm font-medium">Mapeamento JSON (caminho no payload)</div>
-            <p className="text-xs text-muted-foreground">
-              Ajuste se a plataforma mandar nomes diferentes. Ex.: <code>lead.customer.phone</code>
-            </p>
+          <div className="space-y-1 rounded-lg border p-3">
             {fields.map(([k, label]) => (
               <label key={k} className="grid grid-cols-2 gap-2 text-xs items-center">
                 <span>{label}</span>
                 <input
-                  className="rounded border bg-background p-1.5 font-mono"
+                  className="rounded border bg-background p-1 font-mono"
                   value={mapeamento[k] || ''}
                   onChange={(e) => setMapeamento((m) => ({ ...m, [k]: e.target.value }))}
                 />
               </label>
             ))}
           </div>
-
-          <button
-            type="submit"
-            disabled={salvando}
-            className="w-full rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-          >
-            {salvando ? 'Criando…' : 'Criar conexão e gerar URL'}
+          <button type="submit" disabled={salvando} className="w-full rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground">
+            {salvando ? '…' : 'Gerar URL de webhook'}
           </button>
-
           {webhook && (
-            <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 space-y-2">
-              <div className="text-sm font-medium flex items-center gap-2">
-                <Link2 className="h-4 w-4" /> URL para colar na plataforma
-              </div>
-              <code className="block break-all text-xs">{webhook}</code>
-              <button type="button" onClick={() => copiar(webhook)} className="flex items-center gap-1 text-sm underline">
-                <Copy className="h-3.5 w-3.5" /> Copiar URL
+            <div className="rounded-lg border border-emerald-500/30 p-3 text-xs break-all space-y-2">
+              <code>{webhook}</code>
+              <button type="button" className="flex items-center gap-1 underline" onClick={() => navigator.clipboard.writeText(webhook)}>
+                <Copy className="h-3 w-3" /> Copiar
               </button>
-              <p className="text-[11px] text-muted-foreground">
-                Guarde agora: o segredo da URL não aparece de novo (só rotacionando).
-              </p>
             </div>
           )}
-        </form>
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold">Conexões existentes</h2>
-            <button type="button" onClick={() => carregar()} className="rounded-md border p-2" title="Atualizar">
-              <RefreshCcw className="h-4 w-4" />
-            </button>
-          </div>
-          {lista.length === 0 && (
-            <p className="text-sm text-muted-foreground">Nenhuma conexão ainda.</p>
-          )}
-          {lista.map((i) => (
-            <div key={i.id} className="rounded-xl border bg-card p-4 space-y-2">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div className="font-medium">{i.nome}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {i.plataforma.toUpperCase()} · {i.empresa_nome} · {i.eventos ?? 0} eventos
-                  </div>
-                  <div className="text-[11px] text-muted-foreground">
-                    Último webhook:{' '}
-                    {i.ultimo_evento_em ? new Date(i.ultimo_evento_em).toLocaleString('pt-BR') : 'nunca'}
-                  </div>
+          <div className="space-y-2 pt-2 border-t">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium">Webhooks ativos</span>
+              <button type="button" onClick={() => carregar()} className="p-1 border rounded"><RefreshCcw className="h-3.5 w-3.5" /></button>
+            </div>
+            {lista.map((i) => (
+              <div key={i.id} className="rounded-lg border p-3 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="font-medium">{i.nome}</span>
+                  <span>{i.ativo ? 'ativa' : 'pausada'}</span>
                 </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${i.ativo ? 'bg-emerald-500/20 text-emerald-600' : 'bg-muted text-muted-foreground'}`}
-                >
-                  {i.ativo ? 'Ativa' : 'Pausada'}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => toggleAtivo(i)} className="rounded-md border px-2 py-1 text-xs">
-                  {i.ativo ? 'Pausar' : 'Ativar'}
-                </button>
+                <div className="text-muted-foreground">{i.plataforma} · {i.empresa_nome}</div>
                 <button
                   type="button"
+                  className="text-red-500"
                   onClick={async () => {
-                    const senha = window.prompt('Digite sua senha para excluir esta conexão:');
-                    if (senha == null) return;
-                    if (!senha) return toast.error('Senha obrigatória');
+                    const senha = window.prompt('Senha para excluir:');
+                    if (!senha) return;
                     try {
                       await api.delete(`/integracoes/${i.id}`, { data: { senha } });
-                      toast.success('Conexão excluída');
-                      if (selecionado === i.id) setSelecionado('');
-                      await carregar();
-                    } catch (err: any) {
-                      toast.error(err?.response?.data?.error || 'Não foi possível excluir');
+                      toast.success('Excluída');
+                      carregar();
+                    } catch (e: any) {
+                      toast.error(e?.response?.data?.error || 'Erro');
                     }
                   }}
-                  className="rounded-md border border-red-500/40 px-2 py-1 text-xs text-red-600"
                 >
                   Excluir
                 </button>
-                <button type="button" onClick={() => rotacionar(i.id)} className="rounded-md border px-2 py-1 text-xs">
-                  Nova URL
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditando(i.id);
-                    setMapaEditado({ ...(i.mapeamento || {}) });
-                  }}
-                  className="rounded-md border px-2 py-1 text-xs"
-                >
-                  Editar campos
-                </button>
-                <button type="button" onClick={() => verEventos(i.id)} className="rounded-md border px-2 py-1 text-xs">
-                  Ver eventos
-                </button>
               </div>
-              {editando === i.id && (
-                <div className="space-y-2 border-t pt-2">
-                  {fields.map(([k, label]) => (
-                    <label key={k} className="grid grid-cols-2 gap-2 text-xs">
-                      <span>{label}</span>
-                      <input
-                        className="rounded border bg-background p-1 font-mono"
-                        value={mapaEditado[k] || ''}
-                        onChange={(e) => setMapaEditado((m) => ({ ...m, [k]: e.target.value }))}
-                      />
-                    </label>
-                  ))}
-                  <button type="button" onClick={() => salvarMapa(i.id)} className="rounded-md bg-primary px-3 py-1 text-xs text-primary-foreground">
-                    Salvar mapeamento
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-
-          {selecionado && (
-            <div className="rounded-xl border p-4 space-y-2">
-              <h3 className="font-medium text-sm">Eventos recentes</h3>
-              {eventos.length === 0 && <p className="text-xs text-muted-foreground">Nenhum evento ainda.</p>}
-              {eventos.slice(0, 15).map((ev) => (
-                <div key={ev.id} className="text-xs border-b border-border/50 py-1">
-                  <div>
-                    {ev.nome || '—'} · {ev.telefone || 'sem tel'} · {ev.status}
-                  </div>
-                  <div className="text-muted-foreground">
-                    {new Date(ev.recebido_em).toLocaleString('pt-BR')}
-                    {ev.triagem_id ? ` · triagem #${ev.triagem_id}` : ''}
-                    {ev.erro ? ` · erro: ${ev.erro}` : ''}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+            ))}
+          </div>
+        </form>
+      )}
     </div>
   );
 }
