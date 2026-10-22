@@ -2,7 +2,7 @@
 // Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, META_VERIFY_TOKEN (opcional, default aurox-meta-verify)
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const VERIFY = Deno.env.get('META_VERIFY_TOKEN') || 'aurox-meta-verify';
+const VERIFY = Deno.env.get('WHATSAPP_VERIFY_TOKEN') || Deno.env.get('META_VERIFY_TOKEN') || 'aurox-meta-verify';
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);

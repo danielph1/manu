@@ -9,8 +9,17 @@ export const dynamic = 'force-dynamic';
 
 /** Callback OAuth Meta — troca code por token, lista páginas, salva Page Access Token */
 export async function GET(req: NextRequest) {
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || '').replace(/\/$/, '');
-  const base = appUrl.startsWith('http') ? appUrl : appUrl ? `https://${appUrl}` : 'https://manu-manu-automoveis.vercel.app';
+  const appUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.APP_URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : '') ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
+    'https://manu-manu-automoveis.vercel.app';
+  const base = appUrl.replace(/\/$/, '').startsWith('http')
+    ? appUrl.replace(/\/$/, '')
+    : `https://${appUrl.replace(/\/$/, '')}`;
   const fail = (msg: string) => NextResponse.redirect(`${base}/integracoes?oauth_error=${encodeURIComponent(msg)}`);
 
   try {

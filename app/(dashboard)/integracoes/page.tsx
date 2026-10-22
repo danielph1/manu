@@ -112,10 +112,19 @@ export default function IntegracoesPage() {
       const r = await api.post('/integracoes/oauth/whatsapp/qr', {
         empresa_id: Number(empresa) || undefined,
       });
+      if (r.data.provider === 'meta_cloud' || r.data.status === 'conectado') {
+        toast.success(r.data.message || 'WhatsApp conectado');
+        if (r.data.webhook_url) {
+          setWebhook(r.data.webhook_url);
+          toast.message(`Verify Token: ${r.data.verify_token || 'aurox-meta-verify'}`);
+        }
+        await carregar();
+        return;
+      }
       setQr({
         id: r.data.id,
         base64: r.data.qrcode_base64,
-        instance: r.data.instance,
+        instance: r.data.instance || r.data.phone_number_id || '',
       });
       toast.message(r.data.message || 'QR gerado');
       // poll status
@@ -134,11 +143,34 @@ export default function IntegracoesPage() {
       window.setTimeout(() => window.clearInterval(t), 120000);
     } catch (e: any) {
       const d = e?.response?.data;
-      toast.error(d?.message || d?.error || 'WhatsApp QR indisponível no servidor');
+      const msg = d?.message || d?.error || 'Falha WhatsApp';
+      toast.error(msg);
+      if (d?.seen) {
+        toast.message(
+          `Servidor vê TOKEN=${d.seen.WHATSAPP_TOKEN ? 'sim' : 'não'} PHONE_ID=${d.seen.WHATSAPP_PHONE_NUMBER_ID ? 'sim' : 'não'} (${d.code_version || '?'})`,
+        );
+      }
     } finally {
       setBusyCard('');
     }
   }
+
+  async function verDiagnostico() {
+    try {
+      const r = await api.get('/integracoes/oauth/whatsapp/diagnostico');
+      toast.message(r.data.dica || JSON.stringify(r.data.mode));
+      console.log('whatsapp diagnostico', r.data);
+      alert(
+        `Versão código: ${r.data.code_version}\nModo: ${r.data.mode}\n` +
+          `TOKEN: ${r.data.vercel.WHATSAPP_TOKEN}\nPHONE_ID: ${r.data.vercel.WHATSAPP_PHONE_NUMBER_ID}\n` +
+          `VERIFY: ${r.data.vercel.WHATSAPP_VERIFY_TOKEN}\n` +
+          r.data.dica,
+      );
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error || 'Diagnóstico falhou');
+    }
+  }
+
 
   function escolherPlat(id: string) {
     const p = PLATAFORMAS_AVANCADAS.find((x) => x.id === id)!;
@@ -213,6 +245,10 @@ export default function IntegracoesPage() {
           {busyCard === 'meta' && <span className="text-xs">…</span>}
         </button>
 
+        <p className="text-xs text-muted-foreground">
+          Se der erro: confira se o <strong>último zip</strong> foi ao Vercel e se houve <strong>Redeploy</strong> depois das env.
+          <button type="button" className="ml-2 underline" onClick={verDiagnostico}>Diagnosticar WhatsApp</button>
+        </p>
         <button
           type="button"
           disabled={!!busyCard}

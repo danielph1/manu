@@ -6,10 +6,21 @@ import { randomBytes, createHmac } from 'node:crypto';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/**
- * Inicia OAuth Meta (Facebook Login → páginas).
- * Env: META_APP_ID, META_APP_SECRET, NEXT_PUBLIC_APP_URL
- */
+function resolveAppUrl(req: NextRequest): string {
+  const env =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.APP_URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : '') ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+  if (env) return env.replace(/\/$/, '');
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host');
+  const proto = req.headers.get('x-forwarded-proto') || 'https';
+  if (host) return `${proto}://${host}`.replace(/\/$/, '');
+  return '';
+}
+
 export async function POST(req: NextRequest) {
   const actor = await gestorIntegracoes(req);
   if (!actor) return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
@@ -18,17 +29,28 @@ export async function POST(req: NextRequest) {
   const empresaId = escopoEmpresa(actor, body.empresa_id ?? actor.empresa_id);
   if (!empresaId) return NextResponse.json({ error: 'empresa obrigatória' }, { status: 400 });
 
-  const appId = process.env.META_APP_ID || process.env.FACEBOOK_APP_ID;
-  const appSecret = process.env.META_APP_SECRET || process.env.FACEBOOK_APP_SECRET;
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || '').replace(/\/$/, '');
-  const base = appUrl.startsWith('http') ? appUrl : appUrl ? `https://${appUrl}` : '';
+  const appId = process.env.META_APP_ID || process.env.FACEBOOK_APP_ID || '';
+  const appSecret = process.env.META_APP_SECRET || process.env.FACEBOOK_APP_SECRET || '';
+  const base = resolveAppUrl(req);
 
-  if (!appId || !appSecret || !base) {
+  if (!appId || !appSecret) {
     return NextResponse.json(
       {
         error: 'oauth_nao_configurado',
         message:
-          'Configure META_APP_ID, META_APP_SECRET e NEXT_PUBLIC_APP_URL no servidor Aurox (uma vez). O cliente da loja não precisa disso.',
+          'No Vercel (projeto Aurox) adicione META_APP_ID e META_APP_SECRET. Crie o app em developers.facebook.com → tipo Negócios.',
+        missing: ['META_APP_ID', 'META_APP_SECRET'].filter(
+          (k) => !(process.env[k] || process.env[k.replace('META_', 'FACEBOOK_')]),
+        ),
+      },
+      { status: 503 },
+    );
+  }
+  if (!base) {
+    return NextResponse.json(
+      {
+        error: 'oauth_nao_configurado',
+        message: 'Defina NEXT_PUBLIC_APP_URL=https://seu-app.vercel.app no Vercel.',
       },
       { status: 503 },
     );
