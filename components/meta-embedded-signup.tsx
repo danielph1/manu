@@ -33,11 +33,12 @@ export function MetaEmbeddedSignup({
   const [sdkReady, setSdkReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const sessionRef = useRef<SessionInfo>({});
-  const appId = process.env.NEXT_PUBLIC_META_APP_ID || process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || '';
+  const rawAppId = process.env.NEXT_PUBLIC_META_APP_ID || process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || '';
+  const appId = String(rawAppId).replace(/[\u200B-\u200D\uFEFF]/g, '').trim().replace(/^["']|["']$/g, '');
   const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID || process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID || '';
 
   useEffect(() => {
-    if (!appId) return;
+    if (!appId || !/^\d{6,20}$/.test(appId)) return;
 
     const onMessage = (event: MessageEvent) => {
       if (typeof event.origin !== 'string' || !event.origin.includes('facebook.com')) return;
@@ -82,10 +83,14 @@ export function MetaEmbeddedSignup({
   }, [appId]);
 
   const launch = useCallback(() => {
-    if (!appId || !configId) {
+    if (!appId || !/^\d{6,20}$/.test(appId)) {
       toast.error(
-        'Embedded Signup: defina NEXT_PUBLIC_META_APP_ID e NEXT_PUBLIC_META_CONFIG_ID no Vercel (e o Config ID no painel Meta).',
+        'NEXT_PUBLIC_META_APP_ID inválido. Use só o ID numérico de Configurações → Básico do app Meta (sem aspas). Depois Redeploy.',
       );
+      return;
+    }
+    if (!configId) {
+      toast.error('Falta NEXT_PUBLIC_META_CONFIG_ID (Configuration ID do Embedded Signup).');
       return;
     }
     if (!window.FB) {

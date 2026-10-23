@@ -6,6 +6,16 @@ import { randomBytes, createHmac } from 'node:crypto';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function cleanAppId(raw: string): string {
+  const s = String(raw || '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .trim();
+  if (!/^\d{6,20}$/.test(s)) return '';
+  return s;
+}
+
 function env(...keys: string[]) {
   for (const k of keys) {
     const v = String(process.env[k] || '').trim();
@@ -36,12 +46,12 @@ export async function POST(req: NextRequest) {
   const empresaId = escopoEmpresa(actor, body.empresa_id ?? actor.empresa_id);
   if (!empresaId) return NextResponse.json({ error: 'empresa obrigatória' }, { status: 400 });
 
-  const appId = env('META_APP_ID', 'FACEBOOK_APP_ID', 'NEXT_PUBLIC_META_APP_ID');
+  const appId = cleanAppId(env('META_APP_ID', 'FACEBOOK_APP_ID', 'NEXT_PUBLIC_META_APP_ID'));
   const appSecret = env('META_APP_SECRET', 'FACEBOOK_APP_SECRET');
   const base = resolveAppUrl(req);
 
   const missing: string[] = [];
-  if (!appId) missing.push('META_APP_ID');
+  if (!appId) missing.push('META_APP_ID (só números, sem aspas — copie em Configurações → Básico do app Meta)');
   if (!appSecret) missing.push('META_APP_SECRET');
   if (!base) missing.push('NEXT_PUBLIC_APP_URL');
 
@@ -79,14 +89,15 @@ export async function POST(req: NextRequest) {
   }
 
   const redirectUri = `${base}/api/integracoes/oauth/meta/callback`;
+  // Escopos em camadas: o mínimo funciona em modo desenvolvimento (admin/dev/tester do app).
+  // Permissões avançadas exigem produto ativo no app + (produção) App Review.
   const scope = [
+    'public_profile',
+    'email',
     'pages_show_list',
-    'pages_messaging',
+    'pages_read_engagement',
     'pages_manage_metadata',
-    'instagram_basic',
-    'instagram_manage_messages',
-    'business_management',
-    'leads_retrieval',
+    'pages_messaging',
   ].join(',');
 
   const authUrl =

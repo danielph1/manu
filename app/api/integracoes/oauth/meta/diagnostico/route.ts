@@ -28,7 +28,20 @@ export async function GET(req: NextRequest) {
   const actor = await gestorIntegracoes(req);
   if (!actor) return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
 
+  const rawId = String(
+    process.env.META_APP_ID ||
+      process.env.FACEBOOK_APP_ID ||
+      process.env.NEXT_PUBLIC_META_APP_ID ||
+      '',
+  )
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+    .replace(/^["']|["']$/g, '');
+  const appIdValid = /^\d{6,20}$/.test(rawId);
   const appId = has('META_APP_ID', 'FACEBOOK_APP_ID', 'NEXT_PUBLIC_META_APP_ID');
+  const app_id_preview = rawId
+    ? `${rawId.slice(0, 4)}…${rawId.slice(-4)} (len=${rawId.length}, valid=${appIdValid})`
+    : '(vazio)';
   const appSecret = has('META_APP_SECRET', 'FACEBOOK_APP_SECRET');
   const configId = has('NEXT_PUBLIC_META_CONFIG_ID', 'NEXT_PUBLIC_WHATSAPP_CONFIG_ID');
   const publicAppId = has('NEXT_PUBLIC_META_APP_ID', 'NEXT_PUBLIC_FACEBOOK_APP_ID');
@@ -41,6 +54,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     code_version: 'v133-meta-diag',
     oauth_facebook_pages: {
+      app_id_preview,
       pronto: oauthOk,
       META_APP_ID_or_equiv: appId,
       META_APP_SECRET: appSecret,
