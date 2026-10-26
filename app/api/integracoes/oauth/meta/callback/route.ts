@@ -30,8 +30,14 @@ export async function GET(req: NextRequest) {
     const stateRaw = url.searchParams.get('state');
     const err = url.searchParams.get('error');
     const errDesc = url.searchParams.get('error_description');
-    if (err) return fail(`${err}${errDesc ? ':' + errDesc : ''}`);
-    if (!code || !stateRaw) return fail('codigo_ausente');
+    const errReason = url.searchParams.get('error_reason');
+    if (err) return fail(`${err}${errReason ? ':' + errReason : ''}${errDesc ? ':' + errDesc : ''}`);
+    if (!code || !stateRaw) {
+      // Meta às vezes redireciona sem code quando escopo inválido / cancel / redirect errado
+      const all = Object.fromEntries(url.searchParams.entries());
+      console.error('meta callback sem code', all);
+      return fail('codigo_ausente:cancele_ou_redirect_uri_ou_escopo');
+    }
 
     const appId = String(process.env.META_APP_ID || process.env.FACEBOOK_APP_ID || '').trim();
     const appSecret = String(process.env.META_APP_SECRET || process.env.FACEBOOK_APP_SECRET || '').trim();

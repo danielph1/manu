@@ -91,15 +91,13 @@ export async function POST(req: NextRequest) {
   const redirectUri = `${base}/api/integracoes/oauth/meta/callback`;
   // Escopos em camadas: o mínimo funciona em modo desenvolvimento (admin/dev/tester do app).
   // Permissões avançadas exigem produto ativo no app + (produção) App Review.
+  // Só páginas (estável). Instagram depois de FB conectar + produto Instagram no app Meta.
+  // instagram_manage_messages / pages_read_user_content quebram login se não aprovados.
   const scope = [
-    // App tipo Negócio/Páginas: NÃO pedir email/public_profile (gera Invalid Scopes)
     'pages_show_list',
     'pages_read_engagement',
     'pages_manage_metadata',
     'pages_messaging',
-    'instagram_basic',
-    'instagram_manage_messages',
-    'pages_read_user_content',
   ].join(',');
 
   const authUrl =
