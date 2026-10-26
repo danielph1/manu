@@ -1,4 +1,5 @@
 'use client';
+import { nomeVeiculo } from '@/lib/nome-veiculo';
 import { CarLoader } from '@/components/car-loader';
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -70,11 +71,8 @@ function FotoViewer({
   const { t } = useI18n();
   if (!fotos.length) {
     return (
-      <div className="flex h-56 items-center justify-center rounded-xl border border-dashed border-border bg-muted/30 text-sm text-muted-foreground">
-        <div className="flex flex-col items-center gap-2">
-          <ImageIcon className="h-8 w-8 opacity-40" />
-          {t('page.estoque.no_photos')}
-        </div>
+      <div className="overflow-hidden rounded-xl bg-muted aspect-video">
+        <img src="/veiculo-preparacao.webp" alt="Veículo em preparação" className="h-full w-full object-cover" />
       </div>
     );
   }

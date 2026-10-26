@@ -92,8 +92,7 @@ export async function POST(req: NextRequest) {
   // Escopos em camadas: o mínimo funciona em modo desenvolvimento (admin/dev/tester do app).
   // Permissões avançadas exigem produto ativo no app + (produção) App Review.
   const scope = [
-    'public_profile',
-    'email',
+    // App tipo Negócio/Páginas: NÃO pedir email/public_profile (gera Invalid Scopes)
     'pages_show_list',
     'pages_read_engagement',
     'pages_manage_metadata',

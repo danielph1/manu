@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { Megaphone, Search, X, Car } from 'lucide-react';
+import { nomeVeiculo } from '@/lib/nome-veiculo';
 
 type Carro = {
   id: number;
@@ -35,7 +36,7 @@ const PLATS = [
 const CARROCERIAS = ['todas', 'hatch', 'sedan', 'suv', 'pickup', 'utilitario', 'moto', 'van', 'outro'];
 
 function nomeCarro(c: Carro) {
-  return [c.marca, c.modelo || c.carro].filter(Boolean).join(' ') || 'Sem nome';
+  return nomeVeiculo(c);
 }
 
 function money(v: any) {
@@ -201,6 +202,14 @@ export default function AnunciosPage() {
             onClick={() => abrir(c)}
             className="rounded-2xl border bg-card p-4 text-left hover:border-primary/50 transition"
           >
+            <div className="mb-2 overflow-hidden rounded-xl bg-muted aspect-[16/10]">
+              <img
+                src="/veiculo-preparacao.webp"
+                alt=""
+                className="h-full w-full object-cover opacity-90"
+                loading="lazy"
+              />
+            </div>
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <Car className="h-4 w-4 shrink-0 text-primary" />
