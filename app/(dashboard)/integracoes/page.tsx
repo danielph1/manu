@@ -200,7 +200,7 @@ export default function IntegracoesPage() {
           <div className="flex-1">
             <div className="font-semibold text-lg">Facebook / Instagram / Marketplace</div>
             <p className="text-sm text-muted-foreground">
-              Login oficial Meta · a loja escolhe a Página · token da Página fica nesta empresa
+              Login oficial Meta · Página + Instagram vinculado · leads/mensagens FB, IG e Marketplace nesta empresa
             </p>
             {statusDe('meta_facebook') && (
               <p className="text-xs mt-1 text-amber-500">Status: {statusDe('meta_facebook')!.status}</p>

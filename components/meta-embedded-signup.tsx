@@ -77,7 +77,7 @@ export function MetaEmbeddedSignup({
         s.id = 'facebook-jssdk';
         s.async = true;
         s.src = 'https://connect.facebook.net/pt_BR/sdk.js';
-        s.onerror = () => toast.error('Falha ao carregar SDK Facebook');
+        s.onerror = () => toast.error('Falha ao carregar SDK Facebook (bloqueio de script?)');
         document.body.appendChild(s);
       }
     }
@@ -97,47 +97,49 @@ export function MetaEmbeddedSignup({
   };
 
   const launch = useCallback(() => {
+    if (!empresaId) {
+      toast.error('Selecione a empresa antes');
+      return;
+    }
     if (!appId || !/^\d{6,20}$/.test(appId)) {
-      toast.error(
-        'NEXT_PUBLIC_META_APP_ID inválido. Use o ID numérico de Configurações → Básico. Depois Redeploy.',
-      );
+      toast.error('Falta NEXT_PUBLIC_META_APP_ID no Vercel (App ID numérico) + Redeploy');
       return;
     }
     if (!configId) {
       toast.error(
-        'Falta NEXT_PUBLIC_META_CONFIG_ID (Configuration ID do Embedded Signup no painel Meta). Sem isso o popup não abre.',
+        'Falta NEXT_PUBLIC_META_CONFIG_ID no Vercel. Crie o fluxo Embedded Signup em developers.facebook.com → WhatsApp → Configuração e cole o config_id.',
       );
       return;
     }
     if (!window.FB) {
-      toast.error('SDK Facebook ainda carregando — aguarde 2s e tente de novo.');
-      return;
-    }
-    if (!empresaId) {
-      toast.error('Selecione a empresa');
+      toast.error('SDK Facebook ainda não carregou — aguarde 2s e tente de novo (ou desative bloqueador)');
       return;
     }
 
     setLoading(true);
-    sessionRef.current = {};
-
-    // evita spinner infinito se o usuário fechar o popup sem callback
     timeoutRef.current = setTimeout(() => {
       stopLoading();
-      toast.message('Login Meta não concluído (popup fechado ou bloqueado). Tente de novo.');
+      toast.message('Login Meta demorou — pode ter popup bloqueado. Permita popups para este site.');
     }, 90000);
 
     try {
       window.FB.login(
         async (response: any) => {
           try {
-            if (!response?.authResponse) {
-              toast.message('Login cancelado ou sem permissão');
+            if (!response || response.status === 'unknown' || response.error) {
+              stopLoading();
+              toast.message('Login cancelado ou popup bloqueado');
+              return;
+            }
+            if (!response.authResponse) {
+              stopLoading();
+              toast.message('Sem permissão WhatsApp Business');
               return;
             }
             const code = response.authResponse.code || response.authResponse.accessToken;
             if (!code) {
-              toast.error('Meta não devolveu code — confira Embedded Signup / response_type=code');
+              stopLoading();
+              toast.error('Meta não devolveu code — confira Embedded Signup (response_type=code)');
               return;
             }
 
@@ -169,9 +171,9 @@ export function MetaEmbeddedSignup({
           },
         },
       );
-    } catch (e) {
+    } catch (e: any) {
       stopLoading();
-      toast.error('Não foi possível abrir o login Meta');
+      toast.error('Não abriu o login Meta: ' + (e?.message || 'erro desconhecido'));
     }
   }, [appId, configId, empresaId, onConnected]);
 
@@ -188,8 +190,8 @@ export function MetaEmbeddedSignup({
       <div className="flex-1">
         <div className="font-semibold text-lg">Conectar WhatsApp da loja</div>
         <p className="text-sm text-muted-foreground">
-          Cadastro oficial Meta (Embedded Signup) · 1 clique · a concessionária autoriza sozinha · sem QR e sem
-          colar token
+          Cadastro oficial Meta (Embedded Signup) · a concessionária autoriza a conta Business dela · leads e mensagens
+          nesta empresa
         </p>
         {!appId || !configId ? (
           <p className="mt-1 text-xs text-amber-500">
@@ -198,21 +200,9 @@ export function MetaEmbeddedSignup({
         ) : !sdkReady ? (
           <p className="mt-1 text-xs text-muted-foreground">Carregando SDK Facebook…</p>
         ) : loading ? (
-          <p className="mt-1 text-xs text-amber-500">Aguardando popup Meta… (fecha o popup ou espere até 90s)</p>
+          <p className="mt-1 text-xs text-emerald-400">Aguardando Meta… (pode cancelar se travar)</p>
         ) : null}
       </div>
-      {loading && (
-        <button
-          type="button"
-          className="text-xs underline shrink-0"
-          onClick={(e) => {
-            e.stopPropagation();
-            stopLoading();
-          }}
-        >
-          Cancelar
-        </button>
-      )}
     </button>
   );
 }

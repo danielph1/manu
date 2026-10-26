@@ -97,6 +97,9 @@ export async function POST(req: NextRequest) {
     'pages_read_engagement',
     'pages_manage_metadata',
     'pages_messaging',
+    'instagram_basic',
+    'instagram_manage_messages',
+    'pages_read_user_content',
   ].join(',');
 
   const authUrl =
