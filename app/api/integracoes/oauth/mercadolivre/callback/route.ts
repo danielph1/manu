@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
       webhook_url = urlWebhook(integId, hookToken);
     } catch { /* ok */ }
 
+    let integracaoId: string | null = null;
     try {
       await queryOne(
         `INSERT INTO public.manu_integracoes (id, empresa_id, nome, plataforma, token_hash, mapeamento, criado_por)
@@ -68,32 +69,56 @@ export async function GET(req: NextRequest) {
           st.u,
         ],
       );
-    } catch { /* ok */ }
+      integracaoId = integId;
+    } catch (e: any) {
+      console.error('ml integracao', e?.message);
+      integracaoId = null;
+    }
 
     const userId = String(tj.user_id || 'ml');
-    await query(
-      `DELETE FROM public.manu_conexoes_oauth WHERE empresa_id=$1 AND provedor='mercadolivre' AND status='conectado'`,
-      [st.e],
-    );
-    await queryOne(
-      `INSERT INTO public.manu_conexoes_oauth
-        (empresa_id, provedor, status, label, external_id, access_token_enc, refresh_token_enc, meta, integracao_id, criado_por)
-       VALUES ($1,'mercadolivre','conectado','Mercado Livre',$2,$3,$4,$5::jsonb,$6,$7) RETURNING id`,
-      [
-        st.e,
-        userId,
-        tj.access_token,
-        tj.refresh_token || null,
-        JSON.stringify({
-          provider: 'oauth_login',
-          user_id: userId,
-          webhook_url,
-          expires_in: tj.expires_in,
-        }),
-        integId,
-        st.u,
-      ],
-    );
+    try {
+      await query(
+        `DELETE FROM public.manu_conexoes_oauth WHERE empresa_id=$1 AND provedor='mercadolivre' AND status='conectado'`,
+        [st.e],
+      );
+    } catch { /* ok */ }
+
+    try {
+      await queryOne(
+        `INSERT INTO public.manu_conexoes_oauth
+          (empresa_id, provedor, status, label, external_id, access_token_enc, refresh_token_enc, meta, integracao_id, criado_por)
+         VALUES ($1,'mercadolivre','conectado','Mercado Livre',$2,$3,$4,$5::jsonb,$6,$7) RETURNING id`,
+        [
+          st.e,
+          userId,
+          tj.access_token,
+          tj.refresh_token || null,
+          JSON.stringify({
+            provider: 'oauth_login',
+            user_id: userId,
+            webhook_url,
+            expires_in: tj.expires_in,
+          }),
+          integracaoId,
+          st.u,
+        ],
+      );
+    } catch (e: any) {
+      // sem FK
+      await queryOne(
+        `INSERT INTO public.manu_conexoes_oauth
+          (empresa_id, provedor, status, label, external_id, access_token_enc, refresh_token_enc, meta, criado_por)
+         VALUES ($1,'mercadolivre','conectado','Mercado Livre',$2,$3,$4,$5::jsonb,$6) RETURNING id`,
+        [
+          st.e,
+          userId,
+          tj.access_token,
+          tj.refresh_token || null,
+          JSON.stringify({ user_id: userId, webhook_url }),
+          st.u,
+        ],
+      );
+    }
 
     return NextResponse.redirect(`${appUrl}/integracoes?oauth=ok&page=Mercado%20Livre`);
   } catch (e) {

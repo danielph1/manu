@@ -108,6 +108,8 @@ export async function GET(req: NextRequest) {
       webhook_url = '';
     }
 
+    // integracao_id só se a linha existir de verdade (evita FK)
+    let integracaoId: string | null = null;
     try {
       await query(
         `INSERT INTO public.manu_integracoes (id, empresa_id, nome, plataforma, token_hash, mapeamento, criado_por)
@@ -129,8 +131,10 @@ export async function GET(req: NextRequest) {
           st.u,
         ],
       );
+      integracaoId = integId;
     } catch (e: any) {
       console.error('integracao insert', e?.message);
+      integracaoId = null;
     }
 
     try {
@@ -161,19 +165,36 @@ export async function GET(req: NextRequest) {
              status='conectado', access_token_enc=$2, label=$3, meta=$4::jsonb,
              integracao_id=$5, atualizado_em=now()
            WHERE id=$1`,
-          [existing.id, pageToken, pageName, meta, integId],
+          [existing.id, pageToken, pageName, meta, integracaoId],
         );
       } else {
         await query(
           `INSERT INTO public.manu_conexoes_oauth
             (empresa_id, provedor, status, label, external_id, access_token_enc, meta, integracao_id, criado_por)
            VALUES ($1,'meta_facebook','conectado',$2,$3,$4,$5::jsonb,$6,$7)`,
-          [st.e, pageName, pageId, pageToken, meta, integId, st.u],
+          [st.e, pageName, pageId, pageToken, meta, integracaoId, st.u],
         );
       }
     } catch (e: any) {
       console.error('oauth save', e);
-      return fail('db:' + String(e?.message || e).slice(0, 120));
+      // último recurso: sem integracao_id
+      try {
+        await query(
+          `INSERT INTO public.manu_conexoes_oauth
+            (empresa_id, provedor, status, label, external_id, access_token_enc, meta, criado_por)
+           VALUES ($1,'meta_facebook','conectado',$2,$3,$4,$5::jsonb,$6)`,
+          [
+            st.e,
+            pageName,
+            pageId,
+            pageToken,
+            JSON.stringify({ page_id: pageId, pages: pages.map((p: any) => ({ id: p.id, name: p.name })) }),
+            st.u,
+          ],
+        );
+      } catch (e2: any) {
+        return fail('db:' + String(e2?.message || e?.message || e).slice(0, 120));
+      }
     }
 
     return NextResponse.redirect(base + '/integracoes?oauth=ok&page=' + encodeURIComponent(pageName));

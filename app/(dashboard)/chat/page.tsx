@@ -11,7 +11,6 @@ import { Camera, Mic, Paperclip, Smile } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 
-const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
 
 function ChatPageInner() {
   const { t } = useI18n();
@@ -23,8 +22,7 @@ function ChatPageInner() {
   const [info, setInfo] = useState(false);
   const [obs, setObs] = useState('');
   const [texto, setTexto] = useState('');
-  const [picker, setPicker] = useState<number | null>(null);
-  const [camOpen, setCamOpen] = useState(false);
+    const [camOpen, setCamOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [audioPendente, setAudioPendente] = useState<Blob | null>(null);
   const [editando, setEditando] = useState<{ id: number; texto: string } | null>(null);
@@ -234,16 +232,7 @@ function ChatPageInner() {
     sendBlob(f, f.name, f.type || 'application/octet-stream');
   }
 
-  async function reagir(id: number, emoji: string) {
-    setPicker(null);
-    try {
-      await api.post('/chat/reacao', { mensagem_id: id, emoji });
-      qc.invalidateQueries({ queryKey: ['chat'] });
-    } catch (e: any) {
-      toast.error(e?.response?.data?.error || 'Reação indisponível');
-    }
-  }
-
+  
   if (!leadId) {
     const lidos = (() => { try { return JSON.parse(localStorage.getItem('manu.lidos') || '{}'); } catch { return {}; } })();
     return (
@@ -315,8 +304,8 @@ function ChatPageInner() {
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">{inicial}</div>
             <div
               className={`relative max-w-[78%] rounded-2xl px-3 py-2 ${meu ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-muted'}`}
-              onContextMenu={(e) => { e.preventDefault(); setPicker(picker === m.id ? null : m.id); }}
-              onTouchStart={() => { (window as any).__hold = setTimeout(() => setPicker(m.id), 400); }}
+              onContextMenu={(e) => { e.preventDefault();  }}
+              onTouchStart={() => { (window as any).__hold = setTimeout(() => , 400); }}
               onTouchEnd={() => clearTimeout((window as any).__hold)}
             >
             {!meu && <div className="text-xs font-medium opacity-70">{m.remetente_nome || 'alguém'}</div>}
@@ -332,13 +321,7 @@ function ChatPageInner() {
                 {m.arquivo_nome || 'arquivo'}
               </a>
             )}
-            {(m.reacoes || []).length > 0 && (
-              <div className="mt-1 flex gap-1">
-                {(m.reacoes || []).map((r: any) => (
-                  <span key={r.emoji} className="rounded-full bg-background px-1.5 text-xs">{r.emoji} {r.n}</span>
-                ))}
-              </div>
-            )}
+            {
             <div className={`absolute -top-2 hidden gap-1 group-hover:flex ${meu ? 'right-0' : 'left-0'}`}>
               <button className="rounded-full border bg-card px-1 text-xs" onClick={() => setEditando({ id: m.id, texto: m.mensagem || '' })}>editar</button>
               <button className="rounded-full border bg-card px-1 text-xs" onClick={() => apagar(m.id)}>apagar</button>
@@ -347,18 +330,6 @@ function ChatPageInner() {
               <div className="mt-1 flex gap-1">
                 <input className="flex-1 rounded border bg-background px-2 text-sm" value={editando.texto} onChange={(e) => setEditando({ ...editando, texto: e.target.value })} />
                 <button className="text-xs underline" onClick={salvarEdicao}>ok</button>
-              </div>
-            )}
-            {picker === m.id && (
-              <div className={`absolute -top-12 z-20 flex items-center gap-1 rounded-full border bg-card px-2 py-1 shadow-lg ${meu ? 'right-0' : 'left-0'}`}>
-                {EMOJIS.map((e) => (
-                  <button key={e} className="text-xl" onClick={() => reagir(m.id, e)}>{e}</button>
-                ))}
-                <input
-                  className="w-8 bg-transparent text-center text-lg outline-none"
-                  placeholder="+"
-                  onChange={(e) => { const v = e.target.value; if (v) { reagir(m.id, [...v][0]); e.target.value = ''; } }}
-                />
               </div>
             )}
             </div>
