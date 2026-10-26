@@ -305,7 +305,7 @@ function ChatPageInner() {
             <div
               className={`relative max-w-[78%] rounded-2xl px-3 py-2 ${meu ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-muted'}`}
               onContextMenu={(e) => { e.preventDefault();  }}
-              onTouchStart={() => { (window as any).__hold = setTimeout(() => , 400); }}
+              onTouchStart={() => { (window as any).__hold = setTimeout(() => 400); }}
               onTouchEnd={() => clearTimeout((window as any).__hold)}
             >
             {!meu && <div className="text-xs font-medium opacity-70">{m.remetente_nome || 'alguém'}</div>}
