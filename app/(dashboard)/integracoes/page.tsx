@@ -130,6 +130,18 @@ export default function IntegracoesPage() {
     }
   }
 
+  
+  async function desconectar(id: string, label: string) {
+    if (!confirm(`Desconectar "${label}"? A loja poderá conectar outra conta depois.`)) return;
+    try {
+      await api.post('/integracoes/oauth/desconectar', { id });
+      toast.success('Canal desconectado');
+      await carregar();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error || 'Falha ao desconectar');
+    }
+  }
+
   function statusDe(provedor: string) {
     return oauth.find(
       (o) =>
@@ -320,14 +332,23 @@ export default function IntegracoesPage() {
       </div>
       {oauth.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma conexão ainda.</p>}
       {oauth.map((o) => (
-        <div key={o.id} className="flex justify-between rounded-xl border px-4 py-3 text-sm">
-          <div>
-            <div className="font-medium">{o.label || o.provedor}</div>
+        <div key={o.id} className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm">
+          <div className="min-w-0">
+            <div className="font-medium truncate">{o.label || o.provedor}</div>
             <div className="text-xs text-muted-foreground">{o.provedor} · {o.empresa_nome}</div>
           </div>
-          <span className={o.status === 'conectado' ? 'text-emerald-500 text-xs' : 'text-xs text-muted-foreground'}>
-            {o.status}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={o.status === 'conectado' ? 'text-emerald-500 text-xs' : 'text-xs text-muted-foreground'}>
+              {o.status}
+            </span>
+            <button
+              type="button"
+              className="rounded-md border border-red-500/40 px-2 py-1 text-xs text-red-400 hover:bg-red-500/10"
+              onClick={() => desconectar(o.id, o.label || o.provedor)}
+            >
+              Desconectar
+            </button>
+          </div>
         </div>
       ))}
     </div>

@@ -18,11 +18,6 @@ type SessionInfo = {
   business_id?: string;
 };
 
-/**
- * Meta WhatsApp Embedded Signup — 1 clique.
- * Env públicas: NEXT_PUBLIC_META_APP_ID, NEXT_PUBLIC_META_CONFIG_ID (Embedded Signup config)
- * Env servidor: META_APP_SECRET
- */
 export function MetaEmbeddedSignup({
   empresaId,
   onConnected,
@@ -33,9 +28,16 @@ export function MetaEmbeddedSignup({
   const [sdkReady, setSdkReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const sessionRef = useRef<SessionInfo>({});
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const rawAppId = process.env.NEXT_PUBLIC_META_APP_ID || process.env.NEXT_PUBLIC_FACEBOOK_APP_ID || '';
-  const appId = String(rawAppId).replace(/[\u200B-\u200D\uFEFF]/g, '').trim().replace(/^["']|["']$/g, '');
-  const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID || process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID || '';
+  const appId = String(rawAppId)
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+    .replace(/^["']|["']$/g, '');
+  const configId = String(
+    process.env.NEXT_PUBLIC_META_CONFIG_ID || process.env.NEXT_PUBLIC_WHATSAPP_CONFIG_ID || '',
+  ).trim();
 
   useEffect(() => {
     if (!appId || !/^\d{6,20}$/.test(appId)) return;
@@ -53,7 +55,7 @@ export function MetaEmbeddedSignup({
           };
         }
       } catch {
-        /* ignore non-json */
+        /* ignore */
       }
     };
     window.addEventListener('message', onMessage);
@@ -75,22 +77,36 @@ export function MetaEmbeddedSignup({
         s.id = 'facebook-jssdk';
         s.async = true;
         s.src = 'https://connect.facebook.net/pt_BR/sdk.js';
+        s.onerror = () => toast.error('Falha ao carregar SDK Facebook');
         document.body.appendChild(s);
       }
     }
 
-    return () => window.removeEventListener('message', onMessage);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, [appId]);
+
+  const stopLoading = () => {
+    setLoading(false);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
 
   const launch = useCallback(() => {
     if (!appId || !/^\d{6,20}$/.test(appId)) {
       toast.error(
-        'NEXT_PUBLIC_META_APP_ID inválido. Use só o ID numérico de Configurações → Básico do app Meta (sem aspas). Depois Redeploy.',
+        'NEXT_PUBLIC_META_APP_ID inválido. Use o ID numérico de Configurações → Básico. Depois Redeploy.',
       );
       return;
     }
     if (!configId) {
-      toast.error('Falta NEXT_PUBLIC_META_CONFIG_ID (Configuration ID do Embedded Signup).');
+      toast.error(
+        'Falta NEXT_PUBLIC_META_CONFIG_ID (Configuration ID do Embedded Signup no painel Meta). Sem isso o popup não abre.',
+      );
       return;
     }
     if (!window.FB) {
@@ -105,55 +121,64 @@ export function MetaEmbeddedSignup({
     setLoading(true);
     sessionRef.current = {};
 
-    window.FB.login(
-      async (response: any) => {
-        try {
-          if (!response?.authResponse) {
-            toast.message('Login cancelado ou sem permissão');
-            return;
-          }
-          const code = response.authResponse.code || response.authResponse.accessToken;
-          if (!code) {
-            toast.error('Meta não devolveu code — confira response_type=code no app');
-            return;
-          }
+    // evita spinner infinito se o usuário fechar o popup sem callback
+    timeoutRef.current = setTimeout(() => {
+      stopLoading();
+      toast.message('Login Meta não concluído (popup fechado ou bloqueado). Tente de novo.');
+    }, 90000);
 
-          const r = await api.post('/integracoes/oauth/whatsapp/embedded', {
-            empresa_id: Number(empresaId),
-            code,
-            phone_number_id: sessionRef.current.phone_number_id,
-            waba_id: sessionRef.current.waba_id,
-            business_id: sessionRef.current.business_id,
-          });
+    try {
+      window.FB.login(
+        async (response: any) => {
+          try {
+            if (!response?.authResponse) {
+              toast.message('Login cancelado ou sem permissão');
+              return;
+            }
+            const code = response.authResponse.code || response.authResponse.accessToken;
+            if (!code) {
+              toast.error('Meta não devolveu code — confira Embedded Signup / response_type=code');
+              return;
+            }
 
-          toast.success(r.data.message || 'WhatsApp da loja conectado');
-          onConnected?.();
-        } catch (e: any) {
-          const d = e?.response?.data;
-          toast.error(d?.message || d?.error || 'Falha no Embedded Signup');
-        } finally {
-          setLoading(false);
-        }
-      },
-      {
-        config_id: configId,
-        response_type: 'code',
-        override_default_response_type: true,
-        extras: {
-          setup: {},
-          featureType: '',
-          sessionInfoVersion: '3',
+            const r = await api.post('/integracoes/oauth/whatsapp/embedded', {
+              empresa_id: Number(empresaId),
+              code,
+              phone_number_id: sessionRef.current.phone_number_id,
+              waba_id: sessionRef.current.waba_id,
+              business_id: sessionRef.current.business_id,
+            });
+
+            toast.success(r.data.message || 'WhatsApp da loja conectado');
+            onConnected?.();
+          } catch (e: any) {
+            const d = e?.response?.data;
+            toast.error(d?.message || d?.error || 'Falha no Embedded Signup');
+          } finally {
+            stopLoading();
+          }
         },
-      },
-    );
+        {
+          config_id: configId,
+          response_type: 'code',
+          override_default_response_type: true,
+          extras: {
+            setup: {},
+            featureType: '',
+            sessionInfoVersion: '3',
+          },
+        },
+      );
+    } catch (e) {
+      stopLoading();
+      toast.error('Não foi possível abrir o login Meta');
+    }
   }, [appId, configId, empresaId, onConnected]);
-
-  const disabled = loading || !sdkReady;
 
   return (
     <button
       type="button"
-      disabled={disabled && !!appId}
+      disabled={loading}
       onClick={launch}
       className="flex w-full items-center gap-4 rounded-2xl border border-emerald-500/40 bg-card p-5 text-left hover:border-emerald-500 transition disabled:opacity-60"
     >
@@ -163,17 +188,31 @@ export function MetaEmbeddedSignup({
       <div className="flex-1">
         <div className="font-semibold text-lg">Conectar WhatsApp da loja</div>
         <p className="text-sm text-muted-foreground">
-          Cadastro oficial Meta (Embedded Signup) · 1 clique · a concessionária autoriza sozinha · sem QR e sem colar token
+          Cadastro oficial Meta (Embedded Signup) · 1 clique · a concessionária autoriza sozinha · sem QR e sem
+          colar token
         </p>
         {!appId || !configId ? (
           <p className="mt-1 text-xs text-amber-500">
-            Servidor: falta NEXT_PUBLIC_META_APP_ID ou NEXT_PUBLIC_META_CONFIG_ID
+            Servidor: falta NEXT_PUBLIC_META_APP_ID ou NEXT_PUBLIC_META_CONFIG_ID (e Redeploy)
           </p>
         ) : !sdkReady ? (
           <p className="mt-1 text-xs text-muted-foreground">Carregando SDK Facebook…</p>
+        ) : loading ? (
+          <p className="mt-1 text-xs text-amber-500">Aguardando popup Meta… (fecha o popup ou espere até 90s)</p>
         ) : null}
       </div>
-      {loading && <span className="text-xs">…</span>}
+      {loading && (
+        <button
+          type="button"
+          className="text-xs underline shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            stopLoading();
+          }}
+        >
+          Cancelar
+        </button>
+      )}
     </button>
   );
 }
