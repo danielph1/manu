@@ -304,34 +304,30 @@ function ChatPageInner() {
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">{inicial}</div>
             <div
               className={`relative max-w-[78%] rounded-2xl px-3 py-2 ${meu ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-muted'}`}
-              onContextMenu={(e) => { e.preventDefault();  }}
-              onTouchStart={() => { (window as any).__hold = setTimeout(() => 400); }}
-              onTouchEnd={() => clearTimeout((window as any).__hold)}
             >
-            {!meu && <div className="text-xs font-medium opacity-70">{m.remetente_nome || 'alguém'}</div>}
-            {m.mensagem && <div className="mt-0.5">{m.mensagem}</div>}
-            {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('image') && (
-              <img alt="" className="mt-2 max-h-52 rounded-lg" src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} />
-            )}
-            {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('audio') && (
-              <audio className="mt-2 w-full" controls src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} />
-            )}
-            {m.arquivo_b64 && !String(m.arquivo_mime || '').startsWith('image') && !String(m.arquivo_mime || '').startsWith('audio') && (
-              <a className="mt-2 block text-sm text-primary underline" href={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} download={m.arquivo_nome}>
-                {m.arquivo_nome || 'arquivo'}
-              </a>
-            )}
-            {
-            <div className={`absolute -top-2 hidden gap-1 group-hover:flex ${meu ? 'right-0' : 'left-0'}`}>
-              <button className="rounded-full border bg-card px-1 text-xs" onClick={() => setEditando({ id: m.id, texto: m.mensagem || '' })}>editar</button>
-              <button className="rounded-full border bg-card px-1 text-xs" onClick={() => apagar(m.id)}>apagar</button>
-            </div>
-            {editando?.id === m.id && (
-              <div className="mt-1 flex gap-1">
-                <input className="flex-1 rounded border bg-background px-2 text-sm" value={editando.texto} onChange={(e) => setEditando({ ...editando, texto: e.target.value })} />
-                <button className="text-xs underline" onClick={salvarEdicao}>ok</button>
+              {!meu && <div className="text-xs font-medium opacity-70">{m.remetente_nome || 'alguém'}</div>}
+              {m.mensagem && <div className="mt-0.5">{m.mensagem}</div>}
+              {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('image') && (
+                <img alt="" className="mt-2 max-h-52 rounded-lg" src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} />
+              )}
+              {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('audio') && (
+                <audio className="mt-2 w-full" controls src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} />
+              )}
+              {m.arquivo_b64 && !String(m.arquivo_mime || '').startsWith('image') && !String(m.arquivo_mime || '').startsWith('audio') && (
+                <a className="mt-2 block text-sm text-primary underline" href={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} download={m.arquivo_nome}>
+                  {m.arquivo_nome || 'arquivo'}
+                </a>
+              )}
+              <div className={`absolute -top-2 hidden gap-1 group-hover:flex ${meu ? 'right-0' : 'left-0'}`}>
+                <button className="rounded-full border bg-card px-1 text-xs" onClick={() => setEditando({ id: m.id, texto: m.mensagem || '' })}>editar</button>
+                <button className="rounded-full border bg-card px-1 text-xs" onClick={() => apagar(m.id)}>apagar</button>
               </div>
-            )}
+              {editando?.id === m.id && (
+                <div className="mt-1 flex gap-1">
+                  <input className="flex-1 rounded border bg-background px-2 text-sm" value={editando.texto} onChange={(e) => setEditando({ ...editando, texto: e.target.value })} />
+                  <button className="text-xs underline" onClick={salvarEdicao}>ok</button>
+                </div>
+              )}
             </div>
           </div>
           );
