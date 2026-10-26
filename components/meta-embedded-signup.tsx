@@ -61,13 +61,18 @@ export function MetaEmbeddedSignup({
     window.addEventListener('message', onMessage);
 
     if (window.FB) {
+      try {
+        window.FB.init({ appId, cookie: true, xfbml: false, version: 'v21.0' });
+      } catch {
+        /* already inited */
+      }
       setSdkReady(true);
     } else {
       window.fbAsyncInit = function () {
         window.FB.init({
           appId,
           cookie: true,
-          xfbml: true,
+          xfbml: false,
           version: 'v21.0',
         });
         setSdkReady(true);
@@ -77,7 +82,7 @@ export function MetaEmbeddedSignup({
         s.id = 'facebook-jssdk';
         s.async = true;
         s.src = 'https://connect.facebook.net/pt_BR/sdk.js';
-        s.onerror = () => toast.error('Falha ao carregar SDK Facebook (bloqueio de script?)');
+        s.onerror = () => toast.error('Falha ao carregar SDK Facebook');
         document.body.appendChild(s);
       }
     }
@@ -88,13 +93,13 @@ export function MetaEmbeddedSignup({
     };
   }, [appId]);
 
-  const stopLoading = () => {
+  const stopLoading = useCallback(() => {
     setLoading(false);
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-  };
+  }, []);
 
   const launch = useCallback(() => {
     if (!empresaId) {
@@ -102,31 +107,32 @@ export function MetaEmbeddedSignup({
       return;
     }
     if (!appId || !/^\d{6,20}$/.test(appId)) {
-      toast.error('Falta NEXT_PUBLIC_META_APP_ID no Vercel (App ID numérico) + Redeploy');
+      toast.error('Falta NEXT_PUBLIC_META_APP_ID no Vercel + Redeploy');
       return;
     }
     if (!configId) {
       toast.error(
-        'Falta NEXT_PUBLIC_META_CONFIG_ID no Vercel. Crie o fluxo Embedded Signup em developers.facebook.com → WhatsApp → Configuração e cole o config_id.',
+        'Falta NEXT_PUBLIC_META_CONFIG_ID (Embedded Signup no painel Meta → WhatsApp → Configuration ID)',
       );
       return;
     }
-    if (!window.FB) {
-      toast.error('SDK Facebook ainda não carregou — aguarde 2s e tente de novo (ou desative bloqueador)');
+    if (!window.FB || typeof window.FB.login !== 'function') {
+      toast.error('SDK Facebook ainda não pronto — aguarde 2s e tente de novo');
       return;
     }
 
     setLoading(true);
     timeoutRef.current = setTimeout(() => {
       stopLoading();
-      toast.message('Login Meta demorou — pode ter popup bloqueado. Permita popups para este site.');
+      toast.message('Meta demorou. Permita popups neste site e tente outra vez.');
     }, 90000);
 
-    try {
-      window.FB.login(
-        async (response: any) => {
+    // IMPORTANTE: callback NÃO pode ser async — SDK Meta exige function síncrona
+    window.FB.login(
+      function (response: any) {
+        void (async () => {
           try {
-            if (!response || response.status === 'unknown' || response.error) {
+            if (!response || response.status === 'unknown') {
               stopLoading();
               toast.message('Login cancelado ou popup bloqueado');
               return;
@@ -139,7 +145,7 @@ export function MetaEmbeddedSignup({
             const code = response.authResponse.code || response.authResponse.accessToken;
             if (!code) {
               stopLoading();
-              toast.error('Meta não devolveu code — confira Embedded Signup (response_type=code)');
+              toast.error('Meta não devolveu code — confira Embedded Signup');
               return;
             }
 
@@ -159,23 +165,20 @@ export function MetaEmbeddedSignup({
           } finally {
             stopLoading();
           }
+        })();
+      },
+      {
+        config_id: configId,
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: {
+          setup: {},
+          featureType: '',
+          sessionInfoVersion: '3',
         },
-        {
-          config_id: configId,
-          response_type: 'code',
-          override_default_response_type: true,
-          extras: {
-            setup: {},
-            featureType: '',
-            sessionInfoVersion: '3',
-          },
-        },
-      );
-    } catch (e: any) {
-      stopLoading();
-      toast.error('Não abriu o login Meta: ' + (e?.message || 'erro desconhecido'));
-    }
-  }, [appId, configId, empresaId, onConnected]);
+      },
+    );
+  }, [appId, configId, empresaId, onConnected, stopLoading]);
 
   return (
     <button
@@ -190,17 +193,16 @@ export function MetaEmbeddedSignup({
       <div className="flex-1">
         <div className="font-semibold text-lg">Conectar WhatsApp da loja</div>
         <p className="text-sm text-muted-foreground">
-          Cadastro oficial Meta (Embedded Signup) · a concessionária autoriza a conta Business dela · leads e mensagens
-          nesta empresa
+          Embedded Signup Meta · conta Business da concessionária · leads nesta empresa
         </p>
         {!appId || !configId ? (
           <p className="mt-1 text-xs text-amber-500">
-            Servidor: falta NEXT_PUBLIC_META_APP_ID ou NEXT_PUBLIC_META_CONFIG_ID (e Redeploy)
+            Falta NEXT_PUBLIC_META_APP_ID ou NEXT_PUBLIC_META_CONFIG_ID no Vercel
           </p>
         ) : !sdkReady ? (
-          <p className="mt-1 text-xs text-muted-foreground">Carregando SDK Facebook…</p>
+          <p className="mt-1 text-xs text-muted-foreground">Carregando SDK…</p>
         ) : loading ? (
-          <p className="mt-1 text-xs text-emerald-400">Aguardando Meta… (pode cancelar se travar)</p>
+          <p className="mt-1 text-xs text-emerald-400">Aguardando Meta…</p>
         ) : null}
       </div>
     </button>
