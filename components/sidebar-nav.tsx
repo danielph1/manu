@@ -11,12 +11,10 @@ import {
   CheckSquare, ArrowRightLeft, PlusCircle, LogOut, UserCircle2,
   FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox, Building2, PlugZap, Megaphone,
 } from 'lucide-react'
-// Megaphone used for Anúncios;
 import { cn } from '@/lib/utils';
 import { Role } from '@/lib/roles';
 import { useI18n } from '@/contexts/i18n-context';
 import { Sparkles } from 'lucide-react'
-// Megaphone used for Anúncios;
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -39,7 +37,8 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     { href: '/processos', label: 'Transferencias', icon: ArrowRightLeft, show: Role.verDocumental(user) || isSuper },
     { href: '/oficina', label: t('nav.oficina'), icon: Wrench, show: !!user },
     { href: '/faturamento', label: t('nav.faturamento'), icon: Receipt, show: !!user },
-    { href: '/integracoes', label: 'Integrações', icon: PlugZap, Megaphone, show: ['admin','marketing','superadmin'].includes(tipo) || isSuper },
+    { href: '/integracoes', label: 'Integrações', icon: PlugZap, show: ['admin','marketing','superadmin'].includes(tipo) || isSuper },
+    { href: '/anuncios', label: 'Anúncios', icon: Megaphone, show: ['admin','marketing','superadmin','gerente'].includes(tipo) || isSuper },
     { href: '/configuracoes', label: t('nav.config'), icon: Settings, show: !!user },
   ];
 
