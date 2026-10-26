@@ -193,17 +193,22 @@ export async function PATCH(req: NextRequest) {
       ],
     );
 
-    // pronto vai para o estoque, exceto vendido
+    // pronto vai para o estoque (ativo); anúncio não liga sozinho
     if (row?.placa && (b.pronto === true || row.pronto === true)) {
+      try { await query(`ALTER TABLE public.estoque_carros ADD COLUMN IF NOT EXISTS status_estoque text DEFAULT 'ativo'`); } catch { /* ok */ }
       try {
         const placa = String(row.placa).replace(/[- ]/g, '').toUpperCase();
         const est = await queryOne(`SELECT id, status FROM public.estoque_carros
           WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1 LIMIT 1`, [placa]);
         const vendido = est && String(est.status || '').toLowerCase().includes('vend');
-        if (!est && !vendido) {
-          await query(`INSERT INTO public.estoque_carros (marca, carro, modelo, ano, placa, patio, status)
-            VALUES ($1,$2,$3,$4,$5,'Pátio','Disponível')`,
-            [row.marca, `${row.marca} ${row.modelo}`, row.modelo, row.ano_modelo, row.placa]);
+        if (est && !vendido) {
+          try {
+            await query(`UPDATE public.estoque_carros SET status_estoque='ativo' WHERE id=$1`, [est.id]);
+          } catch { /* ok */ }
+        } else if (!est && !vendido) {
+          await query(`INSERT INTO public.estoque_carros (marca, carro, modelo, ano, placa, patio, status, status_estoque, anunciado)
+            VALUES ($1,$2,$3,$4,$5,'Pátio','Disponível','ativo',false)`,
+            [row.marca, `${row.marca} ${row.modelo}`, row.modelo, row.ano_modelo || row.ano, row.placa]);
         }
       } catch { /* ok */ }
     }

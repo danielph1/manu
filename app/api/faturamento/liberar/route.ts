@@ -82,8 +82,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // remove do estoque/oficina
-    try { await query(`DELETE FROM public.estoque_carros WHERE ${where}`, [placa]); } catch { /* ok */ }
+    // estoque: não apaga — fica inativo (histórico / planos futuros) e tira anúncio
+    try {
+      await query(`ALTER TABLE public.estoque_carros ADD COLUMN IF NOT EXISTS status_estoque text DEFAULT 'ativo'`);
+      await query(`ALTER TABLE public.estoque_carros ADD COLUMN IF NOT EXISTS anunciado boolean DEFAULT false`);
+    } catch { /* ok */ }
+    try {
+      await query(
+        `UPDATE public.estoque_carros SET
+           status_estoque = 'inativo',
+           anunciado = false,
+           anunciado_em = NULL
+         WHERE ${where}`,
+        [placa],
+      );
+    } catch {
+      try { await query(`DELETE FROM public.estoque_carros WHERE ${where}`, [placa]); } catch { /* ok */ }
+    }
     try { await query(`DELETE FROM public.oficina_carros WHERE ${where}`, [placa]); } catch { /* ok */ }
 
     if (leadId) {

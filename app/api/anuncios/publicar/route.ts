@@ -45,7 +45,7 @@ async function publicarMercadoLivre(
     condition: 'used',
     description: { plain_text: descricao.slice(0, 50000) },
     attributes: [
-      { id: 'VEHICLE_YEAR', value_name: String(car.ano || car.ano_modelo || '') },
+      { id: 'VEHICLE_YEAR', value_name: String(car.ano || '') },
       { id: 'COLOR', value_name: String(car.cor || 'Não informado') },
       { id: 'LICENSE_PLATE', value_name: String(car.placa || '') },
     ].filter((a) => a.value_name),
@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
 
   const titulo =
     (body.titulo || '').trim() ||
-    [car.marca, car.modelo || car.carro, car.ano || car.ano_modelo].filter(Boolean).join(' ').slice(0, 60);
+    [car.marca, car.modelo || car.carro, car.ano].filter(Boolean).join(' ').slice(0, 60);
 
   const descricao =
     (body.descricao || '').trim() ||
