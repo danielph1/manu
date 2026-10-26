@@ -21,6 +21,7 @@ type Carro = {
   carroceria?: string;
   anunciado?: boolean;
   anuncios_meta?: Record<string, any>;
+  capa_url?: string | null;
 };
 
 const PLATS = [
@@ -64,6 +65,8 @@ export default function AnunciosPage() {
   const [titulo, setTitulo] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [fotos, setFotos] = useState<{ id: number; url: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -83,8 +86,18 @@ export default function AnunciosPage() {
     if (!isLoading && ok) carregar();
   }, [isLoading, ok, carregar]);
 
+  async function loadFotos(carroId: number) {
+    try {
+      const r = await api.get('/estoque/fotos', { params: { carro_id: carroId } });
+      setFotos(Array.isArray(r.data) ? r.data : []);
+    } catch {
+      setFotos([]);
+    }
+  }
+
   function abrir(c: Carro) {
     setSel(c);
+    loadFotos(c.id);
     setEdit({
       marca: c.marca || '',
       modelo: c.modelo || c.carro || '',
@@ -204,7 +217,7 @@ export default function AnunciosPage() {
           >
             <div className="mb-2 overflow-hidden rounded-xl bg-muted aspect-[16/10]">
               <img
-                src="/veiculo-preparacao.webp"
+                src={c.capa_url || "/veiculo-preparacao.webp"}
                 alt=""
                 className="h-full w-full object-cover opacity-90"
                 loading="lazy"
@@ -289,6 +302,57 @@ export default function AnunciosPage() {
             >
               {saving ? 'Salvando…' : 'Salvar no estoque'}
             </button>
+
+            <div className="text-sm font-medium">Fotos</div>
+            <div className="flex flex-wrap gap-2">
+              {fotos.map((f) => (
+                <div key={f.id} className="relative h-16 w-20 overflow-hidden rounded-md border">
+                  <img src={f.url} alt="" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    className="absolute right-0 top-0 bg-black/70 px-1 text-[10px] text-white"
+                    onClick={async () => {
+                      try {
+                        await api.delete('/estoque/fotos', { params: { id: f.id } });
+                        await loadFotos(sel!.id);
+                        await carregar();
+                      } catch {
+                        toast.error('Falha ao excluir');
+                      }
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <label className="flex h-16 w-20 cursor-pointer items-center justify-center rounded-md border border-dashed text-xs">
+                {uploading ? '…' : '+ foto'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !sel) return;
+                    setUploading(true);
+                    try {
+                      const fd = new FormData();
+                      fd.append('carro_id', String(sel.id));
+                      fd.append('file', file);
+                      await api.post('/estoque/fotos', fd);
+                      await loadFotos(sel.id);
+                      await carregar();
+                      toast.success('Foto ok');
+                    } catch {
+                      toast.error('Upload falhou');
+                    } finally {
+                      setUploading(false);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+            </div>
 
             <hr className="border-border" />
 

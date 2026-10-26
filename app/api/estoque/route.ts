@@ -43,7 +43,11 @@ export async function GET(req: NextRequest) {
 
     try {
       const { rows } = await query(
-        `SELECT * FROM public.estoque_carros WHERE ${where} ORDER BY id DESC LIMIT 200`,
+        `SELECT e.*, (
+            SELECT f.url FROM public.estoque_fotos f
+            WHERE f.carro_id = e.id ORDER BY f.ordem, f.id LIMIT 1
+          ) AS capa_url
+         FROM public.estoque_carros e WHERE ${where} ORDER BY e.id DESC LIMIT 200`,
         params,
       );
       return NextResponse.json(rows);
@@ -68,7 +72,11 @@ export async function GET(req: NextRequest) {
         where2 += ` AND (${parts.join(' OR ')})`;
       }
       const { rows } = await query(
-        `SELECT * FROM public.estoque_carros WHERE ${where2} ORDER BY id DESC LIMIT 200`,
+        `SELECT e.*, (
+            SELECT f.url FROM public.estoque_fotos f
+            WHERE f.carro_id = e.id ORDER BY f.ordem, f.id LIMIT 1
+          ) AS capa_url
+         FROM public.estoque_carros e WHERE ${where2} ORDER BY e.id DESC LIMIT 200`,
         params2,
       );
       return NextResponse.json(rows);

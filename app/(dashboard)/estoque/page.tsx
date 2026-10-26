@@ -286,6 +286,14 @@ export default function EstoquePage() {
             }}
           >
             <CardContent className="space-y-3 p-5">
+              <div className="-mx-1 overflow-hidden rounded-xl bg-muted aspect-[16/10]">
+                <img
+                  src={(c as any).capa_url || '/veiculo-preparacao.webp'}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              </div>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2 text-lg font-semibold">
                   <Car className="h-5 w-5 text-primary" />

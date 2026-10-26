@@ -72,6 +72,7 @@ export async function GET(req: NextRequest) {
               COALESCE(anunciado,false) AS anunciado,
               anunciado_em, anuncios_meta, empresa_id,
               COALESCE(status_estoque,'ativo') AS status_estoque
+        , (SELECT f.url FROM public.estoque_fotos f WHERE f.carro_id = estoque_carros.id ORDER BY f.ordem, f.id LIMIT 1) AS capa_url
        FROM public.estoque_carros
        WHERE ${where}
        ORDER BY ${order}
