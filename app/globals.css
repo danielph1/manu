@@ -65,8 +65,9 @@ code {
         --card-foreground: 222.2 84% 4.9%;
         --popover: 0 0% 100%;
         --popover-foreground: 222.2 84% 4.9%;
-        --primary: 222.2 47.4% 11.2%;
-        --primary-foreground: 210 40% 98%;
+        --primary: 189 90% 36%;
+        --primary-foreground: 0 0% 100%;
+        --radius: 0.75rem;
         --secondary: 210 40% 96.1%;
         --secondary-foreground: 222.2 47.4% 11.2%;
         --muted: 210 40% 96.1%;
@@ -83,7 +84,7 @@ code {
         --chart-3: 197 37% 24%;
         --chart-4: 43 74% 66%;
         --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
+        --radius: 0.75rem;
         --sidebar-background: 0 0% 98%;
         --sidebar-foreground: 240 5.3% 26.1%;
         --sidebar-primary: 240 5.9% 10%;
@@ -94,40 +95,46 @@ code {
         --sidebar-ring: 217.2 91.2% 59.8%;
     }
   .dark {
-        --background: 222.2 84% 4.9%;
+        /* Aurox default — painel infra / high-tech cyan */
+        --background: 222 28% 5%;
         --foreground: 210 40% 98%;
-        --card: 222.2 84% 4.9%;
+        --card: 222 24% 8%;
         --card-foreground: 210 40% 98%;
-        --popover: 222.2 84% 4.9%;
+        --popover: 222 24% 9%;
         --popover-foreground: 210 40% 98%;
-        --primary: 0 72% 51%;
-        --primary-foreground: 0 0% 100%;
-        --secondary: 217.2 32.6% 17.5%;
-        --secondary-foreground: 210 40% 98%;
-        --muted: 217.2 32.6% 17.5%;
-        --muted-foreground: 215 20.2% 65.1%;
-        --accent: 217.2 32.6% 17.5%;
-        --accent-foreground: 210 40% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 210 40% 98%;
-        --border: 217.2 32.6% 17.5%;
-        --input: 217.2 32.6% 17.5%;
-        --ring: 212.7 26.8% 83.9%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
-        --sidebar-background: 240 5.9% 10%;
-        --sidebar-foreground: 240 4.8% 95.9%;
-        --sidebar-primary: 224.3 76.3% 48%;
-        --sidebar-primary-foreground: 0 0% 100%;
-        --sidebar-accent: 240 3.7% 15.9%;
-        --sidebar-accent-foreground: 240 4.8% 95.9%;
-        --sidebar-border: 240 3.7% 15.9%;
-        --sidebar-ring: 217.2 91.2% 59.8%;
+        --primary: 189 94% 43%;
+        --primary-foreground: 222 40% 6%;
+        --secondary: 222 18% 12%;
+        --secondary-foreground: 210 40% 96%;
+        --muted: 222 16% 12%;
+        --muted-foreground: 215 16% 58%;
+        --accent: 189 40% 14%;
+        --accent-foreground: 189 90% 75%;
+        --destructive: 0 62% 45%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 222 16% 14%;
+        --input: 222 16% 14%;
+        --ring: 189 94% 43%;
+        --radius: 0.75rem;
+        --chart-1: 189 94% 43%;
+        --chart-2: 199 89% 48%;
+        --chart-3: 172 66% 40%;
+        --chart-4: 215 70% 55%;
+        --chart-5: 280 60% 55%;
+        --sidebar-background: 222 30% 4%;
+        --sidebar-foreground: 210 30% 92%;
+        --sidebar-primary: 189 94% 43%;
+        --sidebar-primary-foreground: 222 40% 6%;
+        --sidebar-accent: 222 20% 10%;
+        --sidebar-accent-foreground: 210 40% 96%;
+        --sidebar-border: 222 18% 12%;
+        --sidebar-ring: 189 94% 43%;
     }
 }
+
+@layer base {
+  * {
+
 
 
 
@@ -141,42 +148,42 @@ code {
 }
 /* Temas escolhidos pelo usuário */
 html[data-theme="claro"] {
-  --background: 210 40% 98%;
-  --foreground: 222 47% 11%;
+  --background: 210 30% 98%;
+  --foreground: 222 30% 10%;
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card-foreground: 222 30% 10%;
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --primary: 217 91% 45%;
+  --popover-foreground: 222 30% 10%;
+  --primary: 189 90% 36%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 94%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 210 40% 94%;
-  --muted-foreground: 215 16% 40%;
-  --accent: 210 40% 94%;
-  --accent-foreground: 222 47% 11%;
-  --border: 214 32% 88%;
-  --input: 214 32% 88%;
-  --ring: 217 91% 45%;
+  --secondary: 210 25% 94%;
+  --secondary-foreground: 222 30% 12%;
+  --muted: 210 25% 94%;
+  --muted-foreground: 215 14% 42%;
+  --accent: 189 40% 94%;
+  --accent-foreground: 189 80% 28%;
+  --border: 214 20% 88%;
+  --input: 214 20% 88%;
+  --ring: 189 90% 36%;
 }
 html[data-theme="azul"] {
-  --background: 222 47% 8%;
-  --foreground: 210 40% 98%;
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47% 8%;
-  --secondary: 217 33% 18%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217 33% 18%;
-  --muted-foreground: 215 20% 70%;
-  --accent: 217 33% 18%;
-  --accent-foreground: 210 40% 98%;
-  --border: 217 33% 22%;
-  --input: 217 33% 22%;
-  --ring: 217 91% 60%;
+  --background: 222 30% 4%;
+  --foreground: 200 30% 96%;
+  --card: 222 24% 7.5%;
+  --card-foreground: 200 30% 96%;
+  --popover: 222 24% 8%;
+  --popover-foreground: 200 30% 96%;
+  --primary: 189 94% 45%;
+  --primary-foreground: 222 40% 5%;
+  --secondary: 222 18% 12%;
+  --secondary-foreground: 200 30% 96%;
+  --muted: 222 16% 11%;
+  --muted-foreground: 215 14% 55%;
+  --accent: 189 45% 14%;
+  --accent-foreground: 189 90% 78%;
+  --border: 222 18% 13%;
+  --input: 222 18% 13%;
+  --ring: 189 94% 45%;
 }
 html[data-theme="rosa"] {
   --background: 330 30% 8%;
@@ -337,4 +344,63 @@ html[data-theme="platinum"] {
   --border: 220 4% 16%;
   --input: 220 4% 16%;
   --ring: 200 80% 70%;
+}
+
+
+/* ——— Aurox Design System (leve, sem blur pesado) ——— */
+@layer components {
+  .aurox-surface {
+    @apply rounded-2xl border border-border/80 bg-card text-card-foreground;
+    box-shadow: 0 1px 0 hsl(var(--border) / 0.5), 0 8px 24px -12px rgb(0 0 0 / 0.45);
+  }
+  .aurox-surface-hover {
+    @apply aurox-surface transition-colors;
+  }
+  .aurox-surface-hover:hover {
+    border-color: hsl(var(--primary) / 0.35);
+  }
+  .aurox-stat {
+    @apply aurox-surface p-5;
+  }
+  .aurox-stat-label {
+    @apply text-[11px] font-medium uppercase tracking-wider text-muted-foreground;
+  }
+  .aurox-stat-value {
+    @apply mt-2 text-2xl font-semibold tracking-tight tabular-nums text-foreground;
+  }
+  .aurox-page-title {
+    @apply text-2xl font-semibold tracking-tight text-foreground;
+  }
+  .aurox-page-sub {
+    @apply mt-1 text-sm text-muted-foreground;
+  }
+  .aurox-chip {
+    @apply inline-flex items-center rounded-full border border-border/80 bg-secondary/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground;
+  }
+  .aurox-chip-active {
+    @apply border-primary/40 bg-primary/15 text-primary;
+  }
+  /* glow sutil no accent — CSS barato, sem backdrop-filter */
+  .aurox-accent-ring {
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.35), 0 0 24px -6px hsl(var(--primary) / 0.35);
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "ss01" on, "cv01" on;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--primary) / 0.09), transparent),
+      radial-gradient(ellipse 50% 40% at 100% 0%, hsl(199 89% 48% / 0.04), transparent);
+    background-attachment: fixed;
+  }
+  .dark body,
+  html.dark body,
+  html[data-theme="azul"] body,
+  html[data-theme="cristal"] body {
+    background-image:
+      radial-gradient(ellipse 90% 55% at 50% -25%, hsl(var(--primary) / 0.12), transparent),
+      radial-gradient(ellipse 45% 35% at 100% 0%, hsl(199 89% 48% / 0.06), transparent);
+  }
 }

@@ -43,7 +43,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   ];
 
   return (
-    <aside className="flex h-screen w-72 flex-col border-r border-border bg-card px-4 py-6 sticky top-0 overflow-y-auto">
+    <aside className="flex h-screen w-72 flex-col border-r border-border/60 bg-background/80 px-4 py-6 sticky top-0 overflow-y-auto">
       <div className="mt-10 flex items-center gap-3 px-2">
         <a href="/minha-conta" className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-primary text-lg font-bold text-primary-foreground">
           {(user as any)?.foto_url ? <img src={(user as any).foto_url} alt="" className="h-full w-full object-cover" /> : String(user?.nome || user?.login || '?').charAt(0).toUpperCase()}
@@ -77,7 +77,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                 variant={active ? 'default' : 'ghost'}
                 className={cn(
                   'w-full justify-start',
-                  active && 'bg-primary text-primary-foreground hover:bg-primary/90',
+                  active && 'bg-primary/15 text-primary hover:bg-primary/20 aurox-accent-ring',
                 )}
               >
                 <Icon className="mr-2 h-4 w-4" />
