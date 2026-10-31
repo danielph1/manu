@@ -89,6 +89,21 @@ export default function IntegracoesPage() {
     }
   }
 
+  async function conectarOlx() {
+    if (!empresa) return toast.error('Selecione uma empresa');
+    setBusy('olx');
+    try {
+      const r = await api.post('/integracoes/oauth/olx/start', { empresa_id: Number(empresa) });
+      if (r.data?.auth_url) {
+        window.location.assign(r.data.auth_url);
+        return;
+      }
+      toast.error(r.data?.message || 'Login OLX indisponivel');
+    } catch(e: any) {
+      toast.error(e?.response?.data?.message || e?.response?.data?.error || 'Falha ao iniciar login OLX');
+    } finally { setBusy(''); }
+  }
+
   async function conectarML() {
     setBusy('ml');
     try {
@@ -161,8 +176,7 @@ export default function IntegracoesPage() {
       <div>
         <h1 className="text-2xl font-bold">Conectar canais</h1>
         <p className="text-sm text-muted-foreground">
-          A <strong>loja autoriza com a conta dela</strong> (login ou chave do painel). O Aurox guarda o token só desta
-          empresa e recebe os leads na triagem — sem você colar token no servidor por cliente.
+          Cada empresa conecta suas contas pelas modalidades oficiais de cada portal. Credenciais de integracao ficam no servidor e nunca no navegador.
         </p>
       </div>
 
@@ -183,7 +197,7 @@ export default function IntegracoesPage() {
 
       <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-xs text-muted-foreground space-y-1">
         <p className="font-medium text-foreground text-sm">Modelo (igual AutoCerto)</p>
-        <p>1. Concessionária faz login / cola a chave <em>dela</em>.</p>
+          <p>1. Concessionária faz login no provedor quando houver OAuth; outros canais exigem ativacao de integrador.</p>
         <p>2. Aurox vincula ao <code>empresa_id</code> e gera webhook de entrada.</p>
         <p>3. Anúncio gera interesse → lead na triagem desta loja.</p>
       </div>
@@ -233,6 +247,31 @@ export default function IntegracoesPage() {
             )}
           </div>
         </button>
+
+        {/* OLX: OAuth real, a senha nunca passa pelo MANU. */}
+        <button type="button" disabled={!!busy} onClick={conectarOlx}
+          className="flex w-full items-center gap-4 rounded-2xl border bg-card p-5 text-left hover:border-primary/50 transition">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted font-bold">OL</div>
+          <div className="flex-1">
+            <div className="text-lg font-semibold">OLX</div>
+            <p className="text-sm text-muted-foreground">Fazer login na OLX e autorizar leads e anuncios. Requer MANU homologado como integrador.</p>
+            {statusDe('olx') && <p className="text-xs text-emerald-500">Status: {statusDe('olx')!.status}</p>}
+          </div>
+          <span className="text-sm text-primary">{busy==='olx'?'Conectando…':'Conectar conta'}</span>
+        </button>
+
+        <div className="rounded-2xl border bg-card p-5 space-y-2">
+          <h3 className="text-lg font-semibold">Webmotors</h3>
+          <p className="text-sm text-muted-foreground">A loja precisa ativar o CRM parceiro no Cockpit e criar o usuario Integrador de API. A conexao automatica exige acesso de parceiro Webmotors.</p>
+          <a href="https://www.cockpit.com.br/inventory/php/integracoes" target="_blank" rel="noreferrer"
+            className="inline-flex rounded-lg border px-4 py-2 text-sm text-primary">Abrir integracoes no Cockpit</a>
+          <p className="text-xs text-amber-500">Configuracao assistida: ainda nao e um login OAuth pelo MANU.</p>
+        </div>
+        <div className="rounded-2xl border bg-card p-5 space-y-2">
+          <h3 className="text-lg font-semibold">iCarros</h3>
+          <p className="text-sm text-muted-foreground">Conexao de anuncios e leads depende de convenio tecnico com o portal. O MANU nao requisita sua senha do iCarros.</p>
+          <p className="text-xs text-amber-500">Aguardando credenciamento/documentacao de integrador.</p>
+        </div>
 
         {/* Parceiros com chave da loja */}
         {CANAIS_CHAVE.map((c) => {

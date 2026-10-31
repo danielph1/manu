@@ -18,7 +18,7 @@ interface Seller {
 }
 interface Snapshot {
   empresa_id: number; limite_minutos: number; total_pendentes: number;
-  fila: Lead[]; sem_resposta: Lead[]; vendedores: Seller[]; atualizado_em: string;
+  fila: Lead[]; sem_resposta: Lead[]; vendedores: Seller[]; atualizado_em: string; incompleto?: boolean; avisos?: string[];
 }
 interface Empresa { id: number; nome: string }
 const permitted = new Set(['superadmin', 'admin', 'gerente', 'marketing']);
@@ -51,6 +51,7 @@ export default function AtendimentoPage() {
       const res = await api.get('/atendimento', { params: { empresa_id: Number(empresaId) } });
       setSnapshot(res.data);
     } catch (e: any) {
+      setSnapshot(null);
       toast.error(e?.response?.data?.error || 'Falha ao carregar o atendimento');
     } finally { setBusy(false); }
   }, [authorized, empresaId]);
@@ -94,10 +95,17 @@ export default function AtendimentoPage() {
       </div>
     </header>
 
+    {!snapshot && <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+      Indicadores indisponiveis. Nao interprete os valores como zero antes de conectar ao banco.
+    </div>}
+    {!!snapshot?.avisos?.length && <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm space-y-1">
+      <strong>O painel esta parcialmente atualizado:</strong>
+      {snapshot.avisos.map((aviso,idx) => <p key={idx}>{aviso}</p>)}
+    </div>}
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Summary icon={<Activity className="h-5 w-5" />} title="Aguardando triagem" value={snapshot?.fila.length ?? 0} />
-      <Summary icon={<Clock3 className="h-5 w-5" />} title="Com vendedor, sem resposta" value={snapshot?.sem_resposta.length ?? 0} />
-      <Summary icon={<AlertCircle className="h-5 w-5" />} title="Sem resposta +10 min" value={missed} />
+      <Summary icon={<Activity className="h-5 w-5" />} title="Aguardando triagem" value={snapshot?.fila.length ?? null} />
+      <Summary icon={<Clock3 className="h-5 w-5" />} title="Com vendedor, sem resposta" value={snapshot?.sem_resposta.length ?? null} />
+      <Summary icon={<AlertCircle className="h-5 w-5" />} title="Sem resposta +10 min" value={snapshot ? missed : null} />
     </div>
 
     <section className="space-y-3">
@@ -158,9 +166,9 @@ export default function AtendimentoPage() {
     </section>
   </main>;
 }
-function Summary({ icon, title, value }: { icon: ReactNode; title: string; value: number }) {
+function Summary({ icon, title, value }: { icon: ReactNode; title: string; value: number | null }) {
   return <div className="flex items-center gap-3 rounded-xl border bg-card p-4">
     <div className="rounded-lg bg-primary/10 p-3 text-primary">{icon}</div>
-    <div><p className="text-sm text-muted-foreground">{title}</p><p className="text-2xl font-bold">{value}</p></div>
+    <div><p className="text-sm text-muted-foreground">{title}</p><p className="text-2xl font-bold">{value === null ? '—' : value}</p></div>
   </div>;
 }
