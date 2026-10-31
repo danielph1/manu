@@ -1,0 +1,35 @@
+
+/** Cadastro manual do veiculo - papéis de gestao, isolado por empresa. */
+export async function POST(req: NextRequest) {
+  const u = await requireUser(req);
+  if (!u) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
+  const canAdd = ['superadmin', 'admin', 'gerente', 'marketing'].includes(String(u.tipo).toLowerCase());
+  if (!canAdd) return NextResponse.json({ error: 'Sem permissao' }, { status: 403 });
+  const b = await req.json().catch(() => null);
+  if (!b || typeof b !== 'object') return NextResponse.json({ error: 'JSON invalido' }, { status: 400 });
+  const marca = String(b.marca || '').trim().slice(0, 90);
+  const modelo = String(b.modelo || '').trim().slice(0, 120);
+  const placa = String(b.placa || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
+  const ano = Number(b.ano);
+  const preco = Number(b.preco ?? 0);
+  const empresaId = u.tipo === 'superadmin' ? Number(b.empresa_id) : Number(u.empresa_id);
+  if (!empresaId || !Number.isSafeInteger(empresaId)) return NextResponse.json({ error: 'Empresa obrigatoria' }, { status: 400 });
+  if (!marca || !modelo || !/^[A-Z0-9]{7}$/.test(placa) || !Number.isInteger(ano) || ano < 1900 || ano > new Date().getFullYear() + 2 || !Number.isFinite(preco) || preco < 0) {
+    return NextResponse.json({ error: 'Preencha marca, modelo, ano, placa valida e preco' }, { status: 400 });
+  }
+  const patio = u.tipo === 'gerente' ? String(u.loja || '') : String(b.patio || u.loja || '').slice(0, 100);
+  try {
+    const existing = await query(`SELECT id FROM public.estoque_carros
+      WHERE empresa_id=$1 AND REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','')=$2 LIMIT 1`, [empresaId, placa]);
+    if (existing.rows.length) return NextResponse.json({ error: 'Placa ja cadastrada na empresa' }, { status: 409 });
+    const row = await query(`INSERT INTO public.estoque_carros
+      (empresa_id, marca, carro, modelo, placa, ano, cor, preco, patio, status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Disponível') RETURNING id`,
+      [empresaId, marca, `${marca} ${modelo}`, modelo, placa, ano,
+        String(b.cor || '').slice(0, 60), preco, patio]);
+    return NextResponse.json({ ok: true, id: row.rows[0]?.id }, { status: 201 });
+  } catch (e) {
+    console.error('estoque POST', e instanceof Error ? e.message : 'erro');
+    return NextResponse.json({ error: 'Nao foi possivel cadastrar o veiculo' }, { status: 500 });
+  }
+}

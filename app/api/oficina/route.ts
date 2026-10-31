@@ -11,29 +11,18 @@ export async function GET(req: NextRequest) {
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
 
   try {
-    // remove prontos > 4 dias
-    try {
-      await query(
-        `
-        DELETE FROM public.oficina_carros
-        WHERE COALESCE(pronto, FALSE) = TRUE
-          AND COALESCE(updated_at, created_at, NOW()) < (NOW() - INTERVAL '4 days')
-        `,
-      );
-    } catch { /* ok */ }
-
     const busca = (new URL(req.url).searchParams.get('busca') || '').trim();
     const params: unknown[] = [];
     let where = '1=1';
-    // oficina: isolado só por EMPRESA (não por loja)
-    if (!isSuperAdmin(u) && u.empresa_id) {
+    if (!isSuperAdmin(u)) {
+      if (!u.empresa_id) return NextResponse.json({ error: 'Empresa nao associada' }, { status: 403 });
       params.push(u.empresa_id);
-      where += ` AND (empresa_id = $${params.length} OR empresa_id IS NULL)`;
+      where += ` AND empresa_id = $${params.length}`;
     }
     if (busca) {
       params.push(`%${busca}%`);
       const p = `$${params.length}`;
-      where = `(marca ILIKE ${p} OR modelo ILIKE ${p} OR placa ILIKE ${p} OR COALESCE(cor,'') ILIKE ${p})`;
+      where += ` AND (marca ILIKE ${p} OR modelo ILIKE ${p} OR placa ILIKE ${p} OR COALESCE(cor,'') ILIKE ${p})`;
     }
 
     const { rows } = await query(
@@ -69,12 +58,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
-  if (!['admin', 'gerente', 'guariba', 'mecanico'].includes(u.tipo)) {
+  if (!['admin', 'gerente', 'marketing', 'superadmin', 'guariba', 'mecanico'].includes(u.tipo)) {
     return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   }
 
   try {
     const b = await req.json();
+    const empresaId = u.tipo === 'superadmin' ? Number(b.empresa_id) : Number(u.empresa_id);
+    if (!Number.isSafeInteger(empresaId) || empresaId <= 0) return NextResponse.json({ error: 'Empresa obrigatoria' }, { status: 400 });
     const placa = String(b.placa || '').replace(/[-\s]/g, '').toUpperCase();
     if (!b.marca || !b.modelo || !b.ano_modelo || !placa) {
       return NextResponse.json({ error: 'marca, modelo, ano e placa obrigatórios' }, { status: 400 });
@@ -82,8 +73,8 @@ export async function POST(req: NextRequest) {
 
     const existe = await queryOne(
       `SELECT id FROM public.oficina_carros
-       WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1`,
-      [placa],
+       WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1 AND empresa_id=$2`,
+      [placa,empresaId],
     );
     if (existe) {
       return NextResponse.json({ error: 'placa já na oficina' }, { status: 409 });
@@ -93,9 +84,9 @@ export async function POST(req: NextRequest) {
     let estoqueId: number | null = null;
     const est = await queryOne<{ id: number; status: string }>(
       `SELECT id, status FROM public.estoque_carros
-       WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1
+       WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1 AND empresa_id=$2
        ORDER BY id DESC LIMIT 1`,
-      [placa],
+      [placa,empresaId],
     );
     const preco = b.valor_carro != null ? Number(b.valor_carro) : null;
     let recal = false;
@@ -108,8 +99,8 @@ export async function POST(req: NextRequest) {
     } else {
       try {
         const ins = await queryOne<{ id: number }>(
-          `INSERT INTO public.estoque_carros (marca, carro, modelo, preco, ano, patio, cor, placa, status)
-           VALUES ($1,$2,$3,$4,$5,'Oficina',$6,$7,'Disponível') RETURNING id`,
+          `INSERT INTO public.estoque_carros (empresa_id, marca, carro, modelo, preco, ano, patio, cor, placa, status)
+           VALUES ($8,$1,$2,$3,$4,$5,'Oficina',$6,$7,'Disponível') RETURNING id`,
           [
             b.marca,
             `${b.marca} ${b.modelo}`,
@@ -117,7 +108,7 @@ export async function POST(req: NextRequest) {
             preco ?? 0,
             b.ano_modelo,
             b.cor || null,
-            placa,
+            placa, empresaId,
           ],
         );
         estoqueId = ins?.id ?? null;
@@ -127,9 +118,9 @@ export async function POST(req: NextRequest) {
     const row = await queryOne(
       `
       INSERT INTO public.oficina_carros (
-        marca, modelo, ano_modelo, placa, cor,
+        empresa_id, marca, modelo, ano_modelo, placa, cor,
         estoque_carro_id, atualizado_por_id, onde_esta, observacao, valor_final, pronto
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,'Oficina',$8,$9,FALSE)
+      ) VALUES ($10,$1,$2,$3,$4,$5,$6,$7,'Oficina',$8,$9,FALSE)
       RETURNING *
       `,
       [
@@ -141,7 +132,7 @@ export async function POST(req: NextRequest) {
         estoqueId,
         u.id,
         recal ? 'RECAL — veículo retornou (já havia sido vendido).' : null,
-        preco != null ? String(preco) : null,
+        preco != null ? String(preco) : null, empresaId,
       ],
     );
     await notificar({
@@ -159,13 +150,17 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
-  if (!['admin', 'gerente', 'guariba', 'mecanico'].includes(u.tipo)) {
+  if (!['admin', 'gerente', 'marketing', 'superadmin', 'guariba', 'mecanico'].includes(u.tipo)) {
     return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   }
 
   try {
     const b = await req.json();
     if (!b.id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
+    const existing = await queryOne<{ empresa_id: number | null }>('SELECT empresa_id FROM public.oficina_carros WHERE id=$1', [b.id]);
+    if (!existing) return NextResponse.json({ error: 'Veiculo nao encontrado' }, { status: 404 });
+    if (existing.empresa_id == null || (!isSuperAdmin(u) && Number(existing.empresa_id) !== Number(u.empresa_id))) return NextResponse.json({ error: 'Oficina de outra empresa ou sem vinculacao' }, { status: 403 });
+    const empresaId = Number(existing.empresa_id);
 
     const row = await queryOne(
       `
@@ -178,7 +173,7 @@ export async function PATCH(req: NextRequest) {
         valor_final = COALESCE($7, valor_final),
         atualizado_por_id = $8,
         updated_at = NOW()
-      WHERE id = $1
+      WHERE id = $1 AND empresa_id=$9
       RETURNING *
       `,
       [
@@ -189,7 +184,7 @@ export async function PATCH(req: NextRequest) {
         b.mecanica ?? null,
         b.lataria ?? null,
         b.valor_final ?? null,
-        u.id,
+        u.id, empresaId,
       ],
     );
 
@@ -199,16 +194,16 @@ export async function PATCH(req: NextRequest) {
       try {
         const placa = String(row.placa).replace(/[- ]/g, '').toUpperCase();
         const est = await queryOne(`SELECT id, status FROM public.estoque_carros
-          WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1 LIMIT 1`, [placa]);
+          WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = $1 AND empresa_id=$2 LIMIT 1`, [placa, empresaId]);
         const vendido = est && String(est.status || '').toLowerCase().includes('vend');
         if (est && !vendido) {
           try {
             await query(`UPDATE public.estoque_carros SET status_estoque='ativo' WHERE id=$1`, [est.id]);
           } catch { /* ok */ }
         } else if (!est && !vendido) {
-          await query(`INSERT INTO public.estoque_carros (marca, carro, modelo, ano, placa, patio, status, status_estoque, anunciado)
-            VALUES ($1,$2,$3,$4,$5,'Pátio','Disponível','ativo',false)`,
-            [row.marca, `${row.marca} ${row.modelo}`, row.modelo, row.ano_modelo || row.ano, row.placa]);
+          await query(`INSERT INTO public.estoque_carros (empresa_id, marca, carro, modelo, ano, placa, patio, status, status_estoque, anunciado)
+            VALUES ($6,$1,$2,$3,$4,$5,'Pátio','Disponível','ativo',false)`,
+            [row.marca, `${row.marca} ${row.modelo}`, row.modelo, row.ano_modelo || row.ano, row.placa, empresaId]);
         }
       } catch { /* ok */ }
     }
@@ -218,8 +213,8 @@ export async function PATCH(req: NextRequest) {
       try {
         await query(
           `UPDATE public.estoque_carros SET patio = $2
-           WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = REPLACE(REPLACE(UPPER($1),'-',''),' ','')`,
-          [row.placa, b.onde_esta],
+           WHERE REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ','') = REPLACE(REPLACE(UPPER($1),'-',''),' ','') AND empresa_id=$3`,
+          [row.placa, b.onde_esta, empresaId],
         );
       } catch { /* ok */ }
     }

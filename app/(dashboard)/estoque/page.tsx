@@ -147,6 +147,7 @@ export default function EstoquePage() {
   const [sel, setSel] = useState<any | null>(null);
   const [fotoIdx, setFotoIdx] = useState(0);
   const [uploading, setUploading] = useState(false);
+  const [novoCarro, setNovoCarro] = useState({ marca: '', modelo: '', ano: '', placa: '', preco: '', cor: '', patio: '', empresa_id: '' });
 
   const canEdit = podeEditarFotos(user?.tipo as string | undefined);
 
@@ -237,6 +238,30 @@ export default function EstoquePage() {
           {t('page.estoque.sub')}
         </p>
       </header>
+
+      {canEdit && (
+        <form className="space-y-3 rounded-xl border bg-card p-4" onSubmit={async (event) => {
+          event.preventDefault();
+          try {
+            await api.post('/estoque', novoCarro);
+            toast.success('Veiculo adicionado ao estoque');
+            setNovoCarro({ marca: '', modelo: '', ano: '', placa: '', preco: '', cor: '', patio: '' });
+            await qc.invalidateQueries({ queryKey: ['estoque'] });
+          } catch (err: any) { toast.error(err?.response?.data?.error || 'Falha ao cadastrar'); }
+        }}>
+          <h2 className="text-lg font-semibold">Adicionar veiculo ao estoque</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {(['marca','modelo','ano','placa','preco','cor','patio'] as const).map(campo => (
+              <label key={campo} className="block text-sm capitalize">{campo}
+                <Input value={novoCarro[campo]} required={['marca','modelo','ano','placa'].includes(campo)}
+                  onChange={e => setNovoCarro(p => ({ ...p, [campo]: e.target.value }))} />
+              </label>
+            ))}
+          </div>
+          {user?.tipo === 'superadmin' && <label className="block text-sm">ID da empresa <Input required value={novoCarro.empresa_id} onChange={e => setNovoCarro(p => ({ ...p, empresa_id: e.target.value }))} /></label>}
+          <Button type="submit">Salvar no estoque</Button>
+        </form>
+      )}
 
       <div className="flex flex-wrap gap-3">
         <div className="relative max-w-md flex-1">

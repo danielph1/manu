@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Car, LayoutDashboard, MessageSquare, Target, FileText,
   CheckSquare, ArrowRightLeft, PlusCircle, LogOut, UserCircle2,
-  FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox, Building2, PlugZap, Megaphone,
+  FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox, Building2, PlugZap, Megaphone, Clock3,
 } from 'lucide-react'
 import { cn } from '@/lib/utils';
 import { Role } from '@/lib/roles';
@@ -26,7 +26,8 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 
   const items: Array<{ href: string; label: string; icon: any; show: boolean }> = [
     { href: '/aurox', label: 'Aurox', icon: Building2, show: isSuper },
-    { href: '/triagem', label: t('nav.triagem'), icon: Inbox, show: Role.isAdmin(user) || isSuper },
+    { href: '/triagem', label: t('nav.triagem'), icon: Inbox, show: ['admin','marketing','gerente','superadmin'].includes(tipo) },
+    { href: '/atendimento', label: 'Gestao de Atendimento', icon: Clock3, show: ['admin','marketing','gerente','superadmin'].includes(tipo) },
     { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) || isSuper },
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) || isSuper },
     { href: '/metricas', label: t('nav.metricas'), icon: BarChart3, show: Role.verMetricas(user) || isSuper },

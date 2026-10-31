@@ -15,8 +15,9 @@ import { toast } from 'sonner';
 export default function OficinaPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const podeEditar = ['admin', 'gerente', 'guariba', 'mecanico'].includes(user?.tipo || '');
+  const podeEditar = ['admin', 'gerente', 'marketing', 'superadmin', 'guariba', 'mecanico'].includes(user?.tipo || '');
   const [busca, setBusca] = useState('');
+  const [empresaDestino, setEmpresaDestino] = useState('');
   const [carroceria, setCarroceria] = useState('todas');
   const [form, setForm] = useState({
     marca: '', modelo: '', ano_modelo: '', placa: '', cor: '', valor_carro: '',
@@ -36,7 +37,7 @@ export default function OficinaPage() {
   async function cadastrar() {
     try {
       await api.post('/oficina', {
-        ...form,
+        ...form, empresa_id: user?.tipo === 'superadmin' ? Number(empresaDestino) : undefined,
         valor_carro: form.valor_carro ? Number(form.valor_carro) : null,
       });
       toast.success('Carro cadastrado na oficina');
@@ -91,6 +92,7 @@ export default function OficinaPage() {
       {podeEditar && (
         <Card>
           <CardContent className="py-4 grid gap-3 md:grid-cols-3">
+            {user?.tipo === 'superadmin' && <label className="text-sm">ID da empresa <Input required value={empresaDestino} onChange={e => setEmpresaDestino(e.target.value)} /></label>}
             <div>
               <Label>Marca*</Label>
               <Input value={form.marca} onChange={(e) => setForm({ ...form, marca: e.target.value })} />

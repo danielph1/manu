@@ -30,6 +30,12 @@ export async function GET(req: NextRequest) {
     const { di, df } = bounds(periodo);
     const params: unknown[] = [];
     const where: string[] = ['1=1'];
+    if (u.tipo !== 'superadmin') {
+      if (!u.empresa_id) return NextResponse.json({ error: 'Empresa nao associada' }, { status: 403 });
+      params.push(u.empresa_id);
+      where.push(`l.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${params.length})`);
+    }
+
     if (di) {
       params.push(di);
       where.push(`COALESCE(l.data_lead, l.created_at)::date >= $${params.length}::date`);

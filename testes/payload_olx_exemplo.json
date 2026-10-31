@@ -1,0 +1,13 @@
+{
+  "source": "chat",
+  "adId": "ESTOQUE-1001",
+  "listId": "123456789",
+  "linkAd": "https://www.olx.com.br/vi/123456789",
+  "name": "Exemplo de Teste",
+  "email": "exemplo.invalid@example.com",
+  "phone": "21999999999",
+  "message": "Tenho interesse no carro do anuncio. Ainda esta disponivel?",
+  "createdAt": "2026-10-31T15:00:00Z",
+  "adsInfo": { "subject": "Sedan 2022 - Exemplo", "category": 2020 },
+  "externalId": "DEMO-MANU-LEAD-001"
+}

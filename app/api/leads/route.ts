@@ -55,7 +55,7 @@ async function rotacionar() {
 export async function GET(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
-  await rotacionar();
+  // Rotacao somente pelo endpoint cron autenticado /api/leads/auto-passar.
 
   try {
     const { searchParams } = new URL(req.url);
@@ -74,11 +74,9 @@ export async function GET(req: NextRequest) {
     };
 
     // Isolamento por empresa (SaaS) — nunca vaza lead de outra empresa
-    if (u.empresa_id && u.tipo !== 'superadmin') {
-      add(
-        `(l.vendedor_id IS NULL OR l.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = ?))`,
-        u.empresa_id,
-      );
+    if (u.tipo !== 'superadmin') {
+      if (!u.empresa_id) return NextResponse.json({ error: 'Empresa nao associada' }, { status: 403 });
+      add('l.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = ?)', u.empresa_id);
     }
 
     // RBAC dentro da empresa
@@ -168,6 +166,11 @@ export async function POST(req: NextRequest) {
 
     let vendedorId = body.vendedor_id != null ? Number(body.vendedor_id) : u.vendedor_id;
     if (u.tipo === 'vendedor') vendedorId = u.vendedor_id;
+    if (u.tipo !== 'superadmin') {
+      if (!u.empresa_id || !vendedorId) return NextResponse.json({ error: 'Empresa/vendedor obrigatorio' }, { status: 403 });
+      const owner = await queryOne<{ id: number }>('SELECT id FROM public.vendedores WHERE id=$1 AND empresa_id=$2', [vendedorId,u.empresa_id]);
+      if (!owner) return NextResponse.json({ error: 'Vendedor de outra empresa' }, { status: 403 });
+    }
 
     const row = await queryOne(
       `

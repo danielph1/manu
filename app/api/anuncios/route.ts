@@ -24,9 +24,10 @@ export async function GET(req: NextRequest) {
   const params: unknown[] = [];
   let where = `COALESCE(status_estoque,'ativo') <> 'inativo'`;
 
-  if (!isSuperAdmin(u) && u.empresa_id) {
+  if (!isSuperAdmin(u)) {
+    if (!u.empresa_id) return NextResponse.json({ error: 'Empresa nao associada' }, { status: 403 });
     params.push(u.empresa_id);
-    where += ` AND (empresa_id = $${params.length} OR empresa_id IS NULL)`;
+    where += ` AND empresa_id = $${params.length}`;
   }
 
   if (status === 'anunciado') where += ` AND COALESCE(anunciado,false) = true`;
@@ -96,6 +97,12 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const id = Number(body.id);
   if (!id) return NextResponse.json({ error: 'id' }, { status: 400 });
+  const owner = await query('SELECT empresa_id FROM public.estoque_carros WHERE id=$1', [id]);
+  if (!owner.rows[0]) return NextResponse.json({ error: 'Veiculo nao encontrado' }, { status: 404 });
+  if (!isSuperAdmin(u) && (!u.empresa_id || Number(owner.rows[0].empresa_id) !== Number(u.empresa_id))) {
+    return NextResponse.json({ error: 'Veiculo de outra empresa ou sem vinculacao' }, { status: 403 });
+  }
+
 
   const fields: string[] = [];
   const params: unknown[] = [];

@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireUser, can } from '@/lib/session';
+import { podeAcessarLead } from '@/lib/lead-access';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'nao autenticado' }, { status: 401 });
   const { id } = await params;
+  if (!(await podeAcessarLead(u, Number(id)))) return NextResponse.json({ error: 'Lead fora do seu escopo' }, { status: 403 });
   const { data, error } = await supabaseAdmin
     .from('leads')
     .select('*, vendedor:vendedores!leads_vendedor_id_fkey(id,nome,loja)')
@@ -18,6 +20,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'nao autenticado' }, { status: 401 });
   const { id } = await params;
+  if (!(await podeAcessarLead(u, Number(id)))) return NextResponse.json({ error: 'Lead fora do seu escopo' }, { status: 403 });
   const body = await req.json();
 
   if (u.tipo === 'vendedor') {
@@ -67,6 +70,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!u) return NextResponse.json({ error: 'nao autenticado' }, { status: 401 });
   if (!can.editarQualquerLead(u)) return NextResponse.json({ error: 'apenas gerente/admin' }, { status: 403 });
   const { id } = await params;
+  if (!(await podeAcessarLead(u, Number(id)))) return NextResponse.json({ error: 'Lead fora do seu escopo' }, { status: 403 });
   const { error } = await supabaseAdmin.from('leads').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

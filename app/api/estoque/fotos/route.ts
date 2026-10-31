@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { requireUser } from '@/lib/session';
 import { supabaseAdmin } from '@/lib/supabase';
+import { podeAcessarVeiculo } from '@/lib/estoque-access';
 
 export const runtime = 'nodejs';
 
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest) {
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   const carroId = Number(new URL(req.url).searchParams.get('carro_id') || 0);
   if (!carroId) return NextResponse.json({ error: 'carro_id obrigatório' }, { status: 400 });
+  if (!(await podeAcessarVeiculo(u, carroId))) return NextResponse.json({ error: 'Veiculo fora da empresa' }, { status: 403 });
   try {
     await ensureTable();
     const { rows } = await query(
@@ -63,6 +65,8 @@ export async function POST(req: NextRequest) {
     if (!carroId || !file) {
       return NextResponse.json({ error: 'carro_id e foto obrigatórios' }, { status: 400 });
     }
+
+    if (!(await podeAcessarVeiculo(u, carroId))) return NextResponse.json({ error: 'Veiculo fora da empresa' }, { status: 403 });
 
     // limite de segurança (~1.5 MB após compressão client)
     if (file.size > 1.5 * 1024 * 1024) {
@@ -119,10 +123,11 @@ export async function DELETE(req: NextRequest) {
     if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
 
     const { rows } = await query(
-      `SELECT id, path FROM public.estoque_fotos WHERE id = $1`,
+      `SELECT id, path, carro_id FROM public.estoque_fotos WHERE id = $1`,
       [id],
     );
     if (!rows[0]) return NextResponse.json({ error: 'não encontrado' }, { status: 404 });
+    if (!(await podeAcessarVeiculo(u, Number(rows[0].carro_id)))) return NextResponse.json({ error: 'Veiculo fora da empresa' }, { status: 403 });
 
     const path = rows[0].path as string;
     try {

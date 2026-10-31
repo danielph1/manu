@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne, getPool } from '@/lib/db';
-import { gestorIntegracoes } from '@/lib/integracoes/auth';
+import { gestorAtendimento } from '@/lib/atendimento-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,7 +17,7 @@ async function expirar(empresaId: number | null, superadmin: boolean) {
   for(const t of rows) {
     const v=await queryOne<{id:number}>(
       `SELECT id FROM public.vendedores
-        WHERE empresa_id=$1 AND LOWER(COALESCE(nome,'')) <> 'matheus'
+        WHERE empresa_id=$1 AND COALESCE(ativo,TRUE)=TRUE AND LOWER(COALESCE(nome,'')) <> 'matheus'
         ORDER BY random() LIMIT 1`,[t.empresa_id]);
     if(v) await virarLead(t.id,v.id,t.empresa_id).catch(err=>console.error('triagem auto',err instanceof Error?err.message:'erro'));
   }
@@ -64,7 +64,7 @@ async function virarLead(triagemId:number,vendedorId:number,empresaPermitida:num
 
 export async function GET(req:NextRequest) {
   try {
-    const actor=await gestorIntegracoes(req);
+    const actor=await gestorAtendimento(req);
     if(!actor) return NextResponse.json({error:'sem permissão'},{status:403});
     await expirar(actor.empresa_id,actor.tipo==='superadmin');
     const {rows}=await query(
@@ -80,7 +80,7 @@ export async function GET(req:NextRequest) {
 
 export async function POST(req:NextRequest) {
   try {
-    const actor=await gestorIntegracoes(req);
+    const actor=await gestorAtendimento(req);
     if(!actor) return NextResponse.json({error:'sem permissão'},{status:403});
     const b=await req.json().catch(()=>null);
     const id=Number(b?.id);

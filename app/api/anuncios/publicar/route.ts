@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
   if (!car) return NextResponse.json({ error: 'carro não encontrado' }, { status: 404 });
 
   const empresaId = Number(car.empresa_id || u.empresa_id || 0);
-  if (!isSuperAdmin(u) && u.empresa_id && car.empresa_id && Number(car.empresa_id) !== Number(u.empresa_id)) {
+  if (!car.empresa_id || (!isSuperAdmin(u) && (!u.empresa_id || Number(car.empresa_id) !== Number(u.empresa_id)))) {
     return NextResponse.json({ error: 'carro de outra empresa' }, { status: 403 });
   }
 
