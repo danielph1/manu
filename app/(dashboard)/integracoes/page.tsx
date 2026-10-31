@@ -210,7 +210,7 @@ export default function IntegracoesPage() {
           </div>
         </button>
 
-        <ZapiQrConnect empresaId={empresaId} onConnected={load} />
+        <ZapiQrConnect empresaId={empresa} onConnected={() => carregar()} />
           <MetaEmbeddedSignup empresaId={empresa} onConnected={() => carregar()} />
 
         {/* Mercado Livre OAuth */}
