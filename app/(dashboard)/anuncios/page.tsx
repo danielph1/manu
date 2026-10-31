@@ -144,7 +144,14 @@ export default function AnunciosPage() {
         titulo: titulo || undefined,
       });
       toast.success(r.data.message || 'Publicado');
-      if (r.data.avisos?.length) toast.message(String(r.data.avisos.join(' | ')));
+      if (r.data.links?.length) {
+        for (const L of r.data.links) {
+          if (L.url) toast.success(`${L.plataforma}: no ar`, { description: L.url, duration: 8000 });
+          else toast.success(`${L.plataforma}: id ${L.id}`);
+        }
+      }
+      if (r.data.avisos?.length) toast.message(String(r.data.avisos.join(' | ')), { duration: 6000 });
+      if (!r.data.ok && r.data.message) toast.error(r.data.message);
       setSel(null);
       await carregar();
     } catch (e: any) {
@@ -228,6 +235,18 @@ export default function AnunciosPage() {
                 <Car className="h-4 w-4 shrink-0 text-primary" />
                 <span className="font-semibold truncate">{nomeCarro(c)}</span>
               </div>
+              {c.anuncios_meta && Object.values(c.anuncios_meta).some((x: any) => x?.permalink) && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {Object.entries(c.anuncios_meta).map(([k, v]: any) =>
+                    v?.permalink ? (
+                      <a key={k} href={v.permalink} target="_blank" rel="noreferrer"
+                        className="text-[10px] text-cyan-400 underline" onClick={(e) => e.stopPropagation()}>
+                        Ver no {k}
+                      </a>
+                    ) : null,
+                  )}
+                </div>
+              )}
               {c.anunciado ? (
                 <span className="shrink-0 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-400">
                   Anunciado

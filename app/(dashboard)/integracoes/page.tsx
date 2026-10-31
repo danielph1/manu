@@ -8,6 +8,7 @@ import {
   Facebook, MessageCircle, Store, Shield, ChevronDown, ChevronUp, Copy, RefreshCcw,
 } from 'lucide-react';
 import { MetaEmbeddedSignup } from '@/components/meta-embedded-signup';
+import { ZapiQrConnect } from '@/components/zapi-qr-connect';
 
 interface Empresa { id: number; nome: string }
 interface OauthConn {
@@ -154,6 +155,7 @@ export default function IntegracoesPage() {
   if (isLoading) return <div className="p-6">Carregando…</div>;
   if (!autorizado) return <div className="p-6 text-muted-foreground">Apenas admin, marketing ou superadmin.</div>;
 
+  const metaHook = typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/meta` : "/api/webhooks/meta";
   return (
     <div className="mx-auto max-w-3xl space-y-6 pb-28">
       <div>
@@ -208,7 +210,8 @@ export default function IntegracoesPage() {
           </div>
         </button>
 
-        <MetaEmbeddedSignup empresaId={empresa} onConnected={() => carregar()} />
+        <ZapiQrConnect empresaId={empresaId} onConnected={load} />
+          <MetaEmbeddedSignup empresaId={empresa} onConnected={() => carregar()} />
 
         {/* Mercado Livre OAuth */}
         <button

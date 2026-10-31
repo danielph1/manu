@@ -203,6 +203,25 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    
+    // Inscreve a Página nos webhooks do app (mensagens → Aurox)
+    try {
+      const fields = [
+        'messages',
+        'messaging_postbacks',
+        'messaging_optins',
+        'message_deliveries',
+        'feed',
+        'leadgen',
+      ].join(',');
+      await fetch(
+        `https://graph.facebook.com/v21.0/${pageId}/subscribed_apps?subscribed_fields=${fields}&access_token=${encodeURIComponent(pageToken)}`,
+        { method: 'POST' },
+      );
+    } catch (e) {
+      console.error('subscribed_apps', e);
+    }
+
     return NextResponse.redirect(base + '/integracoes?oauth=ok&page=' + encodeURIComponent(pageName));
   } catch (e: any) {
     console.error('meta callback', e);

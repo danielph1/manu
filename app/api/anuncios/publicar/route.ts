@@ -17,12 +17,73 @@ type Body = {
 };
 
 async function tokenML(empresaId: number) {
-  return queryOne<{ access_token_enc: string; external_id: string }>(
-    `SELECT access_token_enc, external_id FROM public.manu_conexoes_oauth
+  return queryOne<{
+    id: string;
+    access_token_enc: string;
+    refresh_token_enc: string | null;
+    external_id: string;
+  }>(
+    `SELECT id, access_token_enc, refresh_token_enc, external_id FROM public.manu_conexoes_oauth
       WHERE empresa_id=$1 AND provedor='mercadolivre' AND status='conectado'
       ORDER BY atualizado_em DESC NULLS LAST, criado_em DESC LIMIT 1`,
     [empresaId],
   );
+}
+
+/** Access token ML expira (~6h). Usa refresh_token e grava o novo. */
+async function accessTokenMLValido(empresaId: number): Promise<string> {
+  const row = await tokenML(empresaId);
+  if (!row?.access_token_enc) {
+    throw new Error('Mercado Livre não conectado — Integrações → Conectar Mercado Livre');
+  }
+
+  // testa o token
+  const me = await fetch('https://api.mercadolibre.com/users/me', {
+    headers: { Authorization: `Bearer ${row.access_token_enc}` },
+  });
+  if (me.ok) return row.access_token_enc;
+
+  const clientId = process.env.ML_APP_ID || process.env.MERCADOLIVRE_APP_ID || '';
+  const secret = process.env.ML_APP_SECRET || process.env.MERCADOLIVRE_APP_SECRET || '';
+  if (!row.refresh_token_enc || !clientId || !secret) {
+    throw new Error(
+      'Token Mercado Livre expirado. Abra Integrações → desconecte e conecte o Mercado Livre de novo.',
+    );
+  }
+
+  const refreshRes = await fetch('https://api.mercadolibre.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: secret,
+      refresh_token: row.refresh_token_enc,
+    }),
+  });
+  const tj = await refreshRes.json();
+  if (!tj.access_token) {
+    throw new Error(
+      'Não foi possível renovar o Mercado Livre. Reconecte o canal em Integrações.',
+    );
+  }
+
+  try {
+    await query(
+      `UPDATE public.manu_conexoes_oauth SET
+         access_token_enc = $2,
+         refresh_token_enc = COALESCE($3, refresh_token_enc),
+         atualizado_em = now()
+       WHERE id = $1`,
+      [row.id, tj.access_token, tj.refresh_token || null],
+    );
+  } catch {
+    await query(
+      `UPDATE public.manu_conexoes_oauth SET access_token_enc = $2 WHERE id = $1`,
+      [row.id, tj.access_token],
+    );
+  }
+  return tj.access_token as string;
 }
 
 async function publicarMercadoLivre(
@@ -62,7 +123,11 @@ async function publicarMercadoLivre(
   });
   const json = await res.json();
   if (!res.ok) {
-    throw new Error(json?.message || json?.error || `ML HTTP ${res.status}`);
+    const msg = json?.message || json?.error || `ML HTTP ${res.status}`;
+    if (String(msg).toLowerCase().includes('invalid') || res.status === 401) {
+      throw new Error('Token Mercado Livre inválido/expirado. Integrações → reconectar Mercado Livre.');
+    }
+    throw new Error(msg);
   }
   return json;
 }
@@ -132,12 +197,14 @@ export async function POST(req: NextRequest) {
   for (const p of plataformas) {
     try {
       if (p === 'mercadolivre' || p === 'ml') {
-        const tok = await tokenML(empresaId || Number(u.empresa_id));
-        if (!tok?.access_token_enc) {
-          erros.push('Mercado Livre: conecte o canal em Integrações antes');
+        let mlToken: string;
+        try {
+          mlToken = await accessTokenMLValido(empresaId || Number(u.empresa_id) || 0);
+        } catch (e: any) {
+          erros.push(e?.message || 'Mercado Livre: reconecte em Integrações');
           continue;
         }
-        const item = await publicarMercadoLivre(tok.access_token_enc, car, descricao, titulo, precoNum);
+        const item = await publicarMercadoLivre(mlToken, car, descricao, titulo, precoNum);
         resultados.mercadolivre = {
           id: item.id,
           permalink: item.permalink,
@@ -190,13 +257,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const okPlats = Object.keys(resultados);
-  if (okPlats.length) {
-    const metaRow = await queryOne<{ anuncios_meta: any }>(
-      `SELECT COALESCE(anuncios_meta,'{}'::jsonb) AS anuncios_meta FROM public.estoque_carros WHERE id=$1`,
-      [estoqueId],
-    );
-    const meta = { ...(metaRow?.anuncios_meta || {}), ...resultados };
+  // Só conta publicação REAL (tem id/permalink ou status publicado)
+  const publicadosDeVerdade = Object.entries(resultados).filter(([, v]) => {
+    if (!v || typeof v !== 'object') return false;
+    if (v.permalink || v.id) return true;
+    if (v.status === 'publicado' || v.status === 'active') return true;
+    return false;
+  });
+  const soFila = Object.entries(resultados).filter(([, v]) => v?.status === 'fila');
+
+  const metaRow = await queryOne<{ anuncios_meta: any }>(
+    `SELECT COALESCE(anuncios_meta,'{}'::jsonb) AS anuncios_meta FROM public.estoque_carros WHERE id=$1`,
+    [estoqueId],
+  );
+  const meta = { ...(metaRow?.anuncios_meta || {}), ...resultados };
+
+  if (publicadosDeVerdade.length) {
     await query(
       `UPDATE public.estoque_carros SET
          anunciado = true,
@@ -206,22 +282,51 @@ export async function POST(req: NextRequest) {
        WHERE id=$1`,
       [estoqueId, JSON.stringify(meta), precoNum || null],
     );
+  } else if (Object.keys(resultados).length || erros.length) {
+    // guarda tentativa sem marcar como no ar
+    await query(
+      `UPDATE public.estoque_carros SET anuncios_meta = $2::jsonb WHERE id=$1`,
+      [estoqueId, JSON.stringify(meta)],
+    );
   }
 
-  if (!okPlats.length) {
+  if (!publicadosDeVerdade.length && !soFila.length) {
     return NextResponse.json(
-      { error: 'falha_total', message: erros.join(' | ') || 'Nenhuma plataforma publicou' },
+      {
+        error: 'falha_total',
+        message: erros.join(' | ') || 'Nenhuma plataforma publicou de verdade',
+        resultados,
+        avisos: erros,
+        links: [],
+      },
       { status: 400 },
     );
   }
 
+  const links = publicadosDeVerdade
+    .map(([plat, v]) => ({
+      plataforma: plat,
+      url: v.permalink || v.url || null,
+      id: v.id || null,
+      status: v.status || 'publicado',
+    }))
+    .filter((x) => x.url || x.id);
+
   return NextResponse.json({
-    ok: true,
+    ok: publicadosDeVerdade.length > 0,
     resultados,
-    avisos: erros,
+    avisos: [
+      ...erros,
+      ...soFila.map(([p]) => `${p}: registrado na fila Aurox (API de publicação ainda não envia sozinha)`),
+    ],
+    links,
     message:
-      erros.length
-        ? `Publicado em parte. Avisos: ${erros.join(' | ')}`
-        : 'Anúncio enviado às plataformas selecionadas.',
+      links.length
+        ? `No ar em ${links.length} plataforma(s).` +
+          (erros.length ? ` Falhas: ${erros.join(' | ')}` : '')
+        : soFila.length
+          ? 'Só fila interna — nenhum anúncio foi ao ar nas plataformas. Reconecte Mercado Livre ou use outra API.'
+          : erros.join(' | '),
   });
 }
+
