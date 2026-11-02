@@ -1,0 +1,16 @@
+services:
+  manu-media:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env.worker
+    environment:
+      FFMPEG_BIN: ffmpeg
+      MEDIA_PROCESSOR_ENABLED: "true"
+    mem_limit: 768m
+    cpus: 1.5
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=180m

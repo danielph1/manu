@@ -1,3 +1,7 @@
+# ATUALIZAÇÃO MAIS RECENTE — 02/11/2026
+
+Leia primeiro **README_ATUALIZACAO_USUARIOS_MIDIA.md** para o cadastro hierárquico, fila de mídia e correção do build.
+
 # MANU — CÓDIGO COMPLETO ATUALIZADO (31/10/2026)
 
 Este ZIP contém **o repositório inteiro enviado por você** (`manu-main.zip`), com as correções da Gestão de Atendimento, triagem, estoque/oficina, segurança de acesso e início de login oficial OLX incorporadas. Não precisa executar Python, instalar patch separado nem baixar repositório adicional.

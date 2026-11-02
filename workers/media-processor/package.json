@@ -1,0 +1,14 @@
+{
+  "name": "manu-media-processor",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "pg": "^8.16.0"
+  },
+  "scripts": {
+    "start": "node worker.mjs",
+    "once": "node worker.mjs --once"
+  }
+}

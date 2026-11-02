@@ -52,6 +52,7 @@ export async function requireUser(req: NextRequest): Promise<SessionUser | null>
       ativo: boolean;
       status: string | null;
       empresa_id: number | null;
+      loja: string | null;
       tipo: string | null;
       vendedor_id: number | null;
       nome: string | null;
@@ -62,6 +63,7 @@ export async function requireUser(req: NextRequest): Promise<SessionUser | null>
          COALESCE(u.ativo, TRUE) AS ativo,
          COALESCE(u.status, 'ativo') AS status,
          u.empresa_id,
+         u.loja,
          u.tipo,
          u.vendedor_id,
          u.nome,
@@ -85,6 +87,7 @@ export async function requireUser(req: NextRequest): Promise<SessionUser | null>
     u.empresa_id = row.empresa_id != null ? Number(row.empresa_id) : u.empresa_id ?? null;
     u.tipo = String(row.tipo || u.tipo || 'vendedor').toLowerCase();
     u.vendedor_id = row.vendedor_id != null ? Number(row.vendedor_id) : null;
+    u.loja = row.loja || u.loja;
     u.nome = row.nome || u.nome;
     u.login = row.login || u.login;
   } catch {

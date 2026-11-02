@@ -38,6 +38,12 @@ export async function POST(req:NextRequest){
   const used=await client.query(`UPDATE public.feed_upload_tickets SET usado_em=now() WHERE path=$1 AND usuario_id=$2 AND usado_em IS NULL RETURNING path`,[path,u.id]);
   if(!used.rowCount){await client.query('ROLLBACK');return NextResponse.json({error:'Arquivo já utilizado'},{status:409});}
   const {rows:[post]}=await client.query(`INSERT INTO public.feed_posts(autor_id,texto,midia_url,midia_tipo) VALUES($1,$2,$3,$4) RETURNING *`,[u.id,texto||null,url.publicUrl,ticket.tipo]);
+  if(ticket.tipo.startsWith('video/')) {
+   // Trabalho em fila: conversão FFmpeg ocorre em worker separado, jamais no request da Vercel.
+   // Se a migration da fila não existir, NÃO confirma a publicação de vídeo silenciosamente.
+   await client.query(`INSERT INTO public.manu_media_jobs(post_id,usuario_id,source_path,original_bytes)
+     VALUES($1,$2,$3,$4)`,[post.id,u.id,path,bytes]);
+  }
   await client.query('COMMIT');return NextResponse.json(post,{status:201});
  }catch(e:any){await client.query('ROLLBACK').catch(()=>{});return NextResponse.json({error:e?.message||'Falha ao publicar'},{status:500});}
  finally{client.release();}

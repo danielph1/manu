@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
       nome: string | null;
       status: string | null;
       empresa_id: number | null;
+      loja: string | null;
       empresa_ativa: boolean | null;
       empresa_nome: string | null;
     }>(
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
         u.nome,
         COALESCE(u.status, 'ativo') AS status,
         u.empresa_id,
+        u.loja,
         COALESCE(e.ativo, TRUE) AS empresa_ativa,
         e.nome AS empresa_nome
       FROM public.usuarios u
@@ -78,7 +80,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Usuário ou senha inválidos' }, { status: 401 });
     }
 
-    let loja = '381';
+    let loja = String(user.loja || '381');
     if (user.vendedor_id) {
       try {
         const v = await queryOne<{ loja: string | null }>(
@@ -108,8 +110,8 @@ export async function POST(req: NextRequest) {
     let loja_plano = 'black';
     try {
       const pl = await queryOne<{ plano: string | null }>(
-        `SELECT plano FROM public.lojas WHERE UPPER(codigo) = UPPER($1) LIMIT 1`,
-        [loja],
+        `SELECT plano FROM public.lojas WHERE UPPER(codigo) = UPPER($1) AND empresa_id=$2 LIMIT 1`,
+        [loja,user.empresa_id],
       );
       if (pl?.plano) loja_plano = String(pl.plano).toLowerCase();
     } catch { /* ok */ }

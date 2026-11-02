@@ -81,3 +81,7 @@ memory/test_credentials.md
 android-sdk/node_modules/@next/swc-linux-x64-musl/next-swc.linux-x64-musl.node
 node_modules/@next/swc-linux-x64-gnu/next-swc.linux-x64-gnu.node
 node_modules/@next/swc-linux-x64-musl/next-swc.linux-x64-musl.node
+
+# Segredos do processador de mídia
+workers/media-processor/.env.worker
+workers/media-processor/.env

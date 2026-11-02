@@ -9,7 +9,7 @@ import { Separator } from '@/components/ui/separator';
 import {
   Car, LayoutDashboard, MessageSquare, Target, FileText, HelpCircle, Scale,
   CheckSquare, ArrowRightLeft, PlusCircle, LogOut, UserCircle2,
-  FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox, Building2, PlugZap, Megaphone, Clock3,
+  FileSearch, BarChart3, Users, Wrench, Receipt, Settings, Inbox, Building2, PlugZap, Megaphone, Clock3, UserRoundPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils';
 import { Role } from '@/lib/roles';
@@ -31,6 +31,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) || isSuper },
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) || isSuper },
     { href: '/metricas', label: t('nav.metricas'), icon: BarChart3, show: Role.verMetricas(user) || isSuper },
+    { href: '/gestao-usuarios', label: 'Usuários / vendedores', icon: UserRoundPlus, show: ['superadmin','admin','marketing'].includes(tipo) },
     { href: '/equipe', label: t('nav.equipe'), icon: Users, show: Role.isGerente(user) || isSuper },
     { href: '/feed', label: t('nav.feed'), icon: Sparkles, show: !!user },
     { href: '/ranking', label: t('nav.ranking'), icon: Target, show: !!user },
