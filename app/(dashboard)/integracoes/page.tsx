@@ -18,12 +18,8 @@ interface OauthConn {
 
 /** Canais B2B: a LOJA autoriza com login/chave dela — token fica só nessa empresa */
 const CANAIS_CHAVE = [
-  { id: 'olx', label: 'OLX', hint: 'No OLX Pro / parceiro, copie a API Key ou token da SUA conta e cole abaixo.' },
-  { id: 'webmotors', label: 'Webmotors', hint: 'Token ou chave do painel Webmotors da concessionária.' },
   { id: 'napista', label: 'Na Pista', hint: 'Credencial do painel Na Pista da loja.' },
-  { id: 'icarros', label: 'iCarros', hint: 'Chave de integração iCarros da loja.' },
   { id: 'chavesnamao', label: 'Chaves na Mão', hint: 'Token do painel Chaves na Mão.' },
-  { id: 'facebook_marketplace', label: 'Facebook Marketplace', hint: 'Use também Conectar Facebook (Página). Aqui: token de página se já tiver.' },
 ] as const;
 
 export default function IntegracoesPage() {
@@ -294,7 +290,7 @@ export default function IntegracoesPage() {
                 <div className="flex-1">
                   <div className="font-semibold text-lg">{c.label}</div>
                   <p className="text-sm text-muted-foreground">
-                    Login/chave do painel da loja · conectividade direta nesta empresa
+                    Integração técnica do parceiro · requer credencial e webhook homologados
                   </p>
                   {st && (
                     <p className={`text-xs mt-1 ${st.status === 'conectado' ? 'text-emerald-500' : 'text-amber-500'}`}>

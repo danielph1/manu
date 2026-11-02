@@ -65,7 +65,14 @@ export async function POST(req: NextRequest) {
   try {
     const b = await req.json();
     const empresaId = u.tipo === 'superadmin' ? Number(b.empresa_id) : Number(u.empresa_id);
-    if (!Number.isSafeInteger(empresaId) || empresaId <= 0) return NextResponse.json({ error: 'Empresa obrigatoria' }, { status: 400 });
+    if (!Number.isSafeInteger(empresaId) || empresaId <= 0) return NextResponse.json({error:'Selecione uma empresa válida'},{status:400});
+    const empresa = await queryOne<{id:number}>(`SELECT id FROM public.empresas WHERE id=$1 AND ativo=TRUE`,[empresaId]);
+    if(!empresa) return NextResponse.json({error:'Empresa inválida ou inativa'},{status:422});
+    const lojaCodigo=String(b.loja_codigo||u.loja||'').toUpperCase().trim();
+    if(lojaCodigo) {
+      const loja=await queryOne(`SELECT id FROM public.lojas WHERE empresa_id=$1 AND UPPER(codigo)=$2 AND ativo=TRUE`,[empresaId,lojaCodigo]);
+      if(!loja)return NextResponse.json({error:'Loja não pertence à empresa selecionada'},{status:403});
+    }
     const placa = String(b.placa || '').replace(/[-\s]/g, '').toUpperCase();
     if (!b.marca || !b.modelo || !b.ano_modelo || !placa) {
       return NextResponse.json({ error: 'marca, modelo, ano e placa obrigatórios' }, { status: 400 });
@@ -119,8 +126,8 @@ export async function POST(req: NextRequest) {
       `
       INSERT INTO public.oficina_carros (
         empresa_id, marca, modelo, ano_modelo, placa, cor,
-        estoque_carro_id, atualizado_por_id, onde_esta, observacao, valor_final, pronto
-      ) VALUES ($10,$1,$2,$3,$4,$5,$6,$7,'Oficina',$8,$9,FALSE)
+        estoque_carro_id, atualizado_por_id, onde_esta, observacao, valor_final, pronto, loja
+      ) VALUES ($10,$1,$2,$3,$4,$5,$6,$7,'Oficina',$8,$9,FALSE,$11)
       RETURNING *
       `,
       [
@@ -132,14 +139,15 @@ export async function POST(req: NextRequest) {
         estoqueId,
         u.id,
         recal ? 'RECAL — veículo retornou (já havia sido vendido).' : null,
-        preco != null ? String(preco) : null, empresaId,
+        preco != null ? String(preco) : null, empresaId, lojaCodigo || null,
       ],
     );
     await notificar({
       titulo: 'Carro na oficina',
       mensagem: `${b.marca} ${b.modelo} · ${placa}`,
       tipo: 'oficina',
-      tipos: ['admin', 'gerente', 'guariba', 'mecanico'],
+      tipos: ['admin', 'gerente', 'marketing', 'guariba', 'mecanico'],
+      empresa_id: empresaId,
     });
     return NextResponse.json(row);
   } catch (e: any) {
@@ -162,6 +170,9 @@ export async function PATCH(req: NextRequest) {
     if (existing.empresa_id == null || (!isSuperAdmin(u) && Number(existing.empresa_id) !== Number(u.empresa_id))) return NextResponse.json({ error: 'Oficina de outra empresa ou sem vinculacao' }, { status: 403 });
     const empresaId = Number(existing.empresa_id);
 
+    const alvo = await queryOne<{empresa_id:number|null,loja:string|null}>(`SELECT empresa_id,loja FROM public.oficina_carros WHERE id=$1`,[b.id]);
+    if(!alvo || (u.tipo!=='superadmin' && (!u.empresa_id || Number(alvo.empresa_id)!==Number(u.empresa_id))) || (u.tipo==='gerente' && u.loja && alvo.loja && u.loja.toUpperCase()!==alvo.loja.toUpperCase()))
+      return NextResponse.json({error:'Veículo de outra empresa ou loja'},{status:403});
     const row = await queryOne(
       `
       UPDATE public.oficina_carros SET

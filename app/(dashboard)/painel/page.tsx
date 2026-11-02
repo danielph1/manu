@@ -73,6 +73,19 @@ export default function PainelPage() {
   const [agendarValor, setAgendarValor] = useState('');
   const [pickListaLead, setPickListaLead] = useState<Lead | null>(null);
   const [pins, setPins] = useState<number[]>([]);
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionados, setSelecionados] = useState<number[]>([]);
+  const [busyAcao, setBusyAcao] = useState(false);
+  const podeAcoes = ['admin','gerente','marketing','superadmin'].includes(user?.tipo || '');
+  const toggleSelecionado = (id:number) => setSelecionados(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev,id]);
+  async function acaoMassa(acao: 'excluir'|'marcar_respondido'|'marcar_pendente') {
+    if (!selecionados.length || !podeAcoes) return;
+    if (acao==='excluir' && !confirm(`Apagar ${selecionados.length} leads? Esta ação é irreversível.`))return;
+    setBusyAcao(true);
+    try {await api.post('/leads/acoes',{acao,ids:selecionados});toast.success(`${selecionados.length} leads atualizados`);
+      setSelecionados([]);setModoSelecao(false);await qc.invalidateQueries({queryKey:['leads']});await qc.invalidateQueries({queryKey:['stats']});}
+    catch(e:any){toast.error(e?.response?.data?.error||'Falha na ação em massa');}finally{setBusyAcao(false);}
+  }
 
 
   useEffect(() => {
@@ -398,7 +411,19 @@ export default function PainelPage() {
       </div>
 
 <section>
+        <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold">Leads cadastrados</h2>
+        {podeAcoes && <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={()=>{setModoSelecao(!modoSelecao);setSelecionados([]);}}>{modoSelecao?'Cancelar seleção':'Selecionar / Ações'}</Button>
+          {modoSelecao && <Button variant="outline" size="sm" onClick={()=>setSelecionados(selecionados.length===filteredLeads.length?[]:filteredLeads.map(l=>Number(l.id)))}>{selecionados.length===filteredLeads.length?'Desmarcar':'Selecionar todos'}</Button>}
+        </div>}
+        </div>
+        {modoSelecao && selecionados.length>0 && <div className="flex flex-wrap gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
+          <span className="self-center">{selecionados.length} selecionado(s)</span>
+          <Button size="sm" disabled={busyAcao} onClick={()=>acaoMassa('marcar_respondido')}>Marcar atendidos</Button>
+          <Button size="sm" disabled={busyAcao} variant="outline" onClick={()=>acaoMassa('marcar_pendente')}>Marcar não atendidos</Button>
+          <Button size="sm" disabled={busyAcao} variant="destructive" onClick={()=>acaoMassa('excluir')}>Excluir selecionados</Button>
+        </div>}
         <p className="text-sm text-muted-foreground">
           Exibindo {filteredLeads.length} de {leads.length} leads.
         </p>
@@ -414,8 +439,11 @@ export default function PainelPage() {
                 key={lead.id}
                 lead={lead}
                 pinned={pins.includes(Number(lead.id))}
-                onOpen={() => setSelected(lead)}
+                onOpen={() => modoSelecao ? toggleSelecionado(Number(lead.id)) : setSelected(lead)}
                 onMenu={() => setMenuLead(lead)}
+                selectionMode={modoSelecao}
+                isSelected={selecionados.includes(Number(lead.id))}
+                onSelect={() => { setModoSelecao(true); toggleSelecionado(Number(lead.id)); }}
                 onPin={togglePin}
               />
             ))}
@@ -482,6 +510,7 @@ export default function PainelPage() {
                 setMenuLead(null);
               }}
             />
+            {podeAcoes && <ActionRow icon={<ListPlus className="h-5 w-5" />} label="Selecionar para ações em massa" onClick={()=>{setModoSelecao(true);setSelecionados(prev=>prev.includes(Number(menuLead.id))?prev:[...prev,Number(menuLead.id)]);setMenuLead(null);}} />}
             <ActionRow
               icon={<Trash2 className="h-5 w-5 text-rose-500" />}
               label="Deletar lead"
@@ -656,8 +685,14 @@ function LeadCard({
   onOpen,
   onMenu,
   onPin,
+  selectionMode,
+  isSelected,
+  onSelect,
 }: {
   lead: Lead;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
   pinned?: boolean;
   onOpen: () => void;
   onMenu: () => void;
@@ -667,6 +702,8 @@ function LeadCard({
   const marcado = fav.tem(Number(lead.id));
   const [dx, setDx] = useState(0);
   const [locked, setLocked] = useState<'left' | 'right' | null>(null);
+  const holdTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const longPressed=useRef(false);
   const startX = useRef<number | null>(null);
   const startY = useRef<number | null>(null);
   const moved = useRef(false);
@@ -693,12 +730,16 @@ function LeadCard({
   }, [locked]);
 
   const onTouchStart = (e: React.TouchEvent) => {
+    longPressed.current=false;
+    if(holdTimer.current) clearTimeout(holdTimer.current);
+    if(!selectionMode && onSelect) holdTimer.current=setTimeout(()=>{longPressed.current=true;onSelect();},650);
     if (locked) return;
     startX.current = e.touches[0].clientX;
     startY.current = e.touches[0].clientY;
     moved.current = false;
   };
   const onTouchMove = (e: React.TouchEvent) => {
+    if(holdTimer.current && startX.current!=null && (Math.abs(e.touches[0].clientX-startX.current)>10 || Math.abs(e.touches[0].clientY-(startY.current||0))>10)){clearTimeout(holdTimer.current);holdTimer.current=null;}
     if (locked || startX.current == null || startY.current == null) return;
     const x = e.touches[0].clientX - startX.current;
     const y = Math.abs(e.touches[0].clientY - startY.current);
@@ -712,6 +753,8 @@ function LeadCard({
     setDx(clamped);
   };
   const onTouchEnd = () => {
+    if(holdTimer.current){clearTimeout(holdTimer.current);holdTimer.current=null;}
+    if(longPressed.current){moved.current=true;startX.current=null;startY.current=null;return;}
     if (locked) {
       startX.current = null;
       return;
@@ -801,12 +844,13 @@ function LeadCard({
             dxRef.current = 0;
             return;
           }
-          if (!moved.current) onOpen();
+          if (!moved.current && !longPressed.current) onOpen();
         }}
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         onTouchCancel={() => {
+          if(holdTimer.current)clearTimeout(holdTimer.current);
           if (!locked) {
             setDx(0);
             dxRef.current = 0;
@@ -817,6 +861,7 @@ function LeadCard({
         <CardContent className="space-y-3 p-5">
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2 text-lg font-semibold">
+              {selectionMode && <input type="checkbox" checked={!!isSelected} readOnly aria-label="Selecionar lead" className="h-5 w-5 accent-primary pointer-events-none" />}
               <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
               <span className="truncate">{lead.nome_lead}</span>
               {pinned && (

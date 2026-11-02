@@ -18,6 +18,11 @@ export default function OficinaPage() {
   const podeEditar = ['admin', 'gerente', 'marketing', 'superadmin', 'guariba', 'mecanico'].includes(user?.tipo || '');
   const [busca, setBusca] = useState('');
   const [empresaDestino, setEmpresaDestino] = useState('');
+  const [lojaDestino, setLojaDestino] = useState('');
+  const {data: empresas=[]} = useQuery({queryKey:['empresas-selector-oficina'], queryFn:async()=>(await api.get('/aurox/empresas')).data,enabled:user?.tipo==='superadmin'});
+  const empresaSelecionada=user?.tipo==='superadmin'?empresaDestino:String(user?.empresa_id||'');
+  const {data: lojas=[]}=useQuery({queryKey:['lojas-opcoes',empresaSelecionada],queryFn:async()=>(await api.get('/lojas-opcoes',{params:{empresa_id:empresaSelecionada}})).data,enabled:!!empresaSelecionada&&podeEditar});
+  const lojasAtivas=Array.isArray(lojas)?lojas:[];
   const [carroceria, setCarroceria] = useState('todas');
   const [form, setForm] = useState({
     marca: '', modelo: '', ano_modelo: '', placa: '', cor: '', valor_carro: '',
@@ -37,7 +42,7 @@ export default function OficinaPage() {
   async function cadastrar() {
     try {
       await api.post('/oficina', {
-        ...form, empresa_id: user?.tipo === 'superadmin' ? Number(empresaDestino) : undefined,
+        ...form, empresa_id: user?.tipo === 'superadmin' ? Number(empresaDestino) : undefined, loja_codigo: lojaDestino || user?.loja || undefined,
         valor_carro: form.valor_carro ? Number(form.valor_carro) : null,
       });
       toast.success('Carro cadastrado na oficina');
@@ -92,7 +97,16 @@ export default function OficinaPage() {
       {podeEditar && (
         <Card>
           <CardContent className="py-4 grid gap-3 md:grid-cols-3">
-            {user?.tipo === 'superadmin' && <label className="text-sm">ID da empresa <Input required value={empresaDestino} onChange={e => setEmpresaDestino(e.target.value)} /></label>}
+            {user?.tipo === 'superadmin' && <label className="text-sm">Empresa*
+              <select required className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2" value={empresaDestino} onChange={e=>{setEmpresaDestino(e.target.value);setLojaDestino('');}}>
+                <option value="">Selecione a empresa</option>
+                {(Array.isArray(empresas)?empresas:[]).map((e:any)=><option key={e.id} value={String(e.id)}>{e.nome}</option>)}
+              </select></label>}
+            {lojasAtivas.length>0 && <label className="text-sm">Loja
+              <select className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2" value={lojaDestino} onChange={e=>setLojaDestino(e.target.value)}>
+                <option value="">{user?.loja?'Minha loja / padrão':'Selecione uma loja'}</option>
+                {lojasAtivas.map((l:any)=><option key={l.id} value={l.codigo}>{l.codigo} — {l.nome}</option>)}
+              </select></label>}
             <div>
               <Label>Marca*</Label>
               <Input value={form.marca} onChange={(e) => setForm({ ...form, marca: e.target.value })} />

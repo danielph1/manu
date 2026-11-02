@@ -84,6 +84,7 @@ export default function LoginPage() {
               Entrar
             </Button>
           </form>
+          <p className="mt-5 text-center text-xs text-muted-foreground">Ao utilizar o MANU, consulte os <a href="/termos" className="text-primary underline">Termos de Uso</a> e a <a href="/privacidade" className="text-primary underline">Política de Privacidade</a>.</p>
         </CardContent>
       </Card>
     </div>

@@ -106,11 +106,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!login || !senha) return NextResponse.json({ error: 'login e senha obrigatórios' }, { status: 400 });
       const dup = await queryOne(`SELECT id FROM public.usuarios WHERE LOWER(TRIM(login)) = $1`, [login]);
       if (dup) return NextResponse.json({ error: 'login já existe' }, { status: 409 });
+      const primeiraLoja = await queryOne<{codigo:string}>(`SELECT codigo FROM public.lojas WHERE empresa_id=$1 AND ativo=TRUE ORDER BY id LIMIT 1`,[id]);
+      const loja = String(body.loja||primeiraLoja?.codigo||'').trim().toUpperCase();
+      const validaLoja=loja?await queryOne(`SELECT id FROM public.lojas WHERE empresa_id=$1 AND UPPER(codigo)=$2`,[id,loja]):null;
+      if(loja&&!validaLoja)return NextResponse.json({error:'Loja não pertence à empresa'},{status:403});
       const row = await queryOne(
-        `INSERT INTO public.usuarios (nome, login, senha_hash, tipo, ativo, status, empresa_id)
-         VALUES ($1,$2,$3,$4,TRUE,'ativo',$5)
-         RETURNING id, nome, login, tipo, empresa_id, ativo, status`,
-        [nome, login, hashPassword(senha), tipo, id],
+        `INSERT INTO public.usuarios (nome, login, senha_hash, tipo, ativo, status, empresa_id, loja)
+         VALUES ($1,$2,$3,$4,TRUE,'ativo',$5,$6)
+         RETURNING id, nome, login, tipo, empresa_id, loja, ativo, status`,
+        [nome, login, hashPassword(senha), tipo, id, loja||null],
       );
       return NextResponse.json(row, { status: 201 });
     }

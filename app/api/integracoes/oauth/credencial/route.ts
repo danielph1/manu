@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const clientId = String(body.client_id || body.partner_id || '').trim();
   const label = String(body.label || provedor).trim().slice(0, 80);
 
-  if (!apiKey && !clientId) {
+  if (!apiKey) {
     return NextResponse.json(
       { error: 'informe a chave ou token que o painel da plataforma forneceu à sua loja' },
       { status: 400 },
@@ -102,14 +102,14 @@ export async function POST(req: NextRequest) {
            status='conectado', access_token_enc=$2, meta=$3::jsonb,
            label=$4, integracao_id=$5, atualizado_em=now()
          WHERE id=$1`,
-        [existing.id, apiKey || clientId, JSON.stringify(meta), label, integId],
+        [existing.id, apiKey, JSON.stringify(meta), label, integId],
       );
     } else {
       await queryOne(
         `INSERT INTO public.manu_conexoes_oauth
           (empresa_id, provedor, status, label, external_id, access_token_enc, meta, integracao_id, criado_por)
          VALUES ($1,$2,'conectado',$3,$4,$5,$6::jsonb,$7,$8) RETURNING id`,
-        [empresaId, provedor, label, external, apiKey || clientId, JSON.stringify(meta), integId, actor.id],
+        [empresaId, provedor, label, external, apiKey, JSON.stringify(meta), integId, actor.id],
       );
     }
   } catch (e: any) {

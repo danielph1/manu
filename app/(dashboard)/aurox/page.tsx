@@ -174,7 +174,7 @@ export default function AuroxPage() {
               <Input
                 value={form.nome}
                 onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                placeholder="Ex: Jazz Automóveis"
+                placeholder="Nome da nova empresa"
               />
             </div>
             <div>
@@ -182,7 +182,7 @@ export default function AuroxPage() {
               <Input
                 value={form.slug}
                 onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                placeholder="jazz-automoveis"
+                placeholder="identificador-da-empresa"
               />
             </div>
             <div>
@@ -197,7 +197,7 @@ export default function AuroxPage() {
               <Input
                 value={form.admin_login}
                 onChange={(e) => setForm({ ...form, admin_login: e.target.value })}
-                placeholder="admin.jazz"
+                placeholder="login.do.administrador"
               />
             </div>
             <div className="md:col-span-2">

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import { LayoutDashboard, Car, FileText, PlusCircle, CheckSquare, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Car, FileText, PlusCircle, CheckSquare, MessageSquare, PlayCircle } from 'lucide-react';
 
 export function BottomNav() {
   const [escondido, setEscondido] = useState(false);
@@ -12,7 +12,7 @@ export function BottomNav() {
     let y = window.scrollY;
     const on = () => {
       const n = window.scrollY;
-      setEscondido(n > y && n > 40);
+      setEscondido(window.location.pathname.startsWith('/feed') ? false : n > y && n > 40);
       y = n;
     };
     window.addEventListener('scroll', on, { passive: true });
@@ -40,6 +40,7 @@ export function BottomNav() {
         {path.startsWith('/painel') && <Item href="/novo-lead" Icon={PlusCircle} />}
         <Item href="/tarefas" Icon={CheckSquare} />
         <Item href="/chat" Icon={MessageSquare} />
+        <Item href="/feed" Icon={PlayCircle} />
         <Link href="/configuracoes" style={{ display: 'flex', width: 40, height: 40, alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
           <span style={{ width: 32, height: 32, borderRadius: 999, background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, overflow: 'hidden' }}>{(user as any)?.foto_url ? <img src={(user as any).foto_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : inicial}</span>
         </Link>

@@ -64,6 +64,7 @@ export async function notificar(opts: {
   usuario_ids?: number[];
   tipos?: string[];
   broadcast?: boolean;
+  empresa_id?: number;
   url?: string;
 }) {
   try {
@@ -76,8 +77,9 @@ export async function notificar(opts: {
     } else if (opts.tipos?.length) {
       const { rows } = await query(
         `SELECT id FROM public.usuarios
-         WHERE COALESCE(ativo, TRUE) = TRUE AND LOWER(tipo) = ANY($1)`,
-        [opts.tipos.map((t) => t.toLowerCase())],
+         WHERE COALESCE(ativo, TRUE) = TRUE AND LOWER(tipo) = ANY($1)
+           AND ($2::int IS NULL OR empresa_id=$2)`,
+        [opts.tipos.map((t) => t.toLowerCase()), opts.empresa_id ?? null],
       );
       ids.push(...rows.map((r: any) => r.id));
     }

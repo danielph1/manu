@@ -54,7 +54,9 @@ export async function POST(req: NextRequest) {
   const form = await req.formData();
   const file = form.get('foto') as File | null;
   if (!file) return NextResponse.json({ error: 'sem arquivo' }, { status: 400 });
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size>512*1024)
+    return NextResponse.json({error:'Envie foto JPG, PNG ou WebP de até 512 KB (a imagem é comprimida no navegador)'},{status:400});
+  const ext=file.type==='image/webp'?'webp':file.type==='image/png'?'png':'jpg';
   const path = `foto_perfil/${u.id}.${ext}`;
   const buf = Buffer.from(await file.arrayBuffer());
   const { error } = await supabaseAdmin.storage.from('manu_arquivos').upload(path, buf, {
