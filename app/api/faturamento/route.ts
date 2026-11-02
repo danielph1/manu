@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireUser } from '@/lib/session';
-import { isSuperAdmin, isGerenteLoja } from '@/lib/tenant';
+import { isGerenteLoja } from '@/lib/tenant';
+import { empresaPermitida, obterFaturamentoPermitido } from '@/lib/faturamento-empresa';
 import { notificar } from '@/lib/notify';
 
 export const runtime = 'nodejs';
@@ -16,23 +17,19 @@ export async function GET(req: NextRequest) {
     const params: unknown[] = [];
     const where: string[] = ['1=1'];
 
-    // isolamento empresa / loja
-    if (!isSuperAdmin(u) && u.empresa_id) {
-      params.push(u.empresa_id);
-      where.push(`(
-        f.empresa_id = $${params.length}
-        OR f.criado_por_id IN (SELECT id FROM public.usuarios WHERE empresa_id = $${params.length})
-        OR UPPER(COALESCE(f.loja,'')) IN (
-          SELECT UPPER(codigo) FROM public.lojas WHERE empresa_id = $${params.length}
-        )
-      )`);
-    }
+    // Exige empresa explícita para o superadmin. Nunca listar documentos de outras empresas.
+    const empresaId = u.tipo === 'superadmin'
+      ? Number(searchParams.get('empresa_id')) : Number(u.empresa_id);
+    if (!empresaPermitida(u, empresaId))
+      return NextResponse.json({error:'Selecione uma empresa para consultar faturamentos'}, {status:400});
+    params.push(empresaId);
+    where.push(`f.empresa_id=$${params.length}`);
     if (u.tipo === 'vendedor') {
       params.push(u.id);
       where.push(`f.criado_por_id = $${params.length}`);
     } else if ((isGerenteLoja(u) || u.tipo === 'gerente') && u.loja) {
       params.push(String(u.loja).toUpperCase());
-      where.push(`UPPER(COALESCE(f.loja,'381')) = UPPER($${params.length})`);
+      where.push(`UPPER(COALESCE(f.loja,'')) = UPPER($${params.length})`);
     }
 
     if (busca) {
@@ -50,7 +47,7 @@ export async function GET(req: NextRequest) {
       SELECT
         f.id, f.nome, f.cpf_cnpj, f.placa, f.marca, f.modelo, f.ano_modelo,
         f.entrada_total, f.status, f.vendedor_nome, f.criado_por_id,
-        f.created_at, f.loja
+        f.created_at, f.loja, f.empresa_id
       FROM public.faturamentos f
       WHERE ${where.join(' AND ')}
       ORDER BY f.created_at DESC NULLS LAST
@@ -70,6 +67,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const b = await req.json();
+    const empresaId = u.tipo === 'superadmin' ? Number(b.empresa_id) : Number(u.empresa_id);
+    if (!empresaPermitida(u, empresaId)) return NextResponse.json({error:'Empresa obrigatória e autorizada'}, {status:403});
+    const loja = (u.tipo === 'superadmin' || ['admin','marketing'].includes(u.tipo))
+      ? String(b.loja || u.loja || '').toUpperCase().trim() : String(u.loja || '').toUpperCase().trim();
+    const lojaValida = await queryOne(`SELECT id FROM public.lojas WHERE empresa_id=$1 AND UPPER(codigo)=$2`,[empresaId,loja]);
+    if (!lojaValida) return NextResponse.json({error:'Selecione uma loja desta empresa'}, {status:400});
     if (!b.nome || !b.placa) {
       return NextResponse.json({ error: 'nome e placa obrigatórios' }, { status: 400 });
     }
@@ -77,54 +80,36 @@ export async function POST(req: NextRequest) {
     const row = await queryOne(
       `
       INSERT INTO public.faturamentos (
-        lead_id, ficha_id, criado_por_id, loja,
+        lead_id, ficha_id, criado_por_id, loja, empresa_id,
         nome, cpf_cnpj, endereco, bairro, cidade, cep, email, telefone,
         marca, modelo, ano_modelo, placa, cor, kilometragem,
         entrada_dinheiro, entrada_debito, entrada_credito,
         entrada_transferencia, entrada_boleto, entrada_total,
         fin_banco, fin_parcelas, fin_valor_parcela,
-        observacoes, vendedor_nome, status
+        observacoes, vendedor_nome, status, desconto_valor, gerente_nome, data_assinatura,
+        troca_marca,troca_modelo,troca_ano_modelo,troca_placa,troca_cor,troca_km
       ) VALUES (
-        $1,$2,$3,$4,
-        $5,$6,$7,$8,$9,$10,$11,$12,
-        $13,$14,$15,$16,$17,$18,
-        $19,$20,$21,$22,$23,$24,
-        $25,$26,$27,
-        $28,$29, COALESCE($30,'emitido')
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,
+        $14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,
+        $29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40
       )
       RETURNING id
       `,
       [
-        b.lead_id || null,
-        b.ficha_id || null,
-        u.id,
-        u.loja || '381',
-        b.nome,
-        b.cpf_cnpj || null,
-        b.endereco || null,
-        b.bairro || null,
-        b.cidade || null,
-        b.cep || null,
-        b.email || null,
-        b.telefone || null,
-        b.marca || null,
-        b.modelo || null,
-        b.ano_modelo || null,
-        b.placa,
-        b.cor || b.cor_carro || b.cor_veiculo || null,
-        b.kilometragem || null,
-        Number(b.entrada_dinheiro || 0),
-        Number(b.entrada_debito || 0),
-        Number(b.entrada_credito || 0),
-        Number(b.entrada_transferencia || 0),
-        Number(b.entrada_boleto || 0),
-        Number(b.entrada_total || 0),
-        b.fin_banco || null,
-        b.fin_parcelas || null,
-        b.fin_valor_parcela || null,
-        b.observacoes || null,
-        b.vendedor_nome || u.nome || u.login,
-        b.status || 'emitido',
+        b.lead_id || null, b.ficha_id || null, u.id, loja, empresaId,
+        b.nome, b.cpf_cnpj || null, b.endereco || null, b.bairro || null,
+        b.cidade || null, b.cep || null, b.email || null, b.telefone || null,
+        b.marca || null, b.modelo || null, b.ano_modelo || null,
+        b.placa, b.cor || null, b.kilometragem || null,
+        Number(b.entrada_dinheiro || 0), Number(b.entrada_debito || 0),
+        Number(b.entrada_credito || 0), Number(b.entrada_transferencia || 0),
+        Number(b.entrada_boleto || 0), Number(b.entrada_total || 0),
+        b.fin_banco || null, b.fin_parcelas || null, b.fin_valor_parcela || null,
+        b.observacoes || null, b.vendedor_nome || u.nome || u.login,
+        b.status || 'emitido', Number(b.desconto_valor || 0),
+        b.gerente_nome || null, b.data_assinatura || null,
+        b.troca_marca || null,b.troca_modelo || null,b.troca_ano_modelo || null,
+        b.troca_placa || null,b.troca_cor || null,b.troca_km || null,
       ],
     );
     try {
@@ -134,8 +119,8 @@ export async function POST(req: NextRequest) {
         const r = await query(
           `SELECT u.id FROM public.leads l
            JOIN public.usuarios u ON u.vendedor_id = l.vendedor_id
-           WHERE l.id = $1`,
-          [b.lead_id],
+           WHERE l.id = $1 AND u.empresa_id=$2`,
+          [b.lead_id,empresaId],
         );
         if (r.rows[0]?.id) dest.push(Number(r.rows[0].id));
       }
@@ -144,7 +129,7 @@ export async function POST(req: NextRequest) {
         mensagem: `${b.nome} · ${b.placa} — complete e imprima`,
         tipo: 'faturamento',
         usuario_ids: dest,
-        tipos: dest.length ? ['admin', 'gerente'] : ['admin', 'gerente'],
+        tipos: ['admin','gerente'], empresa_id:empresaId,
       });
     } catch { /* aviso nao bloqueia */ }
     /* vai para o documental só quando liberar o carro */
@@ -160,17 +145,17 @@ export async function PATCH(req: NextRequest) {
   const b = await req.json();
   if (!b.id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
 
-  const atual = await queryOne(`SELECT * FROM public.faturamentos WHERE id = $1`, [b.id]);
+  const atual = await obterFaturamentoPermitido(Number(b.id),u);
   if (!atual) return NextResponse.json({ error: 'não encontrado' }, { status: 404 });
 
-  const pode = ['admin', 'gerente', 'documentista', 'elfenai', 'elfenaí'].includes(u.tipo)
+  const pode = ['superadmin','admin', 'gerente', 'documentista', 'elfenai', 'elfenaí'].includes(u.tipo)
     || (u.tipo === 'vendedor' && atual.criado_por_id === u.id);
   if (!pode) return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
 
   const campos = ['nome','cpf_cnpj','telefone','email','endereco','bairro','cidade','cep',
     'marca','modelo','ano_modelo','placa','cor','kilometragem','vendedor_nome',
     'entrada_dinheiro','entrada_debito','entrada_credito','entrada_transferencia','entrada_boleto','entrada_total',
-    'fin_banco','fin_parcelas','fin_valor_parcela','observacoes','status',
+    'fin_banco','fin_parcelas','fin_valor_parcela','observacoes','status','desconto_valor','gerente_nome','data_assinatura',
     'troca_marca','troca_modelo','troca_ano_modelo','troca_placa','troca_cor','troca_km'];
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -186,9 +171,9 @@ export async function PATCH(req: NextRequest) {
   if (novo?.status === 'emitido' && novo?.troca_placa && !atual.troca_entrou_estoque) {
     try {
       await query(
-        `INSERT INTO public.estoque_carros (marca, carro, modelo, ano, placa, cor, status, patio)
-         VALUES ($1,$2,$3,$4,$5,$6,'Disponível','—')`,
-        [novo.troca_marca, `${novo.troca_marca || ''} ${novo.troca_modelo || ''}`.trim(), novo.troca_modelo, novo.troca_ano_modelo, novo.troca_placa, novo.troca_cor],
+        `INSERT INTO public.estoque_carros (marca, carro, modelo, ano, placa, cor, status, patio, empresa_id)
+         VALUES ($1,$2,$3,$4,$5,$6,'Disponível','—',$7)`,
+        [novo.troca_marca, `${novo.troca_marca || ''} ${novo.troca_modelo || ''}`.trim(), novo.troca_modelo, novo.troca_ano_modelo, novo.troca_placa, novo.troca_cor, atual.empresa_id],
       );
       await query(`UPDATE public.faturamentos SET troca_entrou_estoque = TRUE WHERE id = $1`, [b.id]);
       const { notificar } = await import('@/lib/notify');

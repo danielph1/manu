@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireUser } from '@/lib/session';
 import { notificar } from '@/lib/notify';
+import { empresaPermitida } from '@/lib/faturamento-empresa';
 
 export const runtime = 'nodejs';
 
@@ -19,23 +20,25 @@ export async function POST(req: NextRequest) {
   }
   try {
     const b = await req.json();
+    const empresaId = u.tipo==='superadmin' ? Number(b.empresa_id) : Number(u.empresa_id);
+    if(!empresaPermitida(u,empresaId))return NextResponse.json({error:'empresa não autorizada'},{status:403});
     const placa = limpa(b.placa);
     if (!placa) return NextResponse.json({ error: 'placa obrigatória' }, { status: 400 });
 
-    const where = `REPLACE(REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ',''),'.','') = $1`;
+    const where = `REPLACE(REPLACE(REPLACE(UPPER(COALESCE(placa,'')),'-',''),' ',''),'.','') = $1 AND empresa_id = $2`;
 
     let carro: any = null;
     try {
       carro = await queryOne(
         `SELECT marca, modelo, carro, ano, ano_modelo, placa, cor FROM public.estoque_carros WHERE ${where} LIMIT 1`,
-        [placa],
+        [placa,empresaId],
       );
     } catch { /* ok */ }
     let ofi: any = null;
     try {
       ofi = await queryOne(
         `SELECT marca, modelo, ano_modelo, placa, cor FROM public.oficina_carros WHERE ${where} LIMIT 1`,
-        [placa],
+        [placa,empresaId],
       );
     } catch { /* ok */ }
 
@@ -43,7 +46,7 @@ export async function POST(req: NextRequest) {
     try {
       fat = await queryOne(
         `SELECT * FROM public.faturamentos WHERE ${where} ORDER BY id DESC LIMIT 1`,
-        [placa],
+        [placa,empresaId],
       );
     } catch { /* ok */ }
 
@@ -55,9 +58,10 @@ export async function POST(req: NextRequest) {
       carro?.ano || carro?.ano_modelo || ofi?.ano_modelo || fat?.ano_modelo || fat?.ano || b.ano || '',
     ).trim();
     const cor = String(carro?.cor || ofi?.cor || fat?.cor || b.cor || '').trim();
-    const nome = String(b.nome || fat?.nome || fat?.nome_cliente || '').trim();
-    const leadId = b.lead_id || fat?.lead_id || null;
-    const fichaId = b.ficha_id || fat?.ficha_id || null;
+    if(!fat)return NextResponse.json({error:'Sem faturamento autorizado desta empresa para a placa'},{status:404});
+    const nome = String(fat?.nome || fat?.nome_cliente || '').trim();
+    const leadId = fat?.lead_id || null;
+    const fichaId = fat?.ficha_id || null;
 
     // marca liberado no faturamento
     if (fat?.id) {
@@ -69,14 +73,14 @@ export async function POST(req: NextRequest) {
              marca = COALESCE(NULLIF(marca,''), $2),
              modelo = COALESCE(NULLIF(modelo,''), $3),
              ano_modelo = COALESCE(NULLIF(ano_modelo,''), $4)
-           WHERE id = $1`,
-          [fat.id, marca || null, modelo || null, ano || null],
+           WHERE id = $1 AND empresa_id=$5`,
+          [fat.id, marca || null, modelo || null, ano || null, empresaId],
         );
       } catch {
         try {
           await query(
-            `UPDATE public.faturamentos SET liberado = TRUE, status = 'emitido' WHERE id = $1`,
-            [fat.id],
+            `UPDATE public.faturamentos SET liberado = TRUE, status = 'emitido' WHERE id = $1 AND empresa_id=$2`,
+            [fat.id,empresaId],
           );
         } catch { /* ok */ }
       }
@@ -94,18 +98,18 @@ export async function POST(req: NextRequest) {
            anunciado = false,
            anunciado_em = NULL
          WHERE ${where}`,
-        [placa],
+        [placa,empresaId],
       );
     } catch {
-      try { await query(`DELETE FROM public.estoque_carros WHERE ${where}`, [placa]); } catch { /* ok */ }
+      // Não apaga o veículo se a atualização falhar: preservar estoque e histórico.
     }
-    try { await query(`DELETE FROM public.oficina_carros WHERE ${where}`, [placa]); } catch { /* ok */ }
+    // Oficina: manter registro/histórico; não excluir por efeito colateral do faturamento.
 
     if (leadId) {
       try {
         await query(
-          `UPDATE public.leads SET venda_concluida = TRUE, data_venda = COALESCE(data_venda, now()) WHERE id = $1`,
-          [leadId],
+          `UPDATE public.leads SET venda_concluida = TRUE, data_venda = COALESCE(data_venda, now()) WHERE id = $1 AND vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id=$2)`,
+          [leadId,empresaId],
         );
       } catch { /* ok */ }
     }
@@ -138,47 +142,35 @@ export async function POST(req: NextRequest) {
         )
       `);
     } catch { /* ok */ }
-    for (const col of ['marca', 'modelo', 'ano', 'cor']) {
+    for (const col of ['marca', 'modelo', 'ano', 'cor', 'empresa_id']) {
       try {
-        await query(`ALTER TABLE public.processos_transferencia ADD COLUMN IF NOT EXISTS ${col} text`);
+        await query(`ALTER TABLE public.processos_transferencia ADD COLUMN IF NOT EXISTS ${col} ${col==='empresa_id'?'integer':'text'}`);
       } catch { /* ok */ }
     }
 
-    const existing = await queryOne(
-      `SELECT id FROM public.processos_transferencia
-       WHERE ($${1}::bigint IS NOT NULL AND ficha_id = $1)
-          OR ($${2}::bigint IS NOT NULL AND lead_id = $2)
-          OR (COALESCE(placa,'') <> '' AND REPLACE(REPLACE(UPPER(placa),'-',''),' ','') = $3)
-       ORDER BY id DESC LIMIT 1`,
-      [fichaId, leadId, placa],
-    ).catch(() => null);
-
-    if (existing?.id) {
-      await query(
-        `UPDATE public.processos_transferencia SET
-           placa = COALESCE(NULLIF(placa,''), $2),
-           nome_lead = COALESCE(NULLIF(nome_lead,''), $3),
-           marca = COALESCE(NULLIF(marca,''), $4),
-           modelo = COALESCE(NULLIF(modelo,''), $5),
-           ano = COALESCE(NULLIF(ano,''), $6),
-           cor = COALESCE(NULLIF(cor,''), $7),
-           updated_at = now()
-         WHERE id = $1`,
-        [existing.id, b.placa || placa, nome, marca, modelo, ano, cor],
-      );
-    } else {
-      await query(
-        `INSERT INTO public.processos_transferencia
-           (ficha_id, lead_id, placa, nome_lead, marca, modelo, ano, cor, status, observacao)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'em_andamento','auto: liberado no faturamento')`,
-        [fichaId, leadId, b.placa || placa, nome, marca, modelo, ano, cor],
-      );
+    const existing=await queryOne<any>(
+      `SELECT id FROM public.processos_transferencia WHERE empresa_id=$4 AND
+       (($1::bigint IS NOT NULL AND ficha_id=$1) OR ($2::bigint IS NOT NULL AND lead_id=$2)
+        OR (COALESCE(placa,'')<>'' AND REPLACE(REPLACE(UPPER(placa),'-',''),' ','')=$3))
+       ORDER BY id DESC LIMIT 1`,[fichaId,leadId,placa,empresaId],
+    ).catch(()=>null);
+    if(existing?.id){
+      await query(`UPDATE public.processos_transferencia SET placa=COALESCE(NULLIF(placa,''),$2),
+        nome_lead=COALESCE(NULLIF(nome_lead,''),$3),marca=COALESCE(NULLIF(marca,''),$4),
+        modelo=COALESCE(NULLIF(modelo,''),$5),ano=COALESCE(NULLIF(ano,''),$6),
+        cor=COALESCE(NULLIF(cor,''),$7),updated_at=now() WHERE id=$1 AND empresa_id=$8`,
+        [existing.id,fat.placa,nome,marca,modelo,ano,cor,empresaId]);
+    }else{
+      await query(`INSERT INTO public.processos_transferencia
+        (ficha_id,lead_id,placa,nome_lead,marca,modelo,ano,cor,status,observacao,empresa_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,'em_andamento','auto: liberado no faturamento',$9)`,
+        [fichaId,leadId,fat.placa,nome,marca,modelo,ano,cor,empresaId]);
     }
 
     const txt = `${marca} ${modelo} ${ano} ${b.placa || placa} vendido`
       .replace(/\s+/g, ' ')
       .trim();
-    await notificar({ titulo: 'Carro vendido', mensagem: txt, tipo: 'venda', broadcast: true });
+    await notificar({ titulo: 'Carro vendido', mensagem: txt, tipo: 'venda', broadcast: true, empresa_id: empresaId });
     return NextResponse.json({ ok: true, mensagem: txt, marca, modelo, ano, placa: b.placa || placa });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'erro ao liberar' }, { status: 500 });

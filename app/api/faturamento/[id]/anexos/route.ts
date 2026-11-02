@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/session';
+import { obterFaturamentoPermitido } from '@/lib/faturamento-empresa';
 import { ensureAnexos, salvarAnexo, listarAnexos } from '@/lib/anexos';
 
 export const runtime = 'nodejs';
@@ -8,6 +9,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   const { id } = await params;
+  if (!(await obterFaturamentoPermitido(Number(id),u))) return NextResponse.json({error:'não encontrado nesta empresa'},{status:404});
   try {
     await ensureAnexos('faturamento_anexos', 'faturamento_id');
     return NextResponse.json(await listarAnexos('faturamento_anexos', 'faturamento_id', Number(id)));
@@ -20,6 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   const { id } = await params;
+  if (!(await obterFaturamentoPermitido(Number(id),u))) return NextResponse.json({error:'não encontrado nesta empresa'},{status:404});
   const b = await req.json();
   if (!b.arquivo_b64) return NextResponse.json({ error: 'arquivo vazio' }, { status: 400 });
   try {

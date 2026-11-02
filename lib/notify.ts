@@ -71,7 +71,8 @@ export async function notificar(opts: {
     let ids = [...(opts.usuario_ids || [])];
     if (opts.broadcast) {
       const { rows } = await query(
-        `SELECT id FROM public.usuarios WHERE COALESCE(ativo, TRUE) = TRUE`,
+        `SELECT id FROM public.usuarios WHERE COALESCE(ativo, TRUE) = TRUE AND ($1::int IS NULL OR empresa_id=$1)`,
+        [opts.empresa_id ?? null],
       );
       ids = rows.map((r: any) => r.id);
     } else if (opts.tipos?.length) {
