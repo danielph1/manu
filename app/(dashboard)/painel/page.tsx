@@ -76,14 +76,17 @@ export default function PainelPage() {
   const [modoSelecao, setModoSelecao] = useState(false);
   const [selecionados, setSelecionados] = useState<number[]>([]);
   const [busyAcao, setBusyAcao] = useState(false);
+  const [listaEmMassa, setListaEmMassa] = useState(false);
+  const [agendarEmMassa, setAgendarEmMassa] = useState(false);
+  const [dataEmMassa, setDataEmMassa] = useState('');
   const podeAcoes = ['admin','gerente','marketing','superadmin'].includes(user?.tipo || '');
-  const toggleSelecionado = (id:number) => setSelecionados(prev => prev.includes(id) ? prev.filter(x=>x!==id) : [...prev,id]);
-  async function acaoMassa(acao: 'excluir'|'marcar_respondido'|'marcar_pendente') {
+  const toggleSelecionado = (id:number) => setSelecionados(prev => prev.includes(id) ? prev.filter(x=>x!==id) : prev.length>=100 ? (toast.error('Selecione até 100 leads por ação.'),prev) : [...prev,id]);
+  async function acaoMassa(acao: 'excluir'|'marcar_respondido'|'marcar_pendente'|'favoritar'|'agendar', data?: string) {
     if (!selecionados.length || !podeAcoes) return;
     if (acao==='excluir' && !confirm(`Apagar ${selecionados.length} leads? Esta ação é irreversível.`))return;
     setBusyAcao(true);
-    try {await api.post('/leads/acoes',{acao,ids:selecionados});toast.success(`${selecionados.length} leads atualizados`);
-      setSelecionados([]);setModoSelecao(false);await qc.invalidateQueries({queryKey:['leads']});await qc.invalidateQueries({queryKey:['stats']});}
+    try {await api.post('/leads/acoes',{acao,ids:selecionados,data_hora_visita:data});toast.success(`${selecionados.length} leads atualizados`);
+      setSelecionados([]);setModoSelecao(false);setAgendarEmMassa(false);setListaEmMassa(false);if(acao==='favoritar')window.dispatchEvent(new Event('manu:favoritos-atualizados'));await qc.invalidateQueries({queryKey:['leads']});await qc.invalidateQueries({queryKey:['stats']});}
     catch(e:any){toast.error(e?.response?.data?.error||'Falha na ação em massa');}finally{setBusyAcao(false);}
   }
 
@@ -198,12 +201,13 @@ export default function PainelPage() {
     return arr;
   }, [leads, busca, carroceria, listaAtiva, listas, pins]);
 
-  function criarLista() {
+  function criarLista(adicionarSelecionadosAgora = false) {
     const nome = prompt('Nome da nova lista:');
     if (!nome?.trim()) return;
     const id = `l_${Date.now()}`;
-    persistListas([...listas, { id, nome: nome.trim(), leadIds: [] }]);
+    persistListas([...listas, { id, nome: nome.trim(), leadIds: adicionarSelecionadosAgora ? [...selecionados] : [] }]);
     setListaAtiva(id);
+    if (adicionarSelecionadosAgora) { setListaEmMassa(false); setSelecionados([]); setModoSelecao(false); toast.success('Lista criada com os leads selecionados.'); }
   }
 
   function removerLista(id: string) {
@@ -227,6 +231,16 @@ export default function PainelPage() {
     toast.success('Lead adicionado à lista');
     setPickListaLead(null);
     setMenuLead(null);
+  }
+
+  function adicionarSelecionadosLista(listaId: string) {
+    if (!selecionados.length) return;
+    const updated = listas.map(L => L.id !== listaId ? L : {
+      ...L, leadIds: [...new Set([...L.leadIds, ...selecionados])],
+    });
+    persistListas(updated);
+    toast.success(`${selecionados.length} lead(s) adicionados à lista.`);
+    setListaEmMassa(false); setSelecionados([]); setModoSelecao(false);
   }
 
   async function handleDeleteLead(id: number) {
@@ -256,7 +270,7 @@ export default function PainelPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className={`mx-auto max-w-7xl space-y-6 ${selecionados.length ? 'pb-48' : ''}`}>
       <header>
         <h1 className="text-4xl font-bold tracking-tight">{t('page.painel.title')}</h1>
         <Link href="/novo-lead">
@@ -402,7 +416,7 @@ export default function PainelPage() {
         ))}
         <button
           type="button"
-          onClick={criarLista}
+          onClick={()=>criarLista()}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary"
           title="Nova lista"
         >
@@ -415,14 +429,22 @@ export default function PainelPage() {
         <h2 className="text-xl font-semibold">Leads cadastrados</h2>
         {podeAcoes && <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={()=>{setModoSelecao(!modoSelecao);setSelecionados([]);}}>{modoSelecao?'Cancelar seleção':'Selecionar / Ações'}</Button>
-          {modoSelecao && <Button variant="outline" size="sm" onClick={()=>setSelecionados(selecionados.length===filteredLeads.length?[]:filteredLeads.map(l=>Number(l.id)))}>{selecionados.length===filteredLeads.length?'Desmarcar':'Selecionar todos'}</Button>}
+          {modoSelecao && <Button variant="outline" size="sm" onClick={()=>setSelecionados(selecionados.length===Math.min(filteredLeads.length,100)?[]:filteredLeads.slice(0,100).map(l=>Number(l.id)))}>{selecionados.length===Math.min(filteredLeads.length,100)?'Desmarcar':'Selecionar todos'}</Button>}
         </div>}
         </div>
-        {modoSelecao && selecionados.length>0 && <div className="flex flex-wrap gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">
-          <span className="self-center">{selecionados.length} selecionado(s)</span>
-          <Button size="sm" disabled={busyAcao} onClick={()=>acaoMassa('marcar_respondido')}>Marcar atendidos</Button>
-          <Button size="sm" disabled={busyAcao} variant="outline" onClick={()=>acaoMassa('marcar_pendente')}>Marcar não atendidos</Button>
-          <Button size="sm" disabled={busyAcao} variant="destructive" onClick={()=>acaoMassa('excluir')}>Excluir selecionados</Button>
+        {modoSelecao && selecionados.length>0 && <div aria-live="polite" className="fixed bottom-[78px] left-1/2 z-[55] w-[min(1080px,calc(100vw-20px))] -translate-x-1/2 rounded-2xl border border-primary/30 bg-card/95 p-3 shadow-[0_15px_60px_rgba(0,0,0,.55)] backdrop-blur-xl">
+          <div className="mb-2 flex items-center justify-between px-1">
+            <span className="text-sm font-semibold">{selecionados.length} lead(s) selecionado(s)</span>
+            <button type="button" className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted" onClick={()=>{setSelecionados([]);setModoSelecao(false)}}>Concluir <X className="inline h-3.5 w-3.5"/></button>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+            <Button size="sm" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>acaoMassa('marcar_respondido')}>Atendido</Button>
+            <Button size="sm" variant="outline" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>acaoMassa('marcar_pendente')}>Não atendido</Button>
+            <Button size="sm" variant="destructive" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>acaoMassa('excluir')}><Trash2 className="mr-1 h-3.5 w-3.5"/>Excluir</Button>
+            <Button size="sm" variant="outline" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>setListaEmMassa(true)}><ListPlus className="mr-1 h-3.5 w-3.5"/>Adicionar à lista</Button>
+            <Button size="sm" variant="outline" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>setAgendarEmMassa(true)}><Calendar className="mr-1 h-3.5 w-3.5"/>Agendar</Button>
+            <Button size="sm" variant="outline" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>acaoMassa('favoritar')}><Heart className="mr-1 h-3.5 w-3.5"/>Favoritar</Button>
+          </div>
         </div>}
         <p className="text-sm text-muted-foreground">
           Exibindo {filteredLeads.length} de {leads.length} leads.
@@ -528,6 +550,23 @@ export default function PainelPage() {
         </div>
       )}
 
+      {listaEmMassa && <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/70 p-3" onClick={()=>setListaEmMassa(false)}>
+        <div className="w-full max-w-md space-y-3 rounded-2xl border border-border bg-card p-5 shadow-2xl" onClick={e=>e.stopPropagation()}>
+          <h3 className="text-lg font-semibold">Adicionar {selecionados.length} leads à lista</h3>
+          {!listas.length && <p className="text-sm text-muted-foreground">Crie uma lista antes de adicionar os leads.</p>}
+          <div className="max-h-72 space-y-1 overflow-y-auto">{listas.map(L=><button key={L.id} type="button" className="block w-full rounded-lg border border-border p-3 text-left text-sm hover:bg-muted" onClick={()=>adicionarSelecionadosLista(L.id)}>{L.nome}</button>)}</div>
+          <Button variant="outline" className="w-full" onClick={()=>criarLista(true)}>+ Criar lista</Button>
+          <Button variant="ghost" className="w-full" onClick={()=>setListaEmMassa(false)}>Cancelar</Button>
+        </div>
+      </div>}
+      {agendarEmMassa && <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/70 p-3" onClick={()=>setAgendarEmMassa(false)}>
+        <div className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-card p-5 shadow-2xl" onClick={e=>e.stopPropagation()}>
+          <h3 className="text-lg font-semibold">Agendar {selecionados.length} leads</h3>
+          <p className="text-sm text-muted-foreground">A mesma data e horário será aplicada aos leads selecionados.</p>
+          <Input aria-label="Data e horário" type="datetime-local" value={dataEmMassa} onChange={e=>setDataEmMassa(e.target.value)}/>
+          <div className="flex gap-2"><Button className="flex-1" disabled={!dataEmMassa||busyAcao} onClick={()=>acaoMassa('agendar',dataEmMassa)}>Confirmar</Button><Button variant="outline" onClick={()=>setAgendarEmMassa(false)}>Cancelar</Button></div>
+        </div>
+      </div>}
       {/* escolher lista */}
       {pickListaLead && (
         <div
@@ -832,7 +871,7 @@ function LeadCard({
       </div>
 
       <Card
-        className="relative cursor-pointer bg-card transition hover:border-primary/60 hover:shadow-lg"
+        className={`relative cursor-pointer transition-all duration-200 hover:border-primary/60 hover:shadow-lg ${isSelected ? 'border-primary bg-primary/[.07] shadow-[0_0_0_1px_hsl(var(--primary)/.25)]' : 'bg-card'}`}
         style={{
           transform: `translateX(${dx}px)`,
           transition: startX.current != null ? 'none' : 'transform 180ms ease',
@@ -861,7 +900,7 @@ function LeadCard({
         <CardContent className="space-y-3 p-5">
           <div className="flex items-start justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2 text-lg font-semibold">
-              {selectionMode && <input type="checkbox" checked={!!isSelected} readOnly aria-label="Selecionar lead" className="h-5 w-5 accent-primary pointer-events-none" />}
+              {selectionMode && <input type="checkbox" checked={!!isSelected} readOnly aria-label="Selecionar lead" className="h-5 w-5 shrink-0 rounded accent-primary pointer-events-none" />}
               <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
               <span className="truncate">{lead.nome_lead}</span>
               {pinned && (

@@ -77,8 +77,8 @@ export default function ConfiguracoesPage() {
         <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Item href="/sobre" icon={Info} label={t('settings.about')} />
           <Item href="/privacidade" icon={Shield} label={t('settings.privacy')} />
-          <Item href="/privacidade" icon={FileText} label={t('settings.terms')} />
-          <Item href="/sobre" icon={HelpCircle} label={t('settings.help')} />
+          <Item href="/termos" icon={FileText} label="Termos de Uso" />
+          <Item href="/ajuda" icon={HelpCircle} label="Ajuda / suporte" />
         </div>
       </section>
     </div>

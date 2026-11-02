@@ -7,6 +7,7 @@ export const runtime = 'nodejs';
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
+  if (u.tipo !== 'superadmin') return NextResponse.json({error:'Feed restrito ao superadmin'}, {status:403});
   const { id } = await params;
   try {
     const { rows } = await query(
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
+  if (u.tipo !== 'superadmin') return NextResponse.json({error:'Feed restrito ao superadmin'}, {status:403});
   const { id } = await params;
   try {
     const b = await req.json();

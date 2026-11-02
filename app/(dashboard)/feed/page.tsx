@@ -45,7 +45,7 @@ function PostCard({post,usuarioId,refresh}:{post:Post;usuarioId:number;refresh:(
 export default function FeedPage(){
  const {user}=useAuth();const qc=useQueryClient();const [open,setOpen]=useState(false);const [arquivo,setArquivo]=useState<File|null>(null);
  const [preview,setPreview]=useState('');const [texto,setTexto]=useState('');const [busy,setBusy]=useState(false);
- const {data=[],isLoading,error}=useQuery({queryKey:['feed'],queryFn:async()=>(await api.get('/feed')).data,refetchInterval:30000});
+ const {data=[],isLoading,error}=useQuery({queryKey:['feed'],enabled:String(user?.tipo||'').toLowerCase()==='superadmin',queryFn:async()=>(await api.get('/feed')).data,refetchInterval:30000});
  const posts=Array.isArray(data)?data as Post[]:[];
  const refresh=()=>{qc.invalidateQueries({queryKey:['feed']});};
  useEffect(()=>()=>{if(preview)URL.revokeObjectURL(preview);},[preview]);
@@ -68,6 +68,7 @@ export default function FeedPage(){
    await api.post('/feed',{path:ticket.path,texto:texto.trim()});
    setOpen(false);setArquivo(null);setPreview('');setTexto('');toast.success('Publicado!');refresh();
   }catch(e:any){toast.error(e?.response?.data?.error||e?.message||'Não foi possível publicar');}finally{setBusy(false);}}
+ if(String(user?.tipo||'').toLowerCase()!=='superadmin') return <div className="mx-auto max-w-xl rounded-xl border p-6 text-sm text-muted-foreground">Feed disponível apenas para o superadmin.</div>;
  return <div className="mx-auto max-w-xl space-y-5 pb-32">
   <header className="flex items-center justify-between gap-3"><div><h1 className="text-3xl font-bold">Feed</h1><p className="text-xs text-muted-foreground">Fotos e vídeos da comunidade Aurox</p></div>
    <Button onClick={()=>setOpen(true)}><Plus className="mr-1 h-4 w-4"/>Publicar</Button></header>

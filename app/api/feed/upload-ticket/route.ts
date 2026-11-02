@@ -8,6 +8,7 @@ const TYPES:Record<string,string>={'image/jpeg':'jpg','image/png':'png','image/w
 // Video vai DIRETO ao Storage: não passa pelo limite de payload da função Vercel.
 export async function POST(req:NextRequest){
  const u=await requireUser(req);if(!u)return NextResponse.json({error:'Não autenticado'},{status:401});
+ if(String(u.tipo||'').toLowerCase()!=='superadmin')return NextResponse.json({error:'Feed restrito ao superadmin'},{status:403});
  const b=await req.json().catch(()=>null);
  const tipo=String(b?.tipo||'');const size=Number(b?.size||0);
  if(!TYPES[tipo]||!Number.isSafeInteger(size)||size<100||size>(tipo.startsWith('video')?25:1)*1024*1024)

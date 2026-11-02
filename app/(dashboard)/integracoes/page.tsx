@@ -256,17 +256,23 @@ export default function IntegracoesPage() {
           <span className="text-sm text-primary">{busy==='olx'?'Conectando…':'Conectar conta'}</span>
         </button>
 
-        <div className="rounded-2xl border bg-card p-5 space-y-2">
-          <h3 className="text-lg font-semibold">Webmotors</h3>
-          <p className="text-sm text-muted-foreground">A loja precisa ativar o CRM parceiro no Cockpit e criar o usuario Integrador de API. A conexao automatica exige acesso de parceiro Webmotors.</p>
-          <a href="https://www.cockpit.com.br/inventory/php/integracoes" target="_blank" rel="noreferrer"
-            className="inline-flex rounded-lg border px-4 py-2 text-sm text-primary">Abrir integracoes no Cockpit</a>
-          <p className="text-xs text-amber-500">Configuracao assistida: ainda nao e um login OAuth pelo MANU.</p>
+        {/* Webmotors e iCarros exigem autorizacao de parceiro. A loja entra no portal oficial;
+            o MANU nao captura senhas e nao confunde login externo com integracao concluida. */}
+        <div className="rounded-2xl border bg-card p-5 space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><h3 className="text-lg font-semibold">Webmotors</h3><p className="mt-1 max-w-md text-sm text-muted-foreground">Acesse sua conta no Cockpit para autorizar o CRM integrador da loja.</p></div>
+            <a href="https://www.cockpit.com.br/inventory/php/integracoes" target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">Entrar na Webmotors ↗</a>
+          </div>
+          <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">O MANU precisa estar homologado como CRM parceiro para receber os leads e publicar anúncios. A entrada no Cockpit não significa conexão concluída.</p>
+          <a href="/ajuda" className="inline-flex text-xs font-medium text-primary underline">Solicitar ativação técnica no MANU</a>
         </div>
-        <div className="rounded-2xl border bg-card p-5 space-y-2">
-          <h3 className="text-lg font-semibold">iCarros</h3>
-          <p className="text-sm text-muted-foreground">Conexao de anuncios e leads depende de convenio tecnico com o portal. O MANU nao requisita sua senha do iCarros.</p>
-          <p className="text-xs text-amber-500">Aguardando credenciamento/documentacao de integrador.</p>
+        <div className="rounded-2xl border bg-card p-5 space-y-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div><h3 className="text-lg font-semibold">iCarros</h3><p className="mt-1 max-w-md text-sm text-muted-foreground">Entre na área de revendas e autorize o integrador quando essa opção estiver disponível para a loja.</p></div>
+            <a href="https://portalrevenda.icarros.com.br" target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:opacity-90">Entrar no iCarros ↗</a>
+          </div>
+          <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">A autorização técnica e os conectores de anúncios/leads do MANU ainda dependem de credenciamento. Não é necessário inserir webhook manualmente nesta tela.</p>
+          <a href="/ajuda" className="inline-flex text-xs font-medium text-primary underline">Solicitar ativação técnica no MANU</a>
         </div>
 
         {/* Parceiros com chave da loja */}

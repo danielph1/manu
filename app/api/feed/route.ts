@@ -7,6 +7,7 @@ export const dynamic='force-dynamic';
 // Após a migration o feed exige foto ou vídeo; posts textuais históricos são preservados.
 export async function GET(req:NextRequest){
  const u=await requireUser(req);if(!u)return NextResponse.json({error:'Não autenticado'},{status:401});
+ if(String(u.tipo||'').toLowerCase()!=='superadmin')return NextResponse.json({error:'Feed restrito ao superadmin'},{status:403});
  try{
   const {rows}=await query(`SELECT p.id,p.autor_id,p.texto,p.midia_url,p.midia_tipo,COALESCE(p.views,0) AS views,
    COALESCE(p.likes,0) AS likes,p.created_at,u.nome AS autor_nome,u.login AS autor_login,u.foto_url AS autor_foto,
@@ -19,6 +20,7 @@ export async function GET(req:NextRequest){
 }
 export async function POST(req:NextRequest){
  const u=await requireUser(req);if(!u)return NextResponse.json({error:'Não autenticado'},{status:401});
+ if(String(u.tipo||'').toLowerCase()!=='superadmin')return NextResponse.json({error:'Feed restrito ao superadmin'},{status:403});
  const b=await req.json().catch(()=>null);
  const path=String(b?.path||'');const texto=String(b?.texto||'').trim().slice(0,1000);
  if(!path.startsWith(`feed/${u.id}/`))return NextResponse.json({error:'Arquivo não autorizado'},{status:403});

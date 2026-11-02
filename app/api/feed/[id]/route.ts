@@ -5,6 +5,7 @@ import {supabaseAdmin} from '@/lib/supabase';
 export const runtime='nodejs';
 export async function DELETE(req:NextRequest,{params}:{params:Promise<{id:string}>}){
  const u=await requireUser(req);if(!u)return NextResponse.json({error:'Não autenticado'},{status:401});
+ if(String(u.tipo||'').toLowerCase()!=='superadmin')return NextResponse.json({error:'Feed restrito ao superadmin'},{status:403});
  const id=Number((await params).id);if(!Number.isSafeInteger(id)||id<=0)return NextResponse.json({error:'ID inválido'},{status:400});
  const post=await queryOne<{id:number,autor_id:number,midia_url:string|null}>(`SELECT id,autor_id,midia_url FROM public.feed_posts WHERE id=$1`,[id]);
  if(!post)return NextResponse.json({error:'Post inexistente'},{status:404});

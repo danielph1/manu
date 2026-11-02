@@ -15,6 +15,13 @@ export function FavoritosProvider({ children }: { children: ReactNode }) {
     api.get('/favoritos').then((r) => setIds(Array.isArray(r.data) ? r.data.map(Number) : [])).catch(() => {});
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    const refresh = () => api.get('/favoritos').then(r => setIds(Array.isArray(r.data) ? r.data.map(Number) : [])).catch(()=>{});
+    window.addEventListener('manu:favoritos-atualizados', refresh);
+    return () => window.removeEventListener('manu:favoritos-atualizados', refresh);
+  }, [user?.id]);
+
   async function toggle(id: number) {
     const tinha = ids.includes(id);
     setIds((prev) => (tinha ? prev.filter((x) => x !== id) : [...prev, id]));
