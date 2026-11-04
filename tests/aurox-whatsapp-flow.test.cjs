@@ -27,6 +27,8 @@ const db={
         if(state.messages.has(k))return {rows:[],rowCount:0};
         state.messages.add(k);return {rows:[{id:state.messages.size}],rowCount:1};
       }
+      if(s.startsWith('SELECT l.id FROM public.leads'))return {rows:[],rowCount:0};
+      if(s.startsWith('SELECT id FROM public.triagem'))return {rows:[],rowCount:0};
       if(s.startsWith('INSERT INTO public.triagem')) {
         const id=state.nextTriagem++;
         state.triages.set(id,{id,empresa:args[0],status:'aguardando',lead_id:null,body:args[3]});
@@ -59,15 +61,15 @@ const {processIncoming,isDirectChat,cleanPhone}=m.exports;
 assert.equal(isDirectChat('5511999999999@c.us'),true);
 assert.equal(isDirectChat('1234@g.us'),false);
 assert.equal(cleanPhone('+55 (11) 99999-9999'),'5511999999999');
-const base={type:'message',empresa_id:1,instancia_id:state.instances.get(1).instancia,chat_id:'5511999999999@c.us',phone:'5511999999999',name:'Cliente de teste',body:'Quero ver um carro',message_id:'m1'};
+const base={type:'message',empresa_id:1,instancia_id:state.instances.get(1).instancia,chat_id:'5511999999999@c.us',phone:'5511999999999',name:'Cliente de teste',body:'Quero ver um carro',message_id:'1'.repeat(64)};
 const one=await processIncoming(base);
 assert.equal(one.ok,true);assert.equal(one.new_contact,true);assert.equal(one.welcome,'Bem-vindo à loja');
 const again=await processIncoming(base);
 assert.equal(again.duplicate,true);
-const follow=await processIncoming({...base,message_id:'m2',body:'Tem financiamento?'});
+const follow=await processIncoming({...base,message_id:'2'.repeat(64),body:'Tem financiamento?'});
 assert.equal(follow.new_contact,false);
 assert.equal(state.triages.size,1);
-const other=await processIncoming({...base,empresa_id:2,instancia_id:state.instances.get(2).instancia,message_id:'m1'});
+const other=await processIncoming({...base,empresa_id:2,instancia_id:state.instances.get(2).instancia,message_id:'1'.repeat(64)});
 assert.equal(other.new_contact,true);assert.equal(other.welcome,null);
 assert.equal(state.triages.size,2);assert.notEqual(one.triagem_id,other.triagem_id);
 const ignored=await processIncoming({...base,chat_id:'777@g.us'});

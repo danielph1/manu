@@ -23,7 +23,7 @@ assert.equal(validateWorkerSignature(body.replace('1','2'),time,sign),false);
 assert.equal(validateWorkerSignature(body,String(Date.now()-3600000),sign),false);
 const input=fs.readFileSync(path.join(root,'lib/aurox-whatsapp/ingest.ts'),'utf8');
 assert.match(input,/ON CONFLICT\(empresa_id,chat_id\)/);
-assert.match(input,/ON CONFLICT \(empresa_id,mensagem_id\) DO NOTHING/);
+assert.match(input,/ON CONFLICT\s*\(empresa_id,mensagem_id\) DO NOTHING/);
 assert.match(input,/empresa_id=\$2/);
 const worker=fs.readFileSync(path.join(root,'workers/aurox-whatsapp/index.mjs'),'utf8');
 assert.match(worker,/new LocalAuth\(/);

@@ -10,7 +10,9 @@ async function expirar(empresaId: number | null, superadmin: boolean) {
   const {rows} = await query<{id:number;empresa_id:number}>(
     `SELECT id,empresa_id FROM public.triagem
       WHERE status='aguardando' AND empresa_id IS NOT NULL
-        AND created_at < now() - interval '1 minute'
+        AND created_at < now() -
+          (CASE WHEN origem='aurox-whatsapp' THEN interval '10 minutes'
+                ELSE interval '1 minute' END)
         AND ($1::boolean OR empresa_id=$2)
       ORDER BY created_at LIMIT 50`,[superadmin,empresaId],
   );
@@ -68,7 +70,16 @@ export async function GET(req:NextRequest) {
     if(!actor) return NextResponse.json({error:'sem permissão'},{status:403});
     await expirar(actor.empresa_id,actor.tipo==='superadmin');
     const {rows}=await query(
-      `SELECT t.* FROM public.triagem t
+      `SELECT t.*, wa.media_id, wa.media_type
+        FROM public.triagem t
+        LEFT JOIN LATERAL (
+          SELECT m.id AS media_id, m.tipo AS media_type
+          FROM public.aurox_wa_contatos c
+          JOIN public.aurox_wa_mensagens m
+            ON m.contato_id=c.id AND m.empresa_id=c.empresa_id
+          WHERE c.triagem_id=t.id AND c.empresa_id=t.empresa_id AND m.media_path IS NOT NULL
+          ORDER BY m.recebida_em DESC, m.id DESC LIMIT 1
+        ) wa ON TRUE
         WHERE t.status='aguardando' AND ($1::boolean OR t.empresa_id=$2)
         ORDER BY t.created_at ASC LIMIT 300`,
       [actor.tipo==='superadmin',actor.empresa_id],

@@ -66,9 +66,67 @@ async function statusEvent(s,status,phone='',error='') {
   }
 }
 function placeholder(m) {
-  if(typeof m.body==='string' && m.body.trim())return m.body.slice(0,4000);
-  return {image:'[Imagem recebida]',video:'[Vídeo recebido]',audio:'[Áudio recebido]',ptt:'[Mensagem de voz]',document:'[Documento recebido]',sticker:'[Figurinha recebida]',location:'[Localização recebida]'}[m.type]||'[Mensagem recebida]';
+  const text=typeof m.body==='string'?m.body.trim().slice(0,3400):'';
+  const tag={image:'Foto',audio:'Áudio',ptt:'Mensagem de voz'}[String(m.type||'')];
+  if(tag)return `[${tag} recebida]${text?` ${text}`:''}`.slice(0,4000);
+  return text||'[Mensagem recebida]';
 }
+const ACCEPTED_MEDIA={
+  'image/jpeg':true,'image/png':true,'image/webp':true,
+  'audio/ogg':true,'audio/mpeg':true,'audio/mp4':true,
+  'audio/aac':true,'audio/webm':true,
+};
+async function resolveSenderPhone(client,msg,contact) {
+  if(String(msg.from).endsWith('@c.us'))return String(msg.from).split('@')[0];
+  // Identificadores @lid nao sao telefones; tentar conversao explicita pela API.
+  if(!String(msg.from).endsWith('@lid'))return null;
+  try {
+    const mappings=await client.getContactLidAndPhone([String(msg.from)]);
+    for(const item of Array.isArray(mappings)?mappings:[]) {
+      const value=String(item?.pn||item?.phone||'').replace(/@c\.us$/,'').replace(/\D/g,'');
+      if(value.length>=10 && value.length<=15)return value;
+    }
+  }catch(e){console.warn('Não foi possível converter LID para número:',e.message);}
+  if(contact?.id?.server==='c.us') {
+    const n=String(contact.number||contact.id.user||'').replace(/\D/g,'');
+    if(n.length>=10 && n.length<=15)return n;
+  }
+  return null;
+}
+async function uploadIncomingMedia(s,msg,messageId) {
+  if(!msg.hasMedia || !['image','audio','ptt'].includes(String(msg.type||'')))return null;
+  // Nao atrasar indefinidamente a triagem se o WhatsApp nao liberar a midia.
+  let timer;
+  let media;
+  try {
+    media=await Promise.race([
+      msg.downloadMedia(),
+      new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Download de mídia expirou')),30000);}),
+    ]);
+  }finally{clearTimeout(timer);}
+  if(!media?.data)throw new Error('Mídia indisponível no WhatsApp');
+  const mime=String(media.mimetype||'').toLowerCase().split(';')[0].trim();
+  if(!ACCEPTED_MEDIA[mime])throw new Error('Formato de mídia não suportado');
+  const bytes=Buffer.from(media.data,'base64');
+  if(!bytes.length || bytes.length>8*1024*1024)
+    throw new Error('Imagem/áudio excede 8 MB');
+  const res=await fetch(url('/media-upload'),{
+    method:'POST',headers:{Authorization:`Bearer ${SECRET}`,'Content-Type':'application/json'},
+    body:JSON.stringify({empresa_id:s.empresa_id,instancia_id:s.instancia_id,
+      message_id:messageId,mime,size:bytes.length}),signal:AbortSignal.timeout(15000),
+  });
+  const ticket=await res.json().catch(()=>({}));
+  if(!res.ok||!ticket.url||!ticket.path)throw new Error(`URL de mídia: HTTP ${res.status}`);
+  const uploadUrl=new URL(ticket.url);
+  if(uploadUrl.protocol!=='https:' || !uploadUrl.pathname.includes('/storage/v1/object/upload/sign/'))
+    throw new Error('URL de upload inesperada');
+  const saved=await fetch(uploadUrl,{
+    method:'PUT',headers:{'Content-Type':mime},body:bytes,signal:AbortSignal.timeout(45000),
+  });
+  if(!saved.ok)throw new Error(`Upload de mídia: HTTP ${saved.status}`);
+  return {media_path:ticket.path,media_mime:mime,media_size:bytes.length};
+}
+
 async function storeEvent(ev) {
   const key=digest(`${ev.empresa_id}\0${ev.instancia_id}\0${ev.message_id}`);
   const target=path.join(SPOOL,key+'.bin');
@@ -87,6 +145,7 @@ async function flushOutbox() {
       catch(e) {console.error('Evento da fila não pode ser descriptografado; verificar chave e volume.');continue;}
       try {
         const ack=await postToManu(ev);
+        console.info(`[Aurox-WhatsApp] evento processado empresa=${ev.empresa_id} triagem=${ack.triagem_id??'-'} lead=${ack.lead_id??'-'} duplicado=${Boolean(ack.duplicate)}`);
         await fs.unlink(p).catch(()=>{});
         if (ack.new_contact && ack.welcome) {
           const s=sessions.get(ev.empresa_id);
@@ -136,17 +195,34 @@ async function startSession(empresa_id,instancia_id) {
   client.on('disconnected',reason=>{s.qr=null;void statusEvent(s,'desconectado','',String(reason||''));});
   client.on('message',async msg=>{
     try {
-      if(s.halted||msg.fromMe||!/^\d{5,22}@(c\.us|lid)$/.test(String(msg.from||'')))return;
-      const serialized=String(msg.id?._serialized||'');if(!serialized)return;
-      let name='Contato WhatsApp';
-      try {const c=await msg.getContact();name=String(c.pushname||c.name||name).slice(0,150);} catch{}
-      const ev={type:'message',empresa_id,instancia_id,message_id:digest(serialized),chat_id:String(msg.from),
-        phone:msg.from.endsWith('@c.us')?msg.from.split('@')[0]:null,name,
-        body:placeholder(msg),message_type:String(msg.type||'chat')};
+      if(s.halted || msg.fromMe || msg.isStatus || msg.broadcast)return;
+      const chatId=String(msg.from||'');
+      if(!/^\d{5,22}@(c\.us|lid)$/.test(chatId))return;
+      if(!['chat','image','audio','ptt'].includes(String(msg.type||'')))return; // Sem videos ou eventos de sistema.
+      const serialized=String(msg.id?._serialized||
+        (msg.id?.id ? `${chatId}_${msg.id.id}` :
+          `${chatId}_${msg.timestamp||Date.now()}_${msg.type}_${msg.body||''}`));
+      const messageId=digest(serialized);
+      let name='Contato WhatsApp',contact=null;
+      try {
+        contact=await msg.getContact();
+        name=String(contact?.pushname||contact?.name||contact?.shortName||name).slice(0,150);
+      }catch{}
+      const phone=await resolveSenderPhone(client,msg,contact);
+      let mediaInfo=null;
+      if(['image','audio','ptt'].includes(String(msg.type||''))) {
+        try {mediaInfo=await uploadIncomingMedia(s,msg,messageId);}
+        catch(e){console.warn(`[${empresa_id}] imagem/áudio não armazenado: ${e.message}`);}
+      }
+      const ev={type:'message',empresa_id,instancia_id,message_id:messageId,
+        chat_id:chatId,phone,name,body:placeholder(msg),message_type:String(msg.type||'chat'),
+        ...(mediaInfo||{})};
       await storeEvent(ev);
+      console.info(`[Aurox-WhatsApp] evento recebido empresa=${empresa_id} tipo=${ev.message_type} mídia=${mediaInfo?'sim':'não'}`);
       void flushOutbox();
     }catch(e){console.error(`[${empresa_id}] falha ao colocar mensagem na fila:`,e.message);}
   });
+
   void client.initialize().catch(async e=>{
     console.error(`[${empresa_id}] falha ao iniciar WhatsApp:`,e.message);
     await statusEvent(s,'erro','',e.message);

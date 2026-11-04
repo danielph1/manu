@@ -13,7 +13,8 @@
     "media:worker": "node workers/media-processor/worker.mjs",
     "test:permissoes": "node tests/superadmin-permissoes.test.cjs",
     "test:fichas": "node tests/fichas-persistencia.test.cjs",
-    "test:aurox-whatsapp": "node tests/aurox-whatsapp.test.cjs && node tests/aurox-whatsapp-flow.test.cjs"
+    "test:aurox-whatsapp": "node tests/aurox-whatsapp.test.cjs && node tests/aurox-whatsapp-flow.test.cjs",
+    "test:aurox-whatsapp-v10": "node --test tests/aurox-whatsapp-v10.test.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "5.1.1",
