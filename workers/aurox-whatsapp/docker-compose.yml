@@ -1,0 +1,13 @@
+services:
+  aurox-whatsapp:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:3456:3456"
+    volumes:
+      - ./data:/data/aurox-wa
+    shm_size: '512mb'
+    security_opt:
+      - no-new-privileges:true

@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/session';
 import { leadAcessivel } from '@/lib/lead-access';
 import { notificar } from '@/lib/notify';
 import { enviarWhatsAppDaEmpresa } from '@/lib/zapi-empresa';
+import { sendAuroxMessage } from '@/lib/aurox-whatsapp/send';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -82,10 +83,15 @@ export async function POST(req: NextRequest) {
        RETURNING id, mensagem, created_at, remetente_id, arquivo_nome, arquivo_mime`,
       [u.id, texto, nome, mime, b64, leadId],
     );
-    // Envio externo é independente do registro interno. Nunca usa ZAPI_* global de outra empresa.
-    const whatsapp = msg && lead.empresaId
-      ? await enviarWhatsAppDaEmpresa(lead.empresaId, String(lead.telefone || ''), msg)
-      : { ok: false, status: 'not_configured', message: 'Mensagem salva no MANU; envio externo indisponível.' };
+    // Enviar pela mesma instância que originou o lead; nunca usar outra empresa.
+    // Para leads dos demais canais, preservar o fluxo Z-API já existente.
+    let whatsapp: {ok:boolean;status:string;message:string};
+    if (msg && lead.empresaId) {
+      const aurox = await sendAuroxMessage(lead.empresaId, leadId, msg);
+      whatsapp = aurox.routed ? aurox : await enviarWhatsAppDaEmpresa(lead.empresaId,String(lead.telefone || ''),msg);
+    } else {
+      whatsapp = {ok:false,status:'not_configured',message:'Mensagem salva no MANU; envio externo indisponível.'};
+    }
     if (lead.empresaId) {
       notificar({ titulo: 'Nova mensagem no chat', mensagem: `${u.nome || u.login}: ${texto.slice(0, 80)}`,
         tipo: 'chat', broadcast: true, empresa_id: lead.empresaId, url: `/chat?lead=${leadId}` }).catch(() => {});

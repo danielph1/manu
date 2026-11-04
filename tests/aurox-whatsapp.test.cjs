@@ -1,0 +1,34 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+const Module = require('node:module');
+const root=path.join(__dirname,'..');
+function loadTs(relative) {
+  const filename=path.join(root,relative);
+  const source=fs.readFileSync(filename,'utf8');
+  const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}});
+  const m=new Module(filename,module);m.filename=filename;m.paths=module.paths;
+  m._compile(compiled.outputText,filename);return m.exports;
+}
+process.env.AUROX_WA_WORKER_SECRET='0123456789abcdef0123456789abcdef';
+const {createHmac}=require('node:crypto');
+const {authorizedWorker,validateWorkerSignature}=loadTs('lib/aurox-whatsapp/security.ts');
+const body=JSON.stringify({type:'message',empresa_id:1}),time=String(Date.now());
+const sign=createHmac('sha256',process.env.AUROX_WA_WORKER_SECRET).update(`${time}.${body}`).digest('hex');
+assert.equal(authorizedWorker('Bearer '+process.env.AUROX_WA_WORKER_SECRET),true);
+assert.equal(authorizedWorker('Bearer wrong'),false);
+assert.equal(validateWorkerSignature(body,time,sign),true);
+assert.equal(validateWorkerSignature(body.replace('1','2'),time,sign),false);
+assert.equal(validateWorkerSignature(body,String(Date.now()-3600000),sign),false);
+const input=fs.readFileSync(path.join(root,'lib/aurox-whatsapp/ingest.ts'),'utf8');
+assert.match(input,/ON CONFLICT\(empresa_id,chat_id\)/);
+assert.match(input,/ON CONFLICT \(empresa_id,mensagem_id\) DO NOTHING/);
+assert.match(input,/empresa_id=\$2/);
+const worker=fs.readFileSync(path.join(root,'workers/aurox-whatsapp/index.mjs'),'utf8');
+assert.match(worker,/new LocalAuth\(/);
+assert.match(worker,/function securePack\(/);
+assert.match(worker,/client.on\('message'/);
+assert.match(worker,/msg.fromMe/);
+assert.match(worker,/session-aurox-company-/);
+console.log('Aurox-WhatsApp: autenticação, HMAC, anti-replay, deduplicação, isolamento e sessão OK');

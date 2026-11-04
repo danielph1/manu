@@ -85,3 +85,9 @@ node_modules/@next/swc-linux-x64-musl/next-swc.linux-x64-musl.node
 # Segredos do processador de mídia
 workers/media-processor/.env.worker
 workers/media-processor/.env
+
+# Credenciais e sessão do Aurox-WhatsApp
+workers/aurox-whatsapp/.env
+workers/aurox-whatsapp/.wa-data/
+workers/aurox-whatsapp/data/
+workers/aurox-whatsapp/outbox/

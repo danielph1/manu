@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { MetaEmbeddedSignup } from '@/components/meta-embedded-signup';
 import { ZapiQrConnect } from '@/components/zapi-qr-connect';
+import { AuroxWhatsappConnect } from '@/components/aurox-whatsapp-connect';
 
 interface Empresa { id: number; nome: string }
 interface OauthConn {
@@ -189,7 +190,7 @@ export default function IntegracoesPage() {
       <div>
         <h1 className="text-2xl font-bold">Conectar canais</h1>
         <p className="text-sm text-muted-foreground">
-          Cada empresa conecta suas contas pelas modalidades oficiais de cada portal. Credenciais de integracao ficam no servidor e nunca no navegador.
+          Cada empresa conecta seus próprios canais. Autorização oficial onde disponível; Aurox-WhatsApp por QR Code com sessão independente. Credenciais nunca ficam no navegador.
         </p>
       </div>
 
@@ -237,6 +238,7 @@ export default function IntegracoesPage() {
           </div>
         </button>
 
+        <AuroxWhatsappConnect empresaId={empresa} />
         <ZapiQrConnect empresaId={empresa} onConnected={() => atualizarConexoes()} />
           <MetaEmbeddedSignup empresaId={empresa} onConnected={() => atualizarConexoes()} />
 
