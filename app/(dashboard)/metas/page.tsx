@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 export default function MetasPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
-  const pode = ['admin', 'gerente'].includes(user?.tipo || '');
+  const pode = ['admin', 'gerente', 'superadmin'].includes(user?.tipo || '');
   const [titulo, setTitulo] = useState('');
   const [objetivo, setObjetivo] = useState('');
   const [alvo, setAlvo] = useState('tipo:vendedor');

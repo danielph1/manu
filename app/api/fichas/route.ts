@@ -29,11 +29,14 @@ export async function GET(req: NextRequest) {
   const params: unknown[] = [];
   const where: string[] = ['1=1'];
 
-  // Isolamento SaaS por empresa
-  if (u.empresa_id && u.tipo !== 'superadmin') {
+  // Isolamento SaaS obrigatório: fichas sem vendedor não são automaticamente públicas.
+  if (u.tipo !== 'superadmin') {
+    if (!u.empresa_id) return NextResponse.json({ error: 'Empresa não vinculada à sessão' }, { status: 403 });
     params.push(u.empresa_id);
-    where.push(`(f.vendedor_id IS NULL OR f.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${params.length}))`);
+    where.push(`(f.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${params.length})
+       OR (f.vendedor_id IS NULL AND EXISTS (SELECT 1 FROM public.leads lf WHERE lf.id=f.lead_id AND lf.empresa_id=$${params.length})))`);
   }
+  if (u.tipo === 'vendedor' && !u.vendedor_id) return NextResponse.json({ error: 'Vendedor não vinculado à sessão' }, { status: 403 });
 
   if (u.tipo === 'vendedor' && u.vendedor_id) {
     params.push(u.vendedor_id);

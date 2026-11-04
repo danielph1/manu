@@ -102,13 +102,13 @@ export async function requireUser(req: NextRequest): Promise<SessionUser | null>
 
 export const can = {
   verTudoNaLoja: (u: SessionUser) =>
-    u.tipo === 'admin' || u.tipo === 'gerente' || u.tipo === 'marketing',
+    u.tipo === 'superadmin' || u.tipo === 'admin' || u.tipo === 'gerente' || u.tipo === 'marketing',
   verMetricas: (u: SessionUser) =>
     u.tipo === 'admin' || u.tipo === 'gerente' || u.tipo === 'superadmin',
   editarQualquerLead: (u: SessionUser) =>
     u.tipo === 'admin' || u.tipo === 'gerente' || u.tipo === 'marketing' || u.tipo === 'superadmin',
   editarFichasBanco: (u: SessionUser) =>
-    u.tipo === 'elfenai' || u.tipo === 'admin' || u.tipo === 'gerente',
+    u.tipo === 'superadmin' || u.tipo === 'elfenai' || u.tipo === 'admin' || u.tipo === 'gerente',
   verDocumental: (u: SessionUser) =>
     ['admin', 'gerente', 'documentista', 'documento', 'vendedor', 'superadmin'].includes(u.tipo),
   editarDocumental: (u: SessionUser) =>

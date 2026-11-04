@@ -22,3 +22,7 @@ export async function leadAcessivel(u: SessionUser, leadId: number) {
   if (tipo === 'gerente' && String(lead.vendedor_loja || '').toUpperCase() !== String(u.loja || '').toUpperCase()) return null;
   return { ...lead, empresaId };
 }
+
+// Compatibilidade com rotas antigas que utilizam esse nome.
+// Ambas consultam o banco e verificam empresa, loja e vendedor.
+export const podeAcessarLead = leadAcessivel;

@@ -95,7 +95,7 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
       qc.invalidateQueries({ queryKey: ['metricas'] });
       onClose();
     } catch (e: any) {
-      toast.error(e?.response?.data?.error || 'Erro ao salvar');
+      toast.error(e?.response?.data?.error || (e?.response?.status === 403 ? 'Você não tem permissão para editar este registro.' : e?.response?.status === 401 ? 'Sua sessão expirou. Entre novamente.' : e?.code === 'ERR_NETWORK' ? 'Falha de conexão com o servidor. Verifique sua rede.' : `Erro ao salvar (HTTP ${e?.response?.status || 'sem resposta'}). Verifique os dados e a conexão.`));
     } finally { setLoading(false); }
   }
 
@@ -111,6 +111,10 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
         gerou_boleto: data.gerou_boleto,
       });
       const fat = await api.post('/faturamento', {
+        // A empresa nunca é escolhida por adivinhação: vem do vendedor da ficha,
+        // e o backend confirma se a loja pertence à empresa.
+        empresa_id: data.empresa_id || lead.empresa_id || user?.empresa_id,
+        loja: data.loja || user?.loja,
         lead_id: data.lead_id || lead.id,
         ficha_id: fichaId,
         nome: lead.nome_completo || lead.nome_lead,

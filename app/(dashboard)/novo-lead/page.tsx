@@ -1,6 +1,6 @@
 'use client';
 // Novo lead - formulario completo com todos os campos da ficha quando marca "gerar ficha"
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,6 +22,8 @@ export default function NovoLeadPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [gerarFicha, setGerarFicha] = useState(false);
+  const isSuper = user?.tipo === 'superadmin';
+  const [empresaSelecionada, setEmpresaSelecionada] = useState('');
   const [form, setForm] = useState<any>({
     nome_lead: '', telefone: '', cpf: '', produto_interesse: '', observacao: '',
     data_lead: new Date().toISOString().slice(0, 10),
@@ -34,20 +36,38 @@ export default function NovoLeadPage() {
     empresa: '', cnpj: '', endereco_empresa: '', cep_empresa: '', salario: '', banco_correntista: '',
   });
 
-  const { data: vendedores = [] } = useQuery({
-    queryKey: ['vendedores'],
+  const { data: vendedores = [], isLoading: carregandoVendedores, error: erroVendedores } = useQuery({
+    queryKey: ['vendedores', user?.id],
     queryFn: async () => (await api.get('/vendedores')).data,
+    enabled: Boolean(user?.id),
   });
+
+  useEffect(() => {
+    // O usuário é carregado depois que a página é montada.
+    if (user?.tipo === 'vendedor' && user.vendedor_id) {
+      setForm((f: any) => f.vendedor_id ? f : { ...f, vendedor_id: Number(user.vendedor_id) });
+    }
+  }, [user?.tipo, user?.vendedor_id]);
+
+  const empresas = Array.from(new Map((vendedores as any[])
+    .filter((v: any) => Number(v.empresa_id) > 0)
+    .map((v: any) => [String(v.empresa_id), { id: String(v.empresa_id), nome: v.empresa_nome || `Empresa #${v.empresa_id}` }])).values()) as {id:string;nome:string}[];
+  const vendedoresVisiveis = isSuper
+    ? (vendedores as any[]).filter((v: any) => String(v.empresa_id) === empresaSelecionada)
+    : vendedores as any[];
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (isSuper && !empresaSelecionada) { toast.error('Selecione a empresa que receberá o lead.'); return; }
+    const vendedor = vendedoresVisiveis.find((v: any) => Number(v.id) === Number(form.vendedor_id));
+    if (!vendedor) { toast.error('Selecione um vendedor válido da empresa selecionada.'); return; }
     setLoading(true);
     try {
-      await api.post('/leads', { ...form, gerou_ficha: gerarFicha });
+      await api.post('/leads', { ...form, empresa_id: Number(vendedor.empresa_id), gerou_ficha: gerarFicha });
       toast.success('Lead criado!');
       router.push('/painel');
     } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Erro ao criar lead');
+      toast.error(err?.response?.data?.error || (err?.code === 'ERR_NETWORK' ? 'Sem conexão com o servidor. Verifique a rede.' : `Não foi possível criar lead (HTTP ${err?.response?.status || 'sem resposta'}).`));
     } finally { setLoading(false); }
   }
 
@@ -74,14 +94,30 @@ export default function NovoLeadPage() {
               <F label="Nome do lead*" value={form.nome_lead} onChange={(v) => setForm({ ...form, nome_lead: v })} required />
               <F label="Data que o lead chegou*" type="date" value={form.data_lead} onChange={(v) => setForm({ ...form, data_lead: v })} required />
               <F label="Telefone*" value={form.telefone} onChange={(v) => setForm({ ...form, telefone: v })} required />
+              {isSuper && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Empresa que receberá o lead*</Label>
+                  <Select value={empresaSelecionada} onValueChange={(v) => {
+                    setEmpresaSelecionada(v);
+                    setForm((f: any) => ({ ...f, vendedor_id: '' }));
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Escolha uma empresa" /></SelectTrigger>
+                    <SelectContent>
+                      {empresas.map((e) => <SelectItem key={e.id} value={e.id}>{e.nome}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-1.5">
-                <Label className="text-sm">Vendedor responsavel*</Label>
-                <Select value={String(form.vendedor_id || '')} onValueChange={(v) => setForm({ ...form, vendedor_id: Number(v) })}>
-                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                <Label className="text-sm">Vendedor responsável*</Label>
+                <Select value={String(form.vendedor_id || '')} onValueChange={(v) => setForm({ ...form, vendedor_id: Number(v) })} disabled={isSuper && !empresaSelecionada}>
+                  <SelectTrigger><SelectValue placeholder={carregandoVendedores ? 'Carregando…' : 'Selecione um vendedor'} /></SelectTrigger>
                   <SelectContent>
-                    {vendedores.map((v: any) => <SelectItem key={v.id} value={String(v.id)}>{v.nome}</SelectItem>)}
+                    {vendedoresVisiveis.map((v: any) => <SelectItem key={v.id} value={String(v.id)}>{v.nome} · Loja {v.loja || '—'}{isSuper ? ` · ${v.empresa_nome || ''}` : ''}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                {erroVendedores && <p className="text-sm text-destructive">Falha ao consultar vendedores. Verifique a conexão com o banco.</p>}
+                {isSuper && empresaSelecionada && !vendedoresVisiveis.length && !carregandoVendedores && <p className="text-sm text-amber-500">Esta empresa não possui vendedores ativos. Cadastre um vendedor na aba Usuários antes de criar o lead.</p>}
               </div>
               <F label="Produto de interesse" value={form.produto_interesse} onChange={(v) => setForm({ ...form, produto_interesse: v })} />
               <F label="CPF" value={form.cpf} onChange={(v) => setForm({ ...form, cpf: v })} />
@@ -144,7 +180,7 @@ export default function NovoLeadPage() {
               <Textarea rows={3} value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
             </div>
 
-            <Button type="submit" size="lg" className="w-full" disabled={loading}>
+            <Button type="submit" size="lg" className="w-full" disabled={loading || carregandoVendedores || !form.vendedor_id || (isSuper && !empresaSelecionada)}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {gerarFicha ? 'Gerar ficha e salvar lead' : 'Salvar lead'}
             </Button>

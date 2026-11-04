@@ -33,6 +33,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const allowed = ['nome_lead','telefone','cpf','produto_interesse','observacao','comentario_interno','respondeu','gerou_ficha','data_hora_visita','data_agendamento','venda_concluida','data_venda','nome_completo','data_nascimento','habilitado','data_lead','em_loja','cliente_na_loja','carro_selecionado','marca_carro','ano_carro','placa_carro','cor_carro','valor_carro','valor_entrada','score','rg','data_expedicao','orgao_expeditor','nome_pai','nome_mae','email','endereco','bairro','cidade','estado','cep','empresa','cnpj','endereco_empresa','bairro_empresa','cidade_empresa','estado_empresa','cep_empresa','tempo_carreira','salario','banco_correntista'];
   const payload: any = {};
   for (const k of allowed) if (k in body) payload[k] = body[k];
+  for (const col of ['data_lead', 'data_nascimento', 'data_expedicao', 'data_hora_visita', 'data_agendamento', 'data_venda']) {
+    if (col in payload && (payload[col] === '' || payload[col] === undefined)) payload[col] = null;
+  }
+  for (const col of ['valor_carro', 'valor_entrada', 'salario']) {
+    if (col in payload && payload[col] === '') payload[col] = null;
+  }
   if ('score' in payload && payload.score !== null && payload.score !== '') {
     const n = Number(payload.score);
     payload.score = Number.isFinite(n) ? n : null;
@@ -59,7 +65,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         valor_veiculo: data.valor_carro || 0,
       };
       if (data.score != null) ins.score = data.score;
-      await supabaseAdmin.from('fichas_credito').insert(ins);
+      const { error: erroFicha } = await supabaseAdmin.from('fichas_credito').insert(ins);
+      if (erroFicha) {
+        // Não sinalizar que houve ficha criada se o banco recusou a inserção.
+        await supabaseAdmin.from('leads').update({ gerou_ficha: false }).eq('id', id);
+        return NextResponse.json({ error: `Lead salvo, mas não foi possível criar a ficha: ${erroFicha.message}` }, { status: 500 });
+      }
     }
   }
   return NextResponse.json(data);

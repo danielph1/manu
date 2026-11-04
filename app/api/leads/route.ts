@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, queryOne } from '@/lib/db';
+import { query, queryOne, getPool } from '@/lib/db';
 import { requireUser } from '@/lib/session';
 import { notificar } from '@/lib/notify';
 
@@ -80,6 +80,7 @@ export async function GET(req: NextRequest) {
     }
 
     // RBAC dentro da empresa
+    if (u.tipo === 'vendedor' && !u.vendedor_id) return NextResponse.json({ error: 'Vendedor não vinculado à sessão' }, { status: 403 });
     if (u.tipo === 'vendedor' && u.vendedor_id) {
       add('l.vendedor_id = ?', u.vendedor_id);
     } else if (u.tipo === 'gerente' && u.loja) {
@@ -153,65 +154,99 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/** Cadastro consistente: vincula empresa ao vendedor e cria ficha na mesma transação. */
 export async function POST(req: NextRequest) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
 
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Dados do lead inválidos' }, { status: 400 });
+  const nome = String(body.nome_lead || body.nome || '').trim();
+  if (!nome) return NextResponse.json({ error: 'Informe o nome do lead' }, { status: 400 });
+
+  const vendedorId = u.tipo === 'vendedor' ? Number(u.vendedor_id) : Number(body.vendedor_id || u.vendedor_id);
+  if (!Number.isSafeInteger(vendedorId) || vendedorId <= 0)
+    return NextResponse.json({ error: 'Selecione o vendedor responsável. O lead precisa pertencer a uma empresa.' }, { status: 400 });
+
   try {
-    const body = await req.json();
-    const nome = String(body.nome_lead || body.nome || '').trim();
-    if (!nome) {
-      return NextResponse.json({ error: 'nome_lead obrigatório' }, { status: 400 });
-    }
-
-    let vendedorId = body.vendedor_id != null ? Number(body.vendedor_id) : u.vendedor_id;
-    if (u.tipo === 'vendedor') vendedorId = u.vendedor_id;
-    if (u.tipo !== 'superadmin') {
-      if (!u.empresa_id || !vendedorId) return NextResponse.json({ error: 'Empresa/vendedor obrigatorio' }, { status: 403 });
-      const owner = await queryOne<{ id: number }>('SELECT id FROM public.vendedores WHERE id=$1 AND empresa_id=$2', [vendedorId,u.empresa_id]);
-      if (!owner) return NextResponse.json({ error: 'Vendedor de outra empresa' }, { status: 403 });
-    }
-
-    const row = await queryOne(
-      `
-      INSERT INTO public.leads (
-        data_lead, vendedor_id, nome_lead, telefone, cpf,
-        nome_completo, observacao, respondeu, gerou_ficha, aprovado,
-        produto_interesse, origem_id
-      )
-      VALUES (
-        COALESCE($1::date, CURRENT_DATE),
-        $2, $3, $4, $5, $6, $7,
-        COALESCE($8, FALSE), COALESCE($9, FALSE), COALESCE($10, FALSE),
-        $11, $12
-      )
-      RETURNING *
-      `,
-      [
-        body.data_lead || null,
-        vendedorId,
-        nome,
-        body.telefone || null,
-        body.cpf || null,
-        body.nome_completo || nome,
-        body.observacao || null,
-        body.respondeu ?? false,
-        body.gerou_ficha ?? false,
-        body.aprovado ?? false,
-        body.produto_interesse || null,
-        body.origem_id || null,
-      ],
+    const vendedor = await queryOne<{ id: number; empresa_id: number | null; loja: string | null }>(
+      `SELECT id, empresa_id, loja FROM public.vendedores WHERE id = $1 AND COALESCE(ativo,TRUE)=TRUE`, [vendedorId],
     );
+    if (!vendedor?.empresa_id) return NextResponse.json({ error: 'Vendedor não encontrado ou sem empresa vinculada' }, { status: 400 });
+    const empresaId = Number(vendedor.empresa_id);
+    if (u.tipo !== 'superadmin' && (!u.empresa_id || Number(u.empresa_id) !== empresaId))
+      return NextResponse.json({ error: 'O vendedor não pertence à sua empresa' }, { status: 403 });
+    if (u.tipo === 'gerente' && String(u.loja || '').toUpperCase() !== String(vendedor.loja || '').toUpperCase())
+      return NextResponse.json({ error: 'O vendedor não pertence à sua loja' }, { status: 403 });
+    if (body.empresa_id != null && Number(body.empresa_id) !== empresaId)
+      return NextResponse.json({ error: 'Empresa e vendedor selecionados não correspondem' }, { status: 400 });
 
-    await notificar({
-        titulo: 'Novo lead',
-        mensagem: String(nome || 'lead'),
-        tipo: 'lead',
-        tipos: ['admin', 'gerente'],
-      });
-      return NextResponse.json(row);
+    // Colunas fixas e parametrizadas: nunca usar nomes de colunas enviados pelo navegador.
+    const campos = [
+      'data_lead', 'vendedor_id', 'empresa_id', 'nome_lead', 'telefone', 'cpf',
+      'nome_completo', 'observacao', 'respondeu', 'gerou_ficha', 'aprovado',
+      'produto_interesse', 'origem_id',
+      'em_loja', 'cliente_na_loja', 'venda_concluida',
+      'data_nascimento', 'habilitado', 'carro_selecionado', 'ano_carro',
+      'placa_carro', 'valor_carro', 'valor_entrada', 'nome_pai', 'nome_mae',
+      'rg', 'data_expedicao', 'orgao_expeditor', 'email', 'endereco', 'bairro',
+      'cidade', 'estado', 'cep', 'empresa', 'cnpj', 'endereco_empresa',
+      'cep_empresa', 'salario', 'banco_correntista',
+    ] as const;
+    const datas = new Set(['data_lead', 'data_nascimento', 'data_expedicao']);
+    const numeros = new Set(['valor_carro', 'valor_entrada', 'salario', 'origem_id']);
+    const booleanos = new Set(['respondeu', 'gerou_ficha', 'aprovado', 'em_loja', 'cliente_na_loja', 'venda_concluida', 'habilitado']);
+    const ficha = body.gerou_ficha === true;
+    const valores: unknown[] = campos.map((campo) => {
+      if (campo === 'vendedor_id') return vendedorId;
+      if (campo === 'empresa_id') return empresaId;
+      if (campo === 'nome_lead') return nome;
+      if (campo === 'nome_completo') return body.nome_completo || nome;
+      if (campo === 'gerou_ficha') return ficha;
+      if (campo === 'data_lead') return body.data_lead || new Date().toISOString().slice(0, 10);
+      if (campo === 'cliente_na_loja') return Boolean(body.cliente_na_loja ?? body.em_loja);
+      const raw = body[campo];
+      if (booleanos.has(campo)) return Boolean(raw);
+      if (raw === '' || raw === undefined || raw === null) return null;
+      if (datas.has(campo)) {
+        const valor = String(raw).slice(0,10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) throw new Error(`Data inválida: ${campo}`);
+        return valor;
+      }
+      if (numeros.has(campo)) {
+        const n = Number(raw);
+        if (!Number.isFinite(n)) throw new Error(`Valor numérico inválido: ${campo}`);
+        return n;
+      }
+      return raw;
+    });
+
+    const db = await getPool().connect();
+    try {
+      await db.query('BEGIN');
+      const inserido = await db.query(
+        `INSERT INTO public.leads (${campos.join(', ')}) VALUES (${campos.map((_, i) => '$' + (i + 1)).join(', ')}) RETURNING *`, valores,
+      );
+      const lead = inserido.rows[0];
+      if (ficha) {
+        await db.query(
+          `INSERT INTO public.fichas_credito (lead_id, vendedor_id, criado_por_id, valor_entrada, valor_veiculo)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [lead.id, vendedorId, u.id, Number(body.valor_entrada || 0), Number(body.valor_carro || 0)],
+        );
+      }
+      await db.query('COMMIT');
+      try {
+        await notificar({ titulo: 'Novo lead', mensagem: nome, tipo: 'lead',
+          tipos: ['superadmin', 'admin', 'gerente'], empresa_id: empresaId });
+      } catch { /* uma falha de notificação não desfaz a venda */ }
+      return NextResponse.json(lead, { status: 201 });
+    } catch (e) {
+      await db.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally { db.release(); }
   } catch (e: any) {
-    console.error('leads POST', e);
-    return NextResponse.json({ error: e?.message || 'erro ao criar lead' }, { status: 500 });
+    console.error('[leads POST]', e);
+    return NextResponse.json({ error: e?.message || 'Não foi possível criar o lead e a ficha' }, { status: 500 });
   }
 }

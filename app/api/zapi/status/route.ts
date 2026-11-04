@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 /** Debug: admin vê se Z-API está configurado (sem expor o token completo) */
 export async function GET(req: NextRequest) {
   const u = await requireUser(req);
-  if (!u || !['admin', 'gerente'].includes(String(u.tipo || '').toLowerCase())) {
+  if (!u || !['admin', 'gerente', 'superadmin'].includes(String(u.tipo || '').toLowerCase())) {
     return NextResponse.json({ error: 'sem acesso' }, { status: 403 });
   }
   const instance = process.env.ZAPI_INSTANCE_ID || '';

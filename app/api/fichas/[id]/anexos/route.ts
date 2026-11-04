@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/session';
+import { queryOne } from '@/lib/db';
+import { fichaAcessivel } from '@/lib/ficha-access';
 import { notificar } from '@/lib/notify';
 import { ensureAnexos, salvarAnexo, listarAnexos } from '@/lib/anexos';
 
 export const runtime = 'nodejs';
 
+async function conferirFicha(u: NonNullable<Awaited<ReturnType<typeof requireUser>>>, id: number) {
+  if (!Number.isSafeInteger(id) || id <= 0) return false;
+  const ficha = await queryOne<{lead_id:number|null;vendedor_id:number|null}>(
+    'SELECT lead_id, vendedor_id FROM public.fichas_credito WHERE id=$1', [id]);
+  return Boolean(ficha && await fichaAcessivel(u, ficha));
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   const { id } = await params;
+  if (!(await conferirFicha(u, Number(id)))) return NextResponse.json({ error: 'Ficha fora da sua empresa ou loja' }, { status: 403 });
   try {
     await ensureAnexos('ficha_anexos', 'ficha_id');
     return NextResponse.json(await listarAnexos('ficha_anexos', 'ficha_id', Number(id)));
@@ -21,6 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   const { id } = await params;
+  if (!(await conferirFicha(u, Number(id)))) return NextResponse.json({ error: 'Ficha fora da sua empresa ou loja' }, { status: 403 });
   const b = await req.json();
   if (!b.arquivo_b64) return NextResponse.json({ error: 'arquivo vazio' }, { status: 400 });
   try {

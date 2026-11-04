@@ -39,7 +39,7 @@ export function LeadEditDialog({ lead, onClose }: { lead: Lead | null; onClose: 
       qc.invalidateQueries({ queryKey: ['stats'] });
       onClose();
     } catch (e: any) {
-      toast.error(e?.response?.data?.error || 'Erro ao salvar');
+      toast.error(e?.response?.data?.error || (e?.response?.status === 403 ? 'Você não tem permissão para editar este registro.' : e?.response?.status === 401 ? 'Sua sessão expirou. Entre novamente.' : e?.code === 'ERR_NETWORK' ? 'Falha de conexão com o servidor. Verifique sua rede.' : `Erro ao salvar (HTTP ${e?.response?.status || 'sem resposta'}). Verifique os dados e a conexão.`));
     } finally { setLoading(false); }
   }
 

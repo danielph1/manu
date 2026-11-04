@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireUser, can } from '@/lib/session';
 import { notificar } from '@/lib/notify';
+import { fichaAcessivel } from '@/lib/ficha-access';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       [id],
     );
     if (!ficha) return NextResponse.json({ error: 'ficha não encontrada' }, { status: 404 });
+    if (!(await fichaAcessivel(u, ficha))) return NextResponse.json({ error: 'Ficha fora da sua empresa ou loja' }, { status: 403 });
 
     let lead: any = null;
     if (ficha.lead_id) {
@@ -28,7 +30,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       bancos = r.rows;
     } catch { bancos = []; }
 
-    return NextResponse.json({ ...ficha, lead, bancos });
+    const responsavel = ficha.vendedor_id ? await queryOne<{empresa_id:number|null;loja:string|null}>(
+      `SELECT empresa_id, loja FROM public.vendedores WHERE id=$1`, [ficha.vendedor_id]) : null;
+    // Contexto confiável para o superadmin gerar faturamento na empresa/loja corretas.
+    return NextResponse.json({ ...ficha, lead, bancos,
+      empresa_id: responsavel?.empresa_id || lead?.empresa_id || null,
+      loja: responsavel?.loja || null,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'erro ao abrir ficha' }, { status: 500 });
   }
@@ -57,10 +65,21 @@ async function ensureFichaCols() {
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
-  if (!can.editarFichasBanco(u)) return NextResponse.json({ error: 'sem permissao' }, { status: 403 });
+  if (!can.editarFichasBanco(u)) return NextResponse.json({ error: 'Seu cargo não permite editar fichas bancárias' }, { status: 403 });
   const { id } = await params;
+  const ficha = await queryOne<{ lead_id: number | null; vendedor_id: number | null }>(
+    `SELECT lead_id, vendedor_id FROM public.fichas_credito WHERE id=$1`, [id]);
+  if (!ficha) return NextResponse.json({ error: 'Ficha não encontrada' }, { status: 404 });
+  if (!(await fichaAcessivel(u, ficha))) return NextResponse.json({ error: 'Ficha fora da sua empresa ou loja' }, { status: 403 });
   const body = await req.json();
   try {
+    // Conferir IDs de banco ANTES de alterar qualquer dado da ficha.
+    if (Array.isArray(body.bancos)) {
+      const existentes = await query(`SELECT id FROM public.ficha_bancos WHERE ficha_id=$1`, [id]);
+      const idsPermitidos = new Set(existentes.rows.map((r: any) => Number(r.id)));
+      if (body.bancos.some((b: any) => b.id && !idsPermitidos.has(Number(b.id))))
+        return NextResponse.json({ error: 'Um dos bancos não pertence a esta ficha' }, { status: 403 });
+    }
     await ensureFichaCols();
     const allowed = [
       'status_geral','banco_contratado','valor_liberado','valor_financiado','valor_entrada',
@@ -112,8 +131,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             `UPDATE public.ficha_bancos
              SET banco = $1, status = $2, valor_financiado = $3, parcela_48 = $4, parcela_60 = $5,
                  valor_entrada = $6, observacao = $7
-             WHERE id = $8`,
-            [b.banco, ok, b.valor_financiado || 0, b.parcela_48 || 0, b.parcela_60 || 0, b.valor_entrada || 0, b.observacao || null, b.id],
+             WHERE id = $8 AND ficha_id = $9`,
+            [b.banco, ok, b.valor_financiado || 0, b.parcela_48 || 0, b.parcela_60 || 0, b.valor_entrada || 0, b.observacao || null, b.id, Number(id)],
           );
         } else {
           await query(
