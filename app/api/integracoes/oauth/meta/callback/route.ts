@@ -104,6 +104,16 @@ export async function GET(req: NextRequest) {
     const pageToken = page.access_token;
     const pageId = String(page.id);
     const pageName = String(page.name || 'Pagina');
+    // A mesma Página não pode alimentar duas empresas do MANU.
+    const associacao = await query<{ empresa_id: number }>(
+      `SELECT DISTINCT empresa_id FROM public.manu_conexoes_oauth
+       WHERE provedor IN ('meta_facebook','meta_instagram') AND status='conectado'
+         AND (external_id=$1 OR meta->>'page_id'=$1)`, [pageId],
+    );
+    if (associacao.rows.some((c) => Number(c.empresa_id) !== Number(st.e))) {
+      return fail('pagina_ja_vinculada_a_outra_empresa');
+    }
+
 
     const token = gerarToken();
     const integId = randomUUID();
@@ -214,12 +224,20 @@ export async function GET(req: NextRequest) {
         'feed',
         'leadgen',
       ].join(',');
-      await fetch(
+      const subscribed = await fetch(
         `https://graph.facebook.com/v21.0/${pageId}/subscribed_apps?subscribed_fields=${fields}&access_token=${encodeURIComponent(pageToken)}`,
         { method: 'POST' },
       );
+      if (!subscribed.ok) {
+        await query(`UPDATE public.manu_conexoes_oauth SET status='erro', meta=COALESCE(meta,'{}'::jsonb)||$2::jsonb WHERE empresa_id=$1 AND provedor='meta_facebook' AND external_id=$3`,
+          [st.e, JSON.stringify({ webhook_registered: false, subscribe_status: subscribed.status }), pageId]);
+        return fail('login_autorizado_mas_webhook_meta_nao_ativado');
+      }
+      await query(`UPDATE public.manu_conexoes_oauth SET meta=COALESCE(meta,'{}'::jsonb)||'{"webhook_registered":true}'::jsonb WHERE empresa_id=$1 AND provedor='meta_facebook' AND external_id=$2`, [st.e, pageId]);
     } catch (e) {
       console.error('subscribed_apps', e);
+      await query(`UPDATE public.manu_conexoes_oauth SET status='erro', meta=COALESCE(meta,'{}'::jsonb)||'{"webhook_registered":false}'::jsonb WHERE empresa_id=$1 AND provedor='meta_facebook' AND external_id=$2`, [st.e, pageId]).catch(() => {});
+      return fail('nao_foi_possivel_ativar_webhook_meta');
     }
 
     return NextResponse.redirect(base + '/integracoes?oauth=ok&page=' + encodeURIComponent(pageName));

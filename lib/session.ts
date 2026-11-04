@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 import { queryOne } from './db';
 import { STATUS_LOGIN_OK } from './tenant';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'development' ? 'dev-secret' : '');
 
 export interface SessionUser {
   id: number;
@@ -19,10 +19,12 @@ export interface SessionUser {
 }
 
 export function signSession(user: SessionUser): string {
+  if (!JWT_SECRET) throw new Error('JWT_SECRET obrigatório no servidor');
   return jwt.sign(user, JWT_SECRET, { expiresIn: '7d' });
 }
 
 export function verifySession(token: string): SessionUser | null {
+  if (!JWT_SECRET) return null;
   try {
     return jwt.verify(token, JWT_SECRET) as SessionUser;
   } catch {
@@ -90,8 +92,10 @@ export async function requireUser(req: NextRequest): Promise<SessionUser | null>
     u.loja = row.loja || u.loja;
     u.nome = row.nome || u.nome;
     u.login = row.login || u.login;
-  } catch {
-    // modo degradado: confia no JWT se coluna empresa ainda não existir
+  } catch (e) {
+    // Sem consulta ao banco, não confiar em JWT antigo: papel/empresa podem ter sido alterados.
+    console.error('[auth] validação no banco indisponível', e instanceof Error ? e.message : 'erro');
+    return null;
   }
   return u;
 }

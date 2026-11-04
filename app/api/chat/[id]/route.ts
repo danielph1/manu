@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireUser } from '@/lib/session';
+import { leadAcessivel } from '@/lib/lead-access';
 
 export const runtime = 'nodejs';
 
@@ -9,8 +10,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   const { id } = await params;
   const b = await req.json();
-  const msg = await queryOne(`SELECT remetente_id FROM public.chat_geral_mensagens WHERE id = $1`, [id]);
+  const msg = await queryOne(`SELECT remetente_id, lead_id FROM public.chat_geral_mensagens WHERE id = $1`, [id]);
   if (!msg) return NextResponse.json({ error: 'não encontrada' }, { status: 404 });
+  if (!msg.lead_id || !await leadAcessivel(u, Number(msg.lead_id))) return NextResponse.json({ error: 'sem acesso ao lead' }, { status: 403 });
   if (Number(msg.remetente_id) !== Number(u.id)) {
     return NextResponse.json({ error: 'só quem enviou edita' }, { status: 403 });
   }
@@ -22,9 +24,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   const { id } = await params;
-  const msg = await queryOne(`SELECT remetente_id FROM public.chat_geral_mensagens WHERE id = $1`, [id]);
+  const msg = await queryOne(`SELECT remetente_id, lead_id FROM public.chat_geral_mensagens WHERE id = $1`, [id]);
   if (!msg) return NextResponse.json({ error: 'não encontrada' }, { status: 404 });
-  const pode = Number(msg.remetente_id) === Number(u.id) || ['admin', 'gerente'].includes(String(u.tipo || '').toLowerCase());
+  if (!msg.lead_id || !await leadAcessivel(u, Number(msg.lead_id))) return NextResponse.json({ error: 'sem acesso ao lead' }, { status: 403 });
+  const pode = Number(msg.remetente_id) === Number(u.id) || ['admin', 'gerente', 'marketing', 'superadmin'].includes(String(u.tipo || '').toLowerCase());
   if (!pode) return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
   await query(`DELETE FROM public.chat_geral_mensagens WHERE id = $1`, [id]);
   return NextResponse.json({ ok: true });

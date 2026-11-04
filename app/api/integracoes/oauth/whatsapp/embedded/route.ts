@@ -81,8 +81,15 @@ export async function POST(req: NextRequest) {
   }
 
   if (!phoneNumberId) {
-    // ainda assim grava WABA — admin completa phone id depois
-    phoneNumberId = wabaId ? `waba:${wabaId}` : `pending:${empresaId}`;
+    return NextResponse.json({ error: 'A Meta não confirmou o ID do número. A conexão não foi ativada.' }, { status: 422 });
+  }
+  const { rows: outrasEmpresas } = await query<{ empresa_id: number }>(
+    `SELECT DISTINCT empresa_id FROM public.manu_conexoes_oauth
+     WHERE provedor='whatsapp_cloud' AND status='conectado'
+       AND (external_id=$1 OR meta->>'phone_number_id'=$1)`, [phoneNumberId],
+  );
+  if (outrasEmpresas.some((x) => Number(x.empresa_id) !== empresaId)) {
+    return NextResponse.json({ error: 'Este WhatsApp já está conectado a outra empresa.' }, { status: 409 });
   }
 
   const integId = randomUUID();

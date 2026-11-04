@@ -75,7 +75,16 @@ export async function GET(req: NextRequest) {
       integracaoId = null;
     }
 
-    const userId = String(tj.user_id || 'ml');
+    const userId = String(tj.user_id || '');
+    if (!userId) return fail('mercadolivre_nao_identificou_conta');
+    const { rows: mesmasContas } = await query<{ empresa_id: number }>(
+      `SELECT DISTINCT empresa_id FROM public.manu_conexoes_oauth
+       WHERE provedor='mercadolivre' AND external_id=$1 AND status='conectado'`, [userId],
+    );
+    if (mesmasContas.some((c) => Number(c.empresa_id) !== Number(st.e))) {
+      return fail('conta_mercadolivre_ja_vinculada_a_outra_empresa');
+    }
+
     try {
       await query(
         `DELETE FROM public.manu_conexoes_oauth WHERE empresa_id=$1 AND provedor='mercadolivre' AND status='conectado'`,

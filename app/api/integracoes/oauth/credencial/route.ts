@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     if (existing) {
       await query(
         `UPDATE public.manu_conexoes_oauth SET
-           status='conectado', access_token_enc=$2, meta=$3::jsonb,
+           status='pendente', access_token_enc=$2, meta=$3::jsonb,
            label=$4, integracao_id=$5, atualizado_em=now()
          WHERE id=$1`,
         [existing.id, apiKey, JSON.stringify(meta), label, integId],
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
       await queryOne(
         `INSERT INTO public.manu_conexoes_oauth
           (empresa_id, provedor, status, label, external_id, access_token_enc, meta, integracao_id, criado_por)
-         VALUES ($1,$2,'conectado',$3,$4,$5,$6::jsonb,$7,$8) RETURNING id`,
+         VALUES ($1,$2,'pendente',$3,$4,$5,$6::jsonb,$7,$8) RETURNING id`,
         [empresaId, provedor, label, external, apiKey, JSON.stringify(meta), integId, actor.id],
       );
     }
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    status: 'conectado',
+    status: 'pendente',
     provedor,
     webhook_url,
     message:

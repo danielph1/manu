@@ -43,5 +43,5 @@ Redeploy do Next depois do push.
 `/api/olx` e `/api/napista` agora retornam **410**. Use só a URL da Edge Function gerada na tela.
 
 ## Observação WhatsApp / Z-API
-Este pacote **não substitui** o Z-API. WhatsApp continua em `/api/webhooks/zapi`.  
+Este pacote **não substitui** o Z-API. O webhook Z-API antigo (`/api/webhooks/zapi`) foi desativado por risco multiempresa. Reconecte cada instância em **Central de Integrações**, que configura uma URL autenticada e exclusiva para a empresa.  
 OLX/NaPista/custom usam a Edge Function isolada por empresa.

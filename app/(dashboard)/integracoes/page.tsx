@@ -39,18 +39,35 @@ export default function IntegracoesPage() {
   const [avancado, setAvancado] = useState(false);
 
   const carregar = useCallback(async () => {
-    const [b, c] = await Promise.all([
-      api.get('/integracoes/empresas'),
-      api.get('/integracoes/oauth').catch(() => ({ data: [] })),
-    ]);
-    setEmpresas(Array.isArray(b.data) ? b.data : []);
-    setEmpresa((x) => x || String(b.data?.[0]?.id ?? ''));
-    setOauth(Array.isArray(c.data) ? c.data : []);
+    const { data } = await api.get('/integracoes/empresas');
+    const lista = Array.isArray(data) ? data : [];
+    setEmpresas(lista);
+    setEmpresa((atual) => lista.some((e: Empresa) => String(e.id) === atual)
+      ? atual : String(lista[0]?.id ?? ''));
   }, []);
 
+  // Não reutiliza conexões de outra empresa enquanto a nova consulta carrega.
   useEffect(() => {
-    if (!isLoading && autorizado) carregar().catch(() => toast.error('Falha ao carregar'));
+    if (!isLoading && autorizado) carregar().catch(() => toast.error('Falha ao carregar empresas'));
   }, [isLoading, autorizado, carregar]);
+
+  const [carregandoConexoes, setCarregandoConexoes] = useState(false);
+  const atualizarConexoes = useCallback(async () => {
+    if (!empresa) { setOauth([]); return; }
+    setCarregandoConexoes(true);
+    try {
+      const { data } = await api.get('/integracoes/oauth', { params: { empresa_id: empresa } });
+      setOauth(Array.isArray(data) ? data.filter((c: OauthConn) => String(c.empresa_id) === empresa) : []);
+    } catch (e: any) {
+      setOauth([]);
+      toast.error(e?.response?.data?.error || 'Não foi possível consultar as conexões desta empresa');
+    } finally { setCarregandoConexoes(false); }
+  }, [empresa]);
+
+  useEffect(() => {
+    setOauth([]);
+    if (empresa) atualizarConexoes();
+  }, [empresa, atualizarConexoes]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -58,13 +75,13 @@ export default function IntegracoesPage() {
     if (p.get('oauth') === 'ok') {
       toast.success(`Conectado: ${p.get('page') || 'canal'}`);
       window.history.replaceState({}, '', '/integracoes');
-      carregar();
+      atualizarConexoes();
     }
     if (p.get('oauth_error')) {
       toast.error(`OAuth: ${p.get('oauth_error')}`);
       window.history.replaceState({}, '', '/integracoes');
     }
-  }, [carregar]);
+  }, [atualizarConexoes]);
 
   async function conectarMeta() {
     setBusy('meta');
@@ -134,7 +151,7 @@ export default function IntegracoesPage() {
       setApiKey('');
       setClientId('');
       setCanalAberto('');
-      await carregar();
+      await atualizarConexoes();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || e?.response?.data?.error || 'Erro');
     } finally {
@@ -148,19 +165,19 @@ export default function IntegracoesPage() {
     try {
       await api.post('/integracoes/oauth/desconectar', { id });
       toast.success('Canal desconectado');
-      await carregar();
+      await atualizarConexoes();
     } catch (e: any) {
       toast.error(e?.response?.data?.error || 'Falha ao desconectar');
     }
   }
 
   function statusDe(provedor: string) {
-    return oauth.find(
-      (o) =>
-        o.provedor === provedor ||
+    if (!empresa || carregandoConexoes) return undefined;
+    return oauth.find((o) => String(o.empresa_id) === empresa &&
+      (o.provedor === provedor ||
         (provedor === 'facebook' && o.provedor === 'meta_facebook') ||
-        (provedor === 'whatsapp' && (o.provedor === 'whatsapp_cloud' || o.provedor === 'whatsapp_qr')),
-    );
+        (provedor === 'whatsapp' && ['whatsapp_cloud', 'whatsapp_qr'].includes(o.provedor)))
+      && o.status === 'conectado');
   }
 
   if (isLoading) return <div className="p-6">Carregando…</div>;
@@ -182,7 +199,7 @@ export default function IntegracoesPage() {
           <select
             className="mt-1 w-full rounded-md border bg-background p-2"
             value={empresa}
-            onChange={(e) => setEmpresa(e.target.value)}
+            onChange={(e) => { setOauth([]); setEmpresa(e.target.value); }}
           >
             {empresas.map((e) => (
               <option key={e.id} value={e.id}>{e.nome}</option>
@@ -214,14 +231,14 @@ export default function IntegracoesPage() {
             <p className="text-sm text-muted-foreground">
               Login oficial Meta · Página + Instagram vinculado · leads/mensagens FB, IG e Marketplace nesta empresa
             </p>
-            {statusDe('meta_facebook') && (
-              <p className="text-xs mt-1 text-amber-500">Status: {statusDe('meta_facebook')!.status}</p>
-            )}
+            <p className={`text-xs mt-1 ${statusDe('meta_facebook') ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+              {carregandoConexoes ? 'Verificando…' : statusDe('meta_facebook') ? 'Conta registrada para esta empresa' : 'Não conectada nesta empresa'}
+            </p>
           </div>
         </button>
 
-        <ZapiQrConnect empresaId={empresa} onConnected={() => carregar()} />
-          <MetaEmbeddedSignup empresaId={empresa} onConnected={() => carregar()} />
+        <ZapiQrConnect empresaId={empresa} onConnected={() => atualizarConexoes()} />
+          <MetaEmbeddedSignup empresaId={empresa} onConnected={() => atualizarConexoes()} />
 
         {/* Mercado Livre OAuth */}
         <button
@@ -238,9 +255,9 @@ export default function IntegracoesPage() {
             <p className="text-sm text-muted-foreground">
               Login oficial ML · a loja autoriza a conta dela · token só desta empresa
             </p>
-            {statusDe('mercadolivre') && (
-              <p className="text-xs mt-1 text-emerald-500">Status: {statusDe('mercadolivre')!.status}</p>
-            )}
+            <p className={`text-xs mt-1 ${statusDe('mercadolivre') ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+              {carregandoConexoes ? 'Verificando…' : statusDe('mercadolivre') ? 'Conta registrada para esta empresa' : 'Não conectada nesta empresa'}
+            </p>
           </div>
         </button>
 
@@ -370,12 +387,13 @@ export default function IntegracoesPage() {
 
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-sm">Conexões desta visão</h2>
-        <button type="button" onClick={() => carregar()} className="rounded-md border p-2">
+        <button type="button" onClick={() => atualizarConexoes()} className="rounded-md border p-2">
           <RefreshCcw className="h-4 w-4" />
         </button>
       </div>
-      {oauth.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma conexão ainda.</p>}
-      {oauth.map((o) => (
+      {carregandoConexoes && <p className="text-sm text-muted-foreground">Consultando conexões desta empresa…</p>}
+      {!carregandoConexoes && oauth.length === 0 && <p className="text-sm text-muted-foreground">Esta empresa não possui conexão ativa registrada.</p>}
+      {oauth.filter((o) => String(o.empresa_id) === empresa).map((o) => (
         <div key={o.id} className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm">
           <div className="min-w-0">
             <div className="font-medium truncate">{o.label || o.provedor}</div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { requireUser } from '@/lib/session';
-import { isSuperAdmin, isGerenteLoja } from '@/lib/tenant';
+import { isGerenteLoja } from '@/lib/tenant';
 
 export const runtime = 'nodejs';
 
@@ -14,23 +14,27 @@ export async function GET(req: NextRequest) {
   const params: unknown[] = [];
 
   const tipo = String(u.tipo || '').toLowerCase();
+  if (tipo === 'vendedor' && !u.vendedor_id) return NextResponse.json({ error: 'Usuário vendedor sem vínculo cadastrado' }, { status: 403 });
+  if (tipo === 'gerente' && !u.loja) return NextResponse.json({ error: 'Gerente sem loja atribuída' }, { status: 403 });
+  // Toda consulta deve estar limitada à empresa, inclusive para leads sem vendedor.
+  if (tipo !== 'superadmin') {
+    if (!u.empresa_id) return NextResponse.json({ error: 'Usuário sem empresa definida' }, { status: 403 });
+    params.push(Number(u.empresa_id));
+    where.push(`COALESCE(l.empresa_id, (SELECT vv.empresa_id FROM public.vendedores vv WHERE vv.id=l.vendedor_id)) = $${params.length}`);
+  }
+
   if (tipo === 'vendedor' && u.vendedor_id) {
     params.push(u.vendedor_id);
     where.push(`l.vendedor_id = $${params.length}`);
   } else if (isGerenteLoja(u) && u.loja) {
     params.push(String(u.loja).toUpperCase());
-    let g = `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${params.length})`;
+    let g = `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'')) = UPPER($${params.length})`;
     if ((u as any).empresa_id) {
       params.push((u as any).empresa_id);
       g += ` AND empresa_id = $${params.length}`;
     }
     g += ')';
     where.push(g);
-  } else if (!isSuperAdmin(u) && (u as any).empresa_id) {
-    params.push((u as any).empresa_id);
-    where.push(
-      `(l.vendedor_id IS NULL OR l.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${params.length}))`,
-    );
   }
 
   if (busca) {
