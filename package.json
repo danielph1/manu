@@ -11,7 +11,8 @@
     "prebuild": "node scripts/check-routes.mjs",
     "media:once": "node workers/media-processor/worker.mjs --once",
     "media:worker": "node workers/media-processor/worker.mjs",
-    "test:permissoes": "node tests/superadmin-permissoes.test.cjs"
+    "test:permissoes": "node tests/superadmin-permissoes.test.cjs",
+    "test:fichas": "node tests/fichas-persistencia.test.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "5.1.1",

@@ -119,7 +119,10 @@ export async function GET(req: NextRequest) {
     else if (filtro === 'vendidos') {
       where.push('(COALESCE(l.venda_concluida, FALSE) = TRUE OR l.data_venda IS NOT NULL)');
     } else if (filtro === 'negados') {
-      where.push('COALESCE(l.gerou_ficha, FALSE) = TRUE AND COALESCE(l.aprovado, FALSE) = FALSE');
+      where.push(`EXISTS (SELECT 1 FROM public.fichas_credito fn WHERE fn.lead_id=l.id
+        AND (LOWER(COALESCE(fn.status_geral,'')) LIKE 'negad%'
+          OR LOWER(COALESCE(fn.status_geral,'')) LIKE 'recus%'
+          OR LOWER(COALESCE(fn.status_geral,'')) LIKE 'reprov%'))`);
     }
 
     if (busca) {
@@ -187,11 +190,12 @@ export async function POST(req: NextRequest) {
       'nome_completo', 'observacao', 'respondeu', 'gerou_ficha', 'aprovado',
       'produto_interesse', 'origem_id',
       'em_loja', 'cliente_na_loja', 'venda_concluida',
-      'data_nascimento', 'habilitado', 'carro_selecionado', 'ano_carro',
+      'data_nascimento', 'habilitado', 'carro_selecionado', 'marca_carro', 'cor_carro', 'ano_carro',
       'placa_carro', 'valor_carro', 'valor_entrada', 'nome_pai', 'nome_mae',
       'rg', 'data_expedicao', 'orgao_expeditor', 'email', 'endereco', 'bairro',
       'cidade', 'estado', 'cep', 'empresa', 'cnpj', 'endereco_empresa',
-      'cep_empresa', 'salario', 'banco_correntista',
+      'bairro_empresa', 'cidade_empresa', 'estado_empresa', 'cep_empresa', 'tempo_carreira',
+      'salario', 'banco_correntista',
     ] as const;
     const datas = new Set(['data_lead', 'data_nascimento', 'data_expedicao']);
     const numeros = new Set(['valor_carro', 'valor_entrada', 'salario', 'origem_id']);
@@ -203,6 +207,8 @@ export async function POST(req: NextRequest) {
       if (campo === 'nome_lead') return nome;
       if (campo === 'nome_completo') return body.nome_completo || nome;
       if (campo === 'gerou_ficha') return ficha;
+      // Status sem decisão: NULL, jamais FALSE por padrão.
+      if (campo === 'aprovado') return body.aprovado === true ? true : null;
       if (campo === 'data_lead') return body.data_lead || new Date().toISOString().slice(0, 10);
       if (campo === 'cliente_na_loja') return Boolean(body.cliente_na_loja ?? body.em_loja);
       const raw = body[campo];
@@ -230,8 +236,8 @@ export async function POST(req: NextRequest) {
       const lead = inserido.rows[0];
       if (ficha) {
         await db.query(
-          `INSERT INTO public.fichas_credito (lead_id, vendedor_id, criado_por_id, valor_entrada, valor_veiculo)
-           VALUES ($1,$2,$3,$4,$5)`,
+          `INSERT INTO public.fichas_credito (lead_id, vendedor_id, criado_por_id, valor_entrada, valor_veiculo, status_geral)
+           VALUES ($1,$2,$3,$4,$5,'pendente')`,
           [lead.id, vendedorId, u.id, Number(body.valor_entrada || 0), Number(body.valor_carro || 0)],
         );
       }

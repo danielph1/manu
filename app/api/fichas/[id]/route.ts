@@ -1,180 +1,201 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, queryOne } from '@/lib/db';
+import { getPool, query, queryOne } from '@/lib/db';
 import { requireUser, can } from '@/lib/session';
 import { notificar } from '@/lib/notify';
 import { fichaAcessivel } from '@/lib/ficha-access';
 
 export const runtime = 'nodejs';
 
+type BancoRecebido = {
+  id?: number | string;
+  client_key?: string;
+  banco?: string;
+  status?: string;
+  valor_financiado?: number | string | null;
+  parcela_48?: number | string | null;
+  parcela_60?: number | string | null;
+  valor_entrada?: number | string | null;
+  observacao?: string | null;
+};
+
+const CAMPOS_FICHA = [
+  'status_geral','banco_contratado','valor_liberado','valor_financiado','valor_entrada',
+  'entrada_total','entrada_paga','valor_pendente','gerou_boleto','boleto_valor','boleto_meses',
+  'boleto_total','valor_veiculo','fin_parcelas','fin_valor_parcela','observacao_elfenai','etapa_obs',
+  'pendente_documentacao','contrato_em_analise','pendente_assinatura','contrato_pago','contrato_recusado',
+] as const;
+const CAMPOS_NUMERICOS = new Set<string>([
+  'valor_liberado','valor_financiado','valor_entrada','entrada_total','entrada_paga','valor_pendente',
+  'boleto_valor','boleto_meses','boleto_total','valor_veiculo','fin_parcelas','fin_valor_parcela',
+]);
+const CAMPOS_BOOLEANOS = new Set<string>([
+  'gerou_boleto','pendente_documentacao','contrato_em_analise','pendente_assinatura','contrato_pago','contrato_recusado',
+]);
+
+function dinheiro(valor: unknown) {
+  if (valor === '' || valor == null) return null;
+  const n = Number(valor);
+  if (!Number.isFinite(n) || n < 0 || n > 1_000_000_000) throw new Error('Valor numérico inválido na ficha');
+  return n;
+}
+function normalizarStatus(v: unknown) {
+  const s = String(v || 'pendente').trim().toLowerCase();
+  if (s.startsWith('aprov')) return 'aprovada';
+  if (s.startsWith('neg') || s.startsWith('recus') || s.startsWith('reprov')) return 'negada';
+  if (['pendente','concluido','concluído','comprado'].includes(s)) return s;
+  throw new Error('Status geral da ficha inválido');
+}
+function normalizarStatusBanco(v: unknown) {
+  const s = String(v || 'pendente').trim().toLowerCase();
+  if (s.startsWith('aprov')) return 'aprovado';
+  if (s.startsWith('neg') || s.startsWith('recus') || s.startsWith('reprov')) return 'negado';
+  if (s === 'pendente') return 'pendente';
+  throw new Error('Status do banco inválido');
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   const { id } = await params;
   try {
-    const ficha = await queryOne(
-      `SELECT f.* FROM public.fichas_credito f WHERE f.id = $1`,
-      [id],
-    );
+    const ficha = await queryOne(`SELECT f.* FROM public.fichas_credito f WHERE f.id = $1`, [id]);
     if (!ficha) return NextResponse.json({ error: 'ficha não encontrada' }, { status: 404 });
     if (!(await fichaAcessivel(u, ficha))) return NextResponse.json({ error: 'Ficha fora da sua empresa ou loja' }, { status: 403 });
-
-    let lead: any = null;
-    if (ficha.lead_id) {
-      try {
-        lead = await queryOne(`SELECT * FROM public.leads WHERE id = $1`, [ficha.lead_id]);
-      } catch { lead = null; }
-    }
-    let bancos: any[] = [];
-    try {
-      const r = await query(`SELECT * FROM public.ficha_bancos WHERE ficha_id = $1 ORDER BY id`, [id]);
-      bancos = r.rows;
-    } catch { bancos = []; }
-
+    const lead = ficha.lead_id ? await queryOne(`SELECT * FROM public.leads WHERE id = $1`, [ficha.lead_id]) : null;
+    const { rows: bancos } = await query(`SELECT * FROM public.ficha_bancos WHERE ficha_id = $1 ORDER BY id`, [id]);
     const responsavel = ficha.vendedor_id ? await queryOne<{empresa_id:number|null;loja:string|null}>(
       `SELECT empresa_id, loja FROM public.vendedores WHERE id=$1`, [ficha.vendedor_id]) : null;
-    // Contexto confiável para o superadmin gerar faturamento na empresa/loja corretas.
-    return NextResponse.json({ ...ficha, lead, bancos,
-      empresa_id: responsavel?.empresa_id || lead?.empresa_id || null,
-      loja: responsavel?.loja || null,
-    });
+    return NextResponse.json({ ...ficha, status_geral: ficha.status_geral || 'pendente', lead, bancos,
+      empresa_id: responsavel?.empresa_id || lead?.empresa_id || null, loja: responsavel?.loja || null });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'erro ao abrir ficha' }, { status: 500 });
   }
 }
 
-async function ensureFichaCols() {
-  const cols = [
-    ['pendente_documentacao', 'boolean DEFAULT false'],
-    ['contrato_em_analise', 'boolean DEFAULT false'],
-    ['pendente_assinatura', 'boolean DEFAULT false'],
-    ['contrato_pago', 'boolean DEFAULT false'],
-    ['contrato_recusado', 'boolean DEFAULT false'],
-    ['valor_liberado', 'numeric'],
-    ['entrada_paga', 'numeric'],
-    ['valor_pendente', 'numeric'],
-    ['observacao_elfenai', 'text'],
-    ['etapa_obs', 'text'],
-  ];
-  for (const [c, typ] of cols) {
-    try {
-      await query(`ALTER TABLE public.fichas_credito ADD COLUMN IF NOT EXISTS ${c} ${typ}`);
-    } catch { /* ok */ }
-  }
-}
-
+/** Grava ficha, etapas e todos os bancos NUMA transação. Não perde alterações em falha parcial. */
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = await requireUser(req);
   if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
   if (!can.editarFichasBanco(u)) return NextResponse.json({ error: 'Seu cargo não permite editar fichas bancárias' }, { status: 403 });
   const { id } = await params;
-  const ficha = await queryOne<{ lead_id: number | null; vendedor_id: number | null }>(
-    `SELECT lead_id, vendedor_id FROM public.fichas_credito WHERE id=$1`, [id]);
+  const fichaId = Number(id);
+  if (!Number.isSafeInteger(fichaId) || fichaId <= 0) return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
+  const ficha = await queryOne<{lead_id:number|null;vendedor_id:number|null}>(
+    `SELECT lead_id, vendedor_id FROM public.fichas_credito WHERE id=$1`, [fichaId]);
   if (!ficha) return NextResponse.json({ error: 'Ficha não encontrada' }, { status: 404 });
   if (!(await fichaAcessivel(u, ficha))) return NextResponse.json({ error: 'Ficha fora da sua empresa ou loja' }, { status: 403 });
-  const body = await req.json();
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Corpo da ficha inválido' }, { status: 400 });
+  if ('bancos' in body && (!Array.isArray(body.bancos) || body.bancos.length > 30))
+    return NextResponse.json({ error: 'Lista de bancos inválida (máximo 30)' }, { status: 400 });
+
+  const db = await getPool().connect();
+  let resumoVendedor: string | null = null;
   try {
-    // Conferir IDs de banco ANTES de alterar qualquer dado da ficha.
-    if (Array.isArray(body.bancos)) {
-      const existentes = await query(`SELECT id FROM public.ficha_bancos WHERE ficha_id=$1`, [id]);
-      const idsPermitidos = new Set(existentes.rows.map((r: any) => Number(r.id)));
-      if (body.bancos.some((b: any) => b.id && !idsPermitidos.has(Number(b.id))))
-        return NextResponse.json({ error: 'Um dos bancos não pertence a esta ficha' }, { status: 403 });
-    }
-    await ensureFichaCols();
-    const allowed = [
-      'status_geral','banco_contratado','valor_liberado','valor_financiado','valor_entrada',
-      'entrada_total','entrada_paga','valor_pendente','gerou_boleto','boleto_valor','boleto_meses',
-      'boleto_total','valor_veiculo',
-      'pendente_documentacao','contrato_em_analise','pendente_assinatura','contrato_pago','contrato_recusado',
-    ];
+    await db.query('BEGIN');
+    const atualRes = await db.query(`SELECT * FROM public.fichas_credito WHERE id=$1 FOR UPDATE`, [fichaId]);
+    const atual = atualRes.rows[0];
+    if (!atual) throw new Error('Ficha não encontrada');
+
     const sets: string[] = [];
-    const params2: unknown[] = [];
-    for (const k of allowed) {
-      if (k in body) {
-        params2.push(body[k]);
-        sets.push(`${k} = $${params2.length}`);
-      }
+    const vals: unknown[] = [];
+    for (const campo of CAMPOS_FICHA) {
+      if (!(campo in body)) continue;
+      let v: unknown = body[campo];
+      if (campo === 'status_geral') v = normalizarStatus(v);
+      else if (CAMPOS_NUMERICOS.has(campo)) v = dinheiro(v);
+      else if (CAMPOS_BOOLEANOS.has(campo)) v = v === true;
+      else if (typeof v === 'string') v = v.trim().slice(0, 5000);
+      vals.push(v);
+      sets.push(`${campo}=$${vals.length}`);
     }
     if (sets.length) {
-      params2.push(id);
-      await query(
-        `UPDATE public.fichas_credito SET ${sets.join(', ')} WHERE id = $${params2.length}`,
-        params2,
-      );
+      vals.push(fichaId);
+      await db.query(`UPDATE public.fichas_credito SET ${sets.join(', ')} WHERE id=$${vals.length}`, vals);
     }
-    if (body.status_geral) {
-      const sg = String(body.status_geral).toLowerCase();
-      const aprov = sg.startsWith('aprov');
-      const neg = sg.startsWith('neg') || sg.startsWith('recus');
-      if (aprov || neg) {
-        await query(
-          `UPDATE public.leads SET aprovado = $1
-           WHERE id = (SELECT lead_id FROM public.fichas_credito WHERE id = $2)`,
-          [aprov, id],
-        );
+
+    // NULL = decisão ainda não tomada; FALSE = recusa explícita. Não usar FALSE como default.
+    if ('status_geral' in body && ficha.lead_id) {
+      const status = normalizarStatus(body.status_geral);
+      // Não reclassifica decisões históricas só por autosalvar uma observação.
+      const anterior = String(atual.status_geral || 'pendente').toLowerCase();
+      if (anterior !== status && ['pendente','aprovada','negada'].includes(status)) {
+        const aprovacao = status === 'pendente' ? null : status === 'aprovada';
+        await db.query(`UPDATE public.leads SET aprovado=$1 WHERE id=$2`, [aprovacao, ficha.lead_id]);
       }
     }
-    // recusado na análise do contrato → marca lead como não aprovado
     if (body.contrato_recusado === true) {
-      await query(
-        `UPDATE public.leads SET aprovado = FALSE
-         WHERE id = (SELECT lead_id FROM public.fichas_credito WHERE id = $1)`,
-        [id],
-      );
+      await db.query(`UPDATE public.fichas_credito SET status_geral='negada' WHERE id=$1`, [fichaId]);
+      if (ficha.lead_id) await db.query(`UPDATE public.leads SET aprovado=FALSE WHERE id=$1`, [ficha.lead_id]);
     }
-    if (Array.isArray(body.bancos)) {
-      for (const b of body.bancos) {
-        const st = String(b.status || 'pendente').toLowerCase();
-        const ok = st.startsWith('aprov') ? 'aprovado' : (st.startsWith('neg') || st.startsWith('recus')) ? 'negado' : 'pendente';
-        if (b.id) {
-          await query(
-            `UPDATE public.ficha_bancos
-             SET banco = $1, status = $2, valor_financiado = $3, parcela_48 = $4, parcela_60 = $5,
-                 valor_entrada = $6, observacao = $7
-             WHERE id = $8 AND ficha_id = $9`,
-            [b.banco, ok, b.valor_financiado || 0, b.parcela_48 || 0, b.parcela_60 || 0, b.valor_entrada || 0, b.observacao || null, b.id, Number(id)],
-          );
+
+    if ('bancos' in body) {
+      const existente = await db.query(`SELECT id FROM public.ficha_bancos WHERE ficha_id=$1 FOR UPDATE`, [fichaId]);
+      const permitidos = new Set(existente.rows.map((x: any) => Number(x.id)));
+      const manter: number[] = [];
+      for (const b of body.bancos as BancoRecebido[]) {
+        const banco = String(b.banco || '').trim().slice(0, 140);
+        if (!banco) continue; // cartão recém-adicionado mas ainda não preenchido
+        const st = normalizarStatusBanco(b.status || 'pendente');
+        const obs = String(b.observacao || '').slice(0, 2000);
+        const valores = [banco, st, dinheiro(b.valor_financiado), dinheiro(b.parcela_48),
+          dinheiro(b.parcela_60), dinheiro(b.valor_entrada), obs || null];
+        const itemId = b.id == null || b.id === '' ? null : Number(b.id);
+        const key = b.client_key && /^[a-zA-Z0-9:_-]{6,100}$/.test(b.client_key) ? b.client_key : null;
+        let salvo: number;
+        if (itemId) {
+          if (!permitidos.has(itemId)) throw new Error('Banco não pertence a esta ficha');
+          const r = await db.query(`UPDATE public.ficha_bancos SET banco=$1,status=$2,valor_financiado=$3,
+            parcela_48=$4,parcela_60=$5,valor_entrada=$6,observacao=$7
+            WHERE id=$8 AND ficha_id=$9 RETURNING id`, [...valores, itemId, fichaId]);
+          salvo = Number(r.rows[0].id);
+        } else if (key) {
+          const r = await db.query(`INSERT INTO public.ficha_bancos
+            (ficha_id,banco,status,valor_financiado,parcela_48,parcela_60,valor_entrada,observacao,client_key)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            ON CONFLICT (ficha_id,client_key) WHERE client_key IS NOT NULL DO UPDATE SET
+            banco=EXCLUDED.banco,status=EXCLUDED.status,valor_financiado=EXCLUDED.valor_financiado,
+            parcela_48=EXCLUDED.parcela_48,parcela_60=EXCLUDED.parcela_60,
+            valor_entrada=EXCLUDED.valor_entrada,observacao=EXCLUDED.observacao RETURNING id`,
+            [fichaId, ...valores, key]);
+          salvo = Number(r.rows[0].id);
         } else {
-          await query(
-            `INSERT INTO public.ficha_bancos (ficha_id, banco, status, valor_financiado, parcela_48, parcela_60, valor_entrada, observacao)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [Number(id), b.banco || '—', ok, b.valor_financiado || 0, b.parcela_48 || 0, b.parcela_60 || 0, b.valor_entrada || 0, b.observacao || null],
-          );
+          const r = await db.query(`INSERT INTO public.ficha_bancos
+            (ficha_id,banco,status,valor_financiado,parcela_48,parcela_60,valor_entrada,observacao)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`, [fichaId,...valores]);
+          salvo = Number(r.rows[0].id);
         }
+        manter.push(salvo);
       }
+      // Um banco removido da interface realmente deixa de fazer parte da ficha.
+      if (manter.length) await db.query(`DELETE FROM public.ficha_bancos WHERE ficha_id=$1 AND NOT(id=ANY($2::bigint[]))`, [fichaId, manter]);
+      else await db.query(`DELETE FROM public.ficha_bancos WHERE ficha_id=$1`, [fichaId]);
     }
 
-    // notifica vendedor se pediu documentação
-    if (body.pendente_documentacao === true) {
-      try {
-        const info = await queryOne(
-          `SELECT f.lead_id, l.vendedor_id, COALESCE(l.nome_completo, l.nome_lead) AS nome
-           FROM public.fichas_credito f
-           LEFT JOIN public.leads l ON l.id = f.lead_id
-           WHERE f.id = $1`,
-          [id],
-        );
-        if (info?.vendedor_id) {
-          const vu = await queryOne(`SELECT id FROM public.usuarios WHERE vendedor_id = $1 LIMIT 1`, [info.vendedor_id]);
-          if (vu?.id) {
-            await query(
-              `INSERT INTO public.notificacoes (usuario_id, tipo, titulo, mensagem)
-               VALUES ($1,'ficha',$2,$3)`,
-              [vu.id, 'Pendente documentação', `Ficha de ${info.nome || '#'+id}: banco pediu documentos.`],
-            );
-          }
-        }
-      } catch { /* ok */ }
+    if (body.notificar_vendedor === true) {
+      const linhas = await db.query(`SELECT banco,status,observacao FROM public.ficha_bancos WHERE ficha_id=$1 ORDER BY id`, [fichaId]);
+      const obs = String(body.observacao_elfenai ?? atual.observacao_elfenai ?? '').trim();
+      const obsBancos = linhas.rows.filter((b: any) => b.observacao).map((b: any) => `${b.banco}: ${b.observacao}`);
+      resumoVendedor = [
+        `Ficha #${fichaId} atualizada.`,
+        obs,
+        ...obsBancos,
+        body.pendente_documentacao ? 'Documentação pendente.' : '',
+      ].filter(Boolean).join(' ').slice(0, 550);
     }
-
-    await notificar({
-      titulo: 'Ficha atualizada',
-      mensagem: `Ficha #${id} alterada por ${u.nome || u.login}`,
-      tipo: 'ficha',
-      tipos: ['elfenai', 'elfenaí', 'admin', 'gerente'],
-    });
-    return NextResponse.json({ ok: true });
+    await db.query('COMMIT');
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message }, { status: 500 });
+    await db.query('ROLLBACK').catch(() => {});
+    return NextResponse.json({ error: e?.message || 'Erro ao salvar a ficha' }, { status: 500 });
+  } finally { db.release(); }
+
+  if (resumoVendedor && ficha.vendedor_id) {
+    try {
+      const destino = await queryOne<{id:number;empresa_id:number|null}>(
+        `SELECT id,empresa_id FROM public.usuarios WHERE vendedor_id=$1 AND COALESCE(ativo,TRUE)=TRUE LIMIT 1`, [ficha.vendedor_id]);
+      if (destino) await notificar({ titulo:'Resposta da ficha bancária', mensagem:resumoVendedor,
+        tipo:'ficha', usuario_ids:[destino.id], empresa_id:destino.empresa_id || undefined, url:'/fichas' });
+    } catch { /* falha de push não desfaz alterações já confirmadas */ }
   }
+  return NextResponse.json({ ok:true, salvo:true });
 }

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -19,11 +19,20 @@ import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { chanceAprovacao } from '@/lib/credito-chance';
 
 const BANCOS = ['Itau', 'BV', 'Creditas', 'Bradesco', 'Pan', 'Safra', 'Santander', 'Volkswagen'];
+const STATUS_BANCOS = [
+  { v: 'pendente', l: 'Pendente' },
+  { v: 'aprovado', l: 'Aprovado' },
+  { v: 'negado', l: 'Negado' },
+];
 const STATUS = [
   { v: 'pendente', l: 'Pendente' },
   { v: 'aprovada', l: 'Aprovada' },
   { v: 'negada', l: 'Negada' },
 ];
+
+function novoIdentificadorBanco() {
+  return `b_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+}
 
 export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; onClose: () => void }) {
   const { user } = useAuth();
@@ -34,17 +43,116 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
   const [loading, setLoading] = useState(false);
 
   const [erro, setErro] = useState<string | null>(null);
+  const [hidratado, setHidratado] = useState<number | null>(null);
+  const [estadoSalvar, setEstadoSalvar] = useState<'pronto' | 'pendente' | 'salvando' | 'salvo' | 'erro'>('pronto');
+  const ignorarPrimeiroEfeito = useRef(false);
+  const timerSalvar = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cadeiaSalvar = useRef<Promise<unknown>>(Promise.resolve());
+  const versaoRascunho = useRef(0);
+  const alterado = useRef(false);
+  const houveEdicao = useRef(false);
+  const fichaAbertaRef = useRef(fichaId);
+  fichaAbertaRef.current = fichaId;
+
+  function payloadDaFicha(d: any, bs: any[], notificarVendedor: boolean) {
+    return {
+      status_geral: d.status_geral || 'pendente',
+      banco_contratado: d.banco_contratado || null,
+      valor_liberado: d.valor_liberado === '' ? null : d.valor_liberado,
+      valor_veiculo: d.valor_veiculo === '' ? null : d.valor_veiculo,
+      entrada_total: d.entrada_total === '' ? null : d.entrada_total,
+      entrada_paga: d.entrada_paga === '' ? null : d.entrada_paga,
+      valor_pendente: d.valor_pendente === '' ? null : d.valor_pendente,
+      fin_parcelas: d.fin_parcelas === '' ? null : d.fin_parcelas,
+      fin_valor_parcela: d.fin_valor_parcela === '' ? null : d.fin_valor_parcela,
+      observacao_elfenai: d.observacao_elfenai || '',
+      etapa_obs: d.etapa_obs || '',
+      gerou_boleto: !!d.gerou_boleto,
+      boleto_valor: d.boleto_valor === '' ? null : d.boleto_valor,
+      boleto_meses: d.boleto_meses === '' ? null : d.boleto_meses,
+      boleto_total: d.boleto_total === '' ? null : d.boleto_total,
+      pendente_documentacao: !!d.pendente_documentacao,
+      contrato_em_analise: !!d.contrato_em_analise,
+      pendente_assinatura: !!d.pendente_assinatura,
+      contrato_pago: !!d.contrato_pago,
+      contrato_recusado: !!d.contrato_recusado,
+      bancos: bs,
+      notificar_vendedor: notificarVendedor,
+    };
+  }
+
+  function persistirRascunho(d: any, bs: any[], notificarVendedor = false) {
+    const id = fichaId;
+    if (!id || !d) return Promise.reject(new Error('Ficha não carregada'));
+    if (timerSalvar.current) clearTimeout(timerSalvar.current);
+    const versao = versaoRascunho.current;
+    const dados = payloadDaFicha(d, bs, notificarVendedor);
+    setEstadoSalvar('salvando');
+    // Envia alterações em ordem. Nunca permite que uma resposta mais antiga sobrescreva a nova.
+    const proximo = cadeiaSalvar.current.catch(() => undefined)
+      .then(() => api.put(`/fichas/${id}`, dados));
+    cadeiaSalvar.current = proximo.then(() => {
+      if (fichaAbertaRef.current === id && versao === versaoRascunho.current) {
+        alterado.current = false;
+        setEstadoSalvar('salvo');
+      }
+    }, () => {
+      if (fichaAbertaRef.current === id) setEstadoSalvar('erro');
+    });
+    return proximo;
+  }
+
 
   useEffect(() => {
-    if (!fichaId) { setData(null); setErro(null); return; }
-    setErro(null);
-    api.get(`/fichas/${fichaId}`)
-      .then((r) => {
-        setData(r.data);
-        setBancos(r.data.bancos || []);
-      })
-      .catch((e: any) => setErro(e?.response?.data?.error || 'Não foi possível abrir a ficha'));
+    if (timerSalvar.current) clearTimeout(timerSalvar.current);
+    if (!fichaId) {
+      setData(null); setBancos([]); setErro(null); setHidratado(null);
+      setEstadoSalvar('pronto'); alterado.current = false; houveEdicao.current = false; return;
+    }
+    let ativo = true;
+    setData(null); setBancos([]); setErro(null); setHidratado(null);
+    setEstadoSalvar('pronto'); alterado.current = false; houveEdicao.current = false;
+    api.get(`/fichas/${fichaId}`).then((r) => {
+      if (!ativo) return;
+      ignorarPrimeiroEfeito.current = true;
+      setData({ ...r.data, status_geral: r.data.status_geral || 'pendente' });
+      setBancos(r.data.bancos || []);
+      setHidratado(fichaId);
+    }).catch((e: any) => {
+      if (ativo) setErro(e?.response?.data?.error || 'Não foi possível abrir a ficha');
+    });
+    return () => { ativo = false; if (timerSalvar.current) clearTimeout(timerSalvar.current); };
   }, [fichaId]);
+
+  useEffect(() => {
+    if (!fichaId || hidratado !== fichaId || !data || !Role.editarFichaBanco(user)) return;
+    if (ignorarPrimeiroEfeito.current) { ignorarPrimeiroEfeito.current = false; return; }
+    alterado.current = true;
+    houveEdicao.current = true;
+    versaoRascunho.current += 1;
+    setEstadoSalvar('pendente');
+    if (timerSalvar.current) clearTimeout(timerSalvar.current);
+    timerSalvar.current = setTimeout(() => {
+      persistirRascunho(data, bancos).catch(() => {});
+    }, 1200);
+    return () => { if (timerSalvar.current) clearTimeout(timerSalvar.current); };
+  }, [fichaId, hidratado, data, bancos, user?.tipo]);
+
+  async function fecharSalvando() {
+    if (loading) return;
+    if (Role.editarFichaBanco(user) && data && fichaId && houveEdicao.current) {
+      try {
+        setLoading(true);
+        await persistirRascunho(data, bancos, houveEdicao.current);
+        await cadeiaSalvar.current;
+      } catch (e: any) {
+        toast.error(e?.response?.data?.error || 'Não foi possível salvar. A ficha continuará aberta.');
+        setLoading(false);
+        return;
+      } finally { setLoading(false); }
+    }
+    onClose();
+  }
 
   if (!fichaId) return null;
   if (erro) return (
@@ -52,7 +160,7 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
       <DialogContent>
         <div className="space-y-3 p-4 text-center">
           <p className="text-rose-400">{erro}</p>
-          <Button onClick={onClose}>Fechar</Button>
+          <Button onClick={() => void fecharSalvando()}>Fechar</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -71,45 +179,22 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
     e.preventDefault();
     setLoading(true);
     try {
-      await api.put(`/fichas/${fichaId}`, {
-        status_geral: data.status_geral,
-        banco_contratado: data.banco_contratado,
-        valor_liberado: Number(data.valor_liberado) || 0,
-        valor_veiculo: Number(data.valor_veiculo) || 0,
-        entrada_total: Number(data.entrada_total) || 0,
-        entrada_paga: Number(data.entrada_paga) || 0,
-        valor_pendente: Number(data.valor_pendente) || 0,
-        gerou_boleto: !!data.gerou_boleto,
-        boleto_valor: Number(data.boleto_valor) || 0,
-        boleto_meses: Number(data.boleto_meses) || 0,
-        boleto_total: Number(data.boleto_total) || 0,
-        pendente_documentacao: !!data.pendente_documentacao,
-        contrato_em_analise: !!data.contrato_em_analise,
-        pendente_assinatura: !!data.pendente_assinatura,
-        contrato_pago: !!data.contrato_pago,
-        contrato_recusado: !!data.contrato_recusado,
-        bancos,
-      });
-      toast.success('Ficha atualizada');
+      await persistirRascunho(data, bancos, true);
+      toast.success('Ficha, bancos e etapas salvos. Vendedor notificado.');
       qc.invalidateQueries({ queryKey: ['fichas'] });
+      qc.invalidateQueries({ queryKey: ['leads'] });
       qc.invalidateQueries({ queryKey: ['metricas'] });
       onClose();
     } catch (e: any) {
-      toast.error(e?.response?.data?.error || (e?.response?.status === 403 ? 'Você não tem permissão para editar este registro.' : e?.response?.status === 401 ? 'Sua sessão expirou. Entre novamente.' : e?.code === 'ERR_NETWORK' ? 'Falha de conexão com o servidor. Verifique sua rede.' : `Erro ao salvar (HTTP ${e?.response?.status || 'sem resposta'}). Verifique os dados e a conexão.`));
+      toast.error(e?.response?.data?.error || 'Erro ao salvar. Seus dados continuam na tela.');
     } finally { setLoading(false); }
   }
-
 
   async function gerarVenda() {
     setLoading(true);
     try {
-      await api.put(`/fichas/${fichaId}`, {
-        status_geral: data.status_geral,
-        banco_contratado: data.banco_contratado,
-        valor_liberado: Number(data.valor_liberado) || 0,
-        entrada_total: Number(data.entrada_total) || 0,
-        gerou_boleto: data.gerou_boleto,
-      });
+      // Primeiro persiste todos os campos, bancos e etapas, depois gera o faturamento.
+      await persistirRascunho(data, bancos, true);
       const fat = await api.post('/faturamento', {
         // A empresa nunca é escolhida por adivinhação: vem do vendedor da ficha,
         // e o backend confirma se a loja pertence à empresa.
@@ -147,10 +232,13 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
   }
 
   return (
-    <Dialog open={!!fichaId} onOpenChange={(o) => !o && onClose()}>
+    <Dialog open={!!fichaId} onOpenChange={(o) => !o && void fecharSalvando()}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Ficha de credito #{fichaId}  {lead.nome_lead}</DialogTitle>
+          <DialogTitle>Ficha de crédito #{fichaId} — {lead.nome_lead}</DialogTitle>
+          {canEdit && <p role="status" aria-live="polite" className={`text-xs ${estadoSalvar === 'erro' ? 'text-rose-400' : 'text-muted-foreground'}`}>
+            {estadoSalvar === 'salvando' ? 'Salvando alterações…' : estadoSalvar === 'pendente' ? 'Alterações pendentes de sincronização…' : estadoSalvar === 'salvo' ? 'Todas as alterações foram salvas automaticamente.' : estadoSalvar === 'erro' ? 'Falha ao salvar automaticamente. Confira a conexão antes de fechar.' : 'Alterações serão salvas automaticamente.'}
+          </p>}
         </DialogHeader>
 
         <form onSubmit={save} className="space-y-5">
@@ -210,6 +298,19 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
                 {data.pendente_assinatura && <span className="rounded-full bg-violet-500/15 px-2 py-1 text-violet-400">Pendente assinatura</span>}
                 {data.contrato_pago && <span className="rounded-full bg-emerald-500/15 px-2 py-1 text-emerald-400">Contrato pago</span>}
               </div>
+              {data.observacao_elfenai && <div className="mt-3 rounded-lg border border-primary/30 p-3">
+                <p className="text-sm font-semibold">Orientação do setor bancário</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm">{data.observacao_elfenai}</p>
+              </div>}
+              {data.etapa_obs && <div className="mt-2 rounded-lg border p-3">
+                <p className="text-sm font-semibold">Próximos passos / documentos</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm">{data.etapa_obs}</p>
+              </div>}
+              {data.bancos?.filter((b: any) => !!b.observacao).map((b: any) => (
+                <div key={b.id || b.client_key} className="mt-2 rounded-md border p-3 text-sm">
+                  <strong>{b.banco} ({b.status || 'pendente'}):</strong> {b.observacao}
+                </div>
+              ))}
             </div>
           ) : (
             <>
@@ -224,7 +325,7 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
                         {data?.score ?? lead?.score ?? 'sem score'}
                       </b>
                     </span>
-                    <Button type="button" size="sm" variant="outline" onClick={() => setBancos([...bancos, { banco: '', status: 'pendente' }])}>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setBancos([...bancos, { client_key: novoIdentificadorBanco(), banco: '', status: 'pendente' }])}>
                       <Plus className="mr-1 h-3 w-3" />Adicionar banco
                     </Button>
                   </div>
@@ -260,7 +361,7 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
                         <Label className="text-xs">Status</Label>
                         <Select value={b.status || 'pendente'} onValueChange={(v) => setBancos(bancos.map((x, j) => j === i ? { ...x, status: v } : x))}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>{STATUS.map((s) => <SelectItem key={s.v} value={s.v}>{s.l}</SelectItem>)}</SelectContent>
+                          <SelectContent>{STATUS_BANCOS.map((s) => <SelectItem key={s.v} value={s.v}>{s.l}</SelectItem>)}</SelectContent>
                         </Select>
                       </div>
                       <div><Label className="text-xs">Valor liberado</Label><Input type="number" value={b.valor_financiado ?? ''} onChange={(e) => setBancos(bancos.map((x, j) => j === i ? { ...x, valor_financiado: e.target.value } : x))} /></div>
@@ -281,6 +382,16 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
                 </div>
               </div>
 
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div><Label className="text-xs">Observação / resposta ao vendedor</Label>
+                  <Textarea rows={3} value={data.observacao_elfenai || ''} onChange={(e) => setData({ ...data, observacao_elfenai: e.target.value })}
+                    placeholder="Ex.: Banco aprovou 48 parcelas. Solicitar comprovante de renda." />
+                </div>
+                <div><Label className="text-xs">Orientações sobre documentos e próximas etapas</Label>
+                  <Textarea rows={3} value={data.etapa_obs || ''} onChange={(e) => setData({ ...data, etapa_obs: e.target.value })}
+                    placeholder="Ex.: Aguardar assinatura e enviar documentos à financeira." />
+                </div>
+              </div>
               <Separator />
               <div>
                 <div className="mb-2 text-sm font-medium text-muted-foreground">Resumo contratado</div>
@@ -347,7 +458,7 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
                   <label className="flex items-center gap-2 rounded-md border border-border px-3 py-2">
                     <Checkbox
                       checked={!!data.contrato_pago}
-                      onCheckedChange={(v) => setData({ ...data, contrato_pago: !!v })}
+                      onCheckedChange={(v) => setData({ ...data, contrato_pago: !!v, contrato_recusado: v ? false : data.contrato_recusado, status_geral: v ? 'aprovada' : data.status_geral })}
                     />
                     <span className="text-sm">Contrato pago</span>
                   </label>
@@ -356,7 +467,7 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
                   <label className="flex items-center gap-2 rounded-md border border-rose-500/40 bg-rose-500/5 px-3 py-2">
                     <Checkbox
                       checked={!!data.contrato_recusado}
-                      onCheckedChange={(v) => setData({ ...data, contrato_recusado: !!v })}
+                      onCheckedChange={(v) => setData({ ...data, contrato_recusado: !!v, contrato_pago: v ? false : data.contrato_pago, status_geral: v ? 'negada' : 'pendente' })}
                     />
                     <span className="text-sm text-rose-400">Recusado pelo banco (na análise)</span>
                   </label>
@@ -416,7 +527,7 @@ export function FichaEditDialog({ fichaId, onClose }: { fichaId: number | null; 
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose}>Fechar</Button>
+            <Button type="button" variant="ghost" onClick={() => void fecharSalvando()}>Fechar</Button>
             {canEdit && (
               <Button type="button" variant="outline" disabled={loading} onClick={gerarVenda}>Gerou venda</Button>
             )}

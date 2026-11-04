@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .select('*, vendedor:vendedores!leads_vendedor_id_fkey(id,nome,loja)')
     .eq('id', id).single();
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
-  return NextResponse.json({ ...data, vendedor_nome: data?.vendedor?.nome ?? null, aprovado: data?.aprovou_credito });
+  return NextResponse.json({ ...data, vendedor_nome: data?.vendedor?.nome ?? null });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -63,6 +63,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         criado_por_id: u.id,
         valor_entrada: data.valor_entrada || 0,
         valor_veiculo: data.valor_carro || 0,
+        status_geral: 'pendente',
       };
       if (data.score != null) ins.score = data.score;
       const { error: erroFicha } = await supabaseAdmin.from('fichas_credito').insert(ins);

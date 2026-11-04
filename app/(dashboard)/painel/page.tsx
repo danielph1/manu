@@ -981,12 +981,13 @@ function LeadCard({
                 Na loja
               </Badge>
             )}
-            {(lead as any).aprovado === true && (
-              <Badge className="bg-blue-600 hover:bg-blue-600">Aprovado</Badge>
-            )}
-            {(lead as any).aprovado === false && lead.gerou_ficha && (
-              <Badge className="bg-rose-600 hover:bg-rose-600">Recusado</Badge>
-            )}
+            {lead.gerou_ficha && (() => {
+              const status = String((lead as any).status_ficha || 'pendente').toLowerCase();
+              if (status.startsWith('aprov')) return <Badge className="bg-blue-600 hover:bg-blue-600">Aprovado</Badge>;
+              if (status.startsWith('neg') || status.startsWith('recus') || status.startsWith('reprov'))
+                return <Badge className="bg-rose-600 hover:bg-rose-600">Recusado</Badge>;
+              return <Badge variant="outline" className="border-amber-500/40 text-amber-400">Ficha pendente</Badge>;
+            })()}
           </div>
 
           <div className="space-y-1 text-sm text-muted-foreground">
