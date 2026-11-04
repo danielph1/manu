@@ -134,8 +134,8 @@ export async function processIncoming(ev:IncomingEvent) {
       // Um erro no chat nao pode impedir o processamento do evento nem gerar duplicidade.
       await db.query('SAVEPOINT chat_optional');
       try {
-        await db.query(`INSERT INTO public.chat_geral_mensagens(remetente_id,lead_id,mensagem)
-          VALUES(NULL,$1,$2)`,[leadId,`[Aurox-WhatsApp] ${body.slice(0,2000)}`]);
+        await db.query(`INSERT INTO public.chat_geral_mensagens(remetente_id,lead_id,mensagem,aurox_wa_mensagem_id)
+          VALUES(NULL,$1,$2,$3) ON CONFLICT (aurox_wa_mensagem_id) DO NOTHING`,[leadId,body.slice(0,2000),Number(saved.rows[0].id)]);
       }catch {await db.query('ROLLBACK TO SAVEPOINT chat_optional');}
       await db.query('RELEASE SAVEPOINT chat_optional');
     }

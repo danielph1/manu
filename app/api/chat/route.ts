@@ -30,10 +30,22 @@ export async function GET(req: NextRequest) {
           CASE WHEN m.mensagem ILIKE 'Transferido de %' THEN 'sistema'
             WHEN m.remetente_id IS NULL THEN 'cliente' ELSE 'equipe' END AS remetente_tipo,
           m.arquivo_nome, m.arquivo_mime,
+          CASE WHEN wam.media_path IS NOT NULL AND wc.id IS NOT NULL
+                AND (wc.lead_id=m.lead_id OR wt.lead_id=m.lead_id)
+                AND wam.empresa_id=COALESCE(l.empresa_id,v.empresa_id)
+            THEN m.id ELSE NULL END AS aurox_media_chat_id,
+          CASE WHEN wam.media_path IS NOT NULL AND wc.id IS NOT NULL
+                AND (wc.lead_id=m.lead_id OR wt.lead_id=m.lead_id)
+                AND wam.empresa_id=COALESCE(l.empresa_id,v.empresa_id)
+            THEN wam.media_mime ELSE NULL END AS aurox_media_mime,
           CASE WHEN m.arquivo_bytes IS NOT NULL THEN encode(m.arquivo_bytes, 'base64') ELSE NULL END AS arquivo_b64
        FROM public.chat_geral_mensagens m
        LEFT JOIN public.usuarios usr ON usr.id=m.remetente_id
        JOIN public.leads l ON l.id=m.lead_id
+       LEFT JOIN public.vendedores v ON v.id=l.vendedor_id
+       LEFT JOIN public.aurox_wa_mensagens wam ON wam.id=m.aurox_wa_mensagem_id
+       LEFT JOIN public.aurox_wa_contatos wc ON wc.id=wam.contato_id AND wc.empresa_id=wam.empresa_id
+       LEFT JOIN public.triagem wt ON wt.id=wc.triagem_id AND wt.empresa_id=wc.empresa_id
        WHERE m.lead_id=$1 ORDER BY m.created_at ASC LIMIT 500`, [leadId],
     );
     let reacoes: Array<{ mensagem_id: number; emoji: string; n: number; eu: boolean }> = [];
@@ -75,7 +87,14 @@ export async function POST(req: NextRequest) {
     }
     const mime = String(b.arquivo_mime || '').slice(0, 100) || null;
     const nome = String(b.arquivo_nome || '').slice(0, 150) || null;
-    const texto = msg || (mime?.startsWith('audio') ? 'Áudio' : 'Mídia');
+    // A legenda só é interna; nunca enviar as palavras 'Áudio'/'Foto' ao cliente.
+    const mimeBase = (mime || '').toLowerCase().split(';')[0].trim();
+    const mediaPermitida = /^(image\/(jpeg|png|webp)|audio\/(ogg|mpeg|mp4|aac|webm))$/.test(mimeBase);
+    if (b64 && !mediaPermitida) return NextResponse.json({ error: 'Apenas fotos e áudios são permitidos. Vídeos não são suportados.' }, { status: 415 });
+    if (b64 && mimeBase.startsWith('audio/') && msg) return NextResponse.json({ error: 'Envie o áudio e o texto separadamente.' }, { status: 400 });
+    if (b64 && Buffer.from(b64,'base64').length > 4_000_000)
+      return NextResponse.json({ error: 'Arquivo ultrapassa 4 MB.' }, { status: 413 });
+    const texto = msg || (mimeBase.startsWith('audio/') ? '[Áudio]' : '[Foto]');
     const row = await queryOne<any>(
       `INSERT INTO public.chat_geral_mensagens
           (remetente_id, mensagem, arquivo_nome, arquivo_mime, arquivo_bytes, lead_id)
@@ -83,11 +102,21 @@ export async function POST(req: NextRequest) {
        RETURNING id, mensagem, created_at, remetente_id, arquivo_nome, arquivo_mime`,
       [u.id, texto, nome, mime, b64, leadId],
     );
-    // Enviar pela mesma instância que originou o lead; nunca usar outra empresa.
-    // Para leads dos demais canais, preservar o fluxo Z-API já existente.
+    // Priorizar Aurox-WhatsApp desta empresa, inclusive para leads manuais.
+    // Sem sessão Aurox habilitada, manter Z-API legada; falha no Aurox não autoriza fallback.
     let whatsapp: {ok:boolean;status:string;message:string};
-    if (msg && lead.empresaId) {
-      const aurox = await sendAuroxMessage(lead.empresaId, leadId, msg);
+    if (/^\[interno\]/i.test(msg)) {
+      // Observações de atendimento são PRIVADAS e nunca devem sair para o cliente.
+      whatsapp = {ok:true,status:'internal_only',message:'Observação registrada apenas no MANU.'};
+    } else if (b64) {
+      // Nunca converter mídia em texto nem alternar para Z-API silenciosamente.
+      whatsapp = lead.empresaId
+        ? await sendAuroxMessage(lead.empresaId, leadId, msg, lead.telefone, {
+            base64: b64, mime: mime || '', filename: nome || undefined,
+          })
+        : {ok:false,status:'invalid_scope',message:'Lead sem empresa; arquivo salvo apenas no MANU.'};
+    } else if (msg && lead.empresaId) {
+      const aurox = await sendAuroxMessage(lead.empresaId, leadId, msg, lead.telefone);
       whatsapp = aurox.routed ? aurox : await enviarWhatsAppDaEmpresa(lead.empresaId,String(lead.telefone || ''),msg);
     } else {
       whatsapp = {ok:false,status:'not_configured',message:'Mensagem salva no MANU; envio externo indisponível.'};

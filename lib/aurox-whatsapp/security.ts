@@ -32,7 +32,7 @@ export async function workerRequest(path: string, method: 'GET'|'POST', payload?
     headers: { Authorization: `Bearer ${workerSecret()}`, 'Content-Type': 'application/json' },
     body: method === 'POST' ? JSON.stringify(payload || {}) : undefined,
     cache: 'no-store',
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(method==='POST' && path.endsWith('/send') ? 60_000 : 10_000),
   });
   const data: any = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(String(data.error || `Worker HTTP ${r.status}`).slice(0, 220));

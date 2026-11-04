@@ -12,6 +12,40 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 
 
+/** URL assinada é obtida via api.get, que inclui o JWT do MANU.
+ * Não colocar /api/chat/media diretamente no <img>/<audio>: a autenticação
+ * deste sistema usa Bearer no Axios, não cookie do navegador. */
+function MidiaPrivadaAurox({ mensagemId, mime }: { mensagemId:number; mime:string }) {
+  const [src,setSrc]=useState('');
+  const [erro,setErro]=useState('');
+  const [tentativa,setTentativa]=useState(0);
+  useEffect(()=>{
+    let ativa=true;
+    const carregar=async()=>{
+      try {
+        const {data}=await api.get(`/chat/media/${mensagemId}`);
+        if(ativa){setSrc(String(data.url||''));setErro('');}
+      }catch{
+        if(ativa){setErro('Não foi possível carregar a mídia.');setSrc('');}
+      }
+    };
+    void carregar();
+    // Não renovar durante a reprodução: mudar src reiniciaria o áudio.
+    return ()=>{ativa=false;};
+  },[mensagemId,tentativa]);
+  if(erro)return <button type="button" className="mt-2 text-xs underline" onClick={()=>setTentativa(t=>t+1)}>{erro} Tentar novamente</button>;
+  if(!src)return <div className="mt-2 text-xs opacity-70">Carregando mídia…</div>;
+  if(mime.startsWith('image/'))return <img alt="Foto recebida do cliente" loading="lazy" className="mt-2 max-h-64 max-w-full rounded-lg object-contain" src={src}/>;
+  if(mime.startsWith('audio/'))return <div className="mt-2 min-w-[220px] max-w-full sm:min-w-[280px]">
+    <audio className="block w-full" controls preload="metadata" src={src}>Seu navegador não reproduz este áudio.</audio>
+    <div className="mt-1 flex gap-3 text-[11px] opacity-70">
+      <a href={src} target="_blank" rel="noopener noreferrer" className="underline">Abrir áudio</a>
+      <button className="underline" type="button" onClick={()=>setTentativa(t=>t+1)}>Atualizar arquivo</button>
+    </div>
+  </div>;
+  return null;
+}
+
 function ChatPageInner() {
   const { t } = useI18n();
   const qc = useQueryClient();
@@ -25,6 +59,13 @@ function ChatPageInner() {
     const [camOpen, setCamOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [audioPendente, setAudioPendente] = useState<Blob | null>(null);
+  const [previewAudio,setPreviewAudio]=useState('');
+  useEffect(()=>{
+    if(!audioPendente){setPreviewAudio('');return;}
+    const objectUrl=URL.createObjectURL(audioPendente);
+    setPreviewAudio(objectUrl);
+    return ()=>URL.revokeObjectURL(objectUrl);
+  },[audioPendente]);
   const [editando, setEditando] = useState<{ id: number; texto: string } | null>(null);
   const [buscaConv, setBuscaConv] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -90,14 +131,16 @@ function ChatPageInner() {
           try {
             const data = String(reader.result || '');
             const b64 = data.includes(',') ? data.split(',')[1] : data;
-            await api.post('/chat', {
-              mensagem: texto || 'Áudio',
+            const response = await api.post('/chat', {
+              mensagem: '',
               arquivo_b64: b64,
-              arquivo_nome: 'audio.webm',
-              arquivo_mime: 'audio/webm',
+              arquivo_nome: blob.type.includes('mp4') ? 'audio.m4a' : blob.type.includes('ogg') ? 'audio.ogg' : 'audio.webm',
+              arquivo_mime: blob.type || 'audio/webm',
               lead_id: leadId ? Number(leadId) : null,
             });
-            setTexto('');
+            if (response?.data?.whatsapp?.ok === false) {
+              toast.message(response.data.whatsapp.message || 'Arquivo salvo apenas no MANU.');
+            }
             setAudioPendente(null);
             qc.invalidateQueries({ queryKey: ['chat'] });
           } catch (e: any) {
@@ -150,7 +193,10 @@ function ChatPageInner() {
   }
 
   function sendBlob(blob: Blob, nome: string, mime: string) {
-    if (blob.size > 4_000_000) { toast.error('Arquivo maior que 4MB'); return; }
+    if (blob.size > 4_000_000) { toast.error('Arquivo maior que 4 MB'); return; }
+    if (!/^(image\/(jpeg|png|webp)|audio\/(ogg|mpeg|mp4|aac|webm))(;|$)/i.test(mime)) {
+      toast.error('Selecione uma foto ou áudio. Vídeos não são permitidos.');return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const data = String(reader.result || '');
@@ -231,6 +277,7 @@ function ChatPageInner() {
       }
     } catch { /* mantém original */ }
     sendBlob(f, f.name, f.type || 'application/octet-stream');
+    if(fileRef.current)fileRef.current.value='';
   }
 
   
@@ -300,6 +347,9 @@ function ChatPageInner() {
         {(Array.isArray(data) ? data : []).map((m: any) => {
           const meu = Number(m.remetente_id) === Number(user?.id);
           const inicial = String(m.remetente_nome || '?').trim().charAt(0).toUpperCase();
+          const textoLimpo=String(m.mensagem||'').replace(/^(?:\[(?:cliente|Aurox-WhatsApp)\]\s*)+/gi,'').trim();
+          const temMidia=Boolean(m.arquivo_b64||m.aurox_media_chat_id);
+          const legenda=temMidia && /^\[(?:Áudio|Mensagem de voz|Foto|Imagem)(?: recebida)?\]$/i.test(textoLimpo)?'':textoLimpo;
           return (
           <div key={m.id} className={`group flex items-end gap-2 ${meu ? 'flex-row-reverse' : ''}`}>
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">{inicial}</div>
@@ -307,12 +357,15 @@ function ChatPageInner() {
               className={`relative max-w-[78%] rounded-2xl px-3 py-2 ${meu ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-muted'}`}
             >
               {!meu && <div className="text-xs font-medium opacity-70">{m.remetente_nome || 'alguém'}</div>}
-              {m.mensagem && <div className="mt-0.5">{m.mensagem}</div>}
+              {legenda && <div className="mt-0.5 whitespace-pre-wrap break-words">{legenda}</div>}
+              {m.aurox_media_chat_id && m.aurox_media_mime && (
+                <MidiaPrivadaAurox mensagemId={Number(m.aurox_media_chat_id)} mime={String(m.aurox_media_mime)}/>
+              )}
               {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('image') && (
                 <img alt="" className="mt-2 max-h-52 rounded-lg" src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} />
               )}
               {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('audio') && (
-                <audio className="mt-2 w-full" controls src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} />
+                <div className="mt-2 min-w-[220px] max-w-full sm:min-w-[280px]"><audio className="block w-full" controls preload="metadata" src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} /></div>
               )}
               {m.arquivo_b64 && !String(m.arquivo_mime || '').startsWith('image') && !String(m.arquivo_mime || '').startsWith('audio') && (
                 <a className="mt-2 block text-sm text-primary underline" href={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} download={m.arquivo_nome}>
@@ -349,13 +402,13 @@ function ChatPageInner() {
 
       {audioPendente && (
         <div className="mt-2 flex items-center gap-2 text-sm">
-          <audio controls src={URL.createObjectURL(audioPendente)} />
+          {previewAudio && <audio className="max-w-[min(74vw,320px)]" controls src={previewAudio} />}
           <button className="text-xs underline" onClick={() => setAudioPendente(null)}>descartar</button>
           <span className="text-muted-foreground">clique em Enviar para mandar</span>
         </div>
       )}
       <div className="mt-3 flex items-center gap-2">
-        <input ref={fileRef} type="file" className="hidden" onChange={(e) => onArquivo(e.target.files?.[0])} />
+        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,audio/ogg,audio/mpeg,audio/mp4,audio/aac,audio/webm" className="hidden" onChange={(e) => onArquivo(e.target.files?.[0])} />
         <Button type="button" size="icon" variant="ghost" onClick={abrirCamera} title="Foto"><Camera className="h-5 w-5" /></Button>
         <Button type="button" size="icon" variant={recording ? 'default' : 'ghost'} onClick={gravarAudio} title={recording ? 'Parar' : 'Gravar áudio'}>
           <Mic className={`h-5 w-5 ${recording ? 'animate-pulse' : ''}`} />
