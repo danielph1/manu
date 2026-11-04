@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import path from 'node:path';
 import qrcode from 'qrcode';
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth } = pkg;
+const { Client, LocalAuth, MessageMedia } = pkg;
 
 const BASE = String(process.env.MANU_APP_URL || '').replace(/\/$/, '');
 const SECRET = String(process.env.AUROX_WA_WORKER_SECRET || '');
@@ -252,8 +252,8 @@ function sendJSON(res,status,body) {
   res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Content-Length':Buffer.byteLength(str)});
   res.end(str);
 }
-function readBody(req) {return new Promise((resolve,reject)=>{
-  let data='';req.on('data',c=>{data+=c;if(data.length>12000){reject(new Error('Corpo muito grande'));req.destroy();}});
+function readBody(req,maxBytes=12000) {return new Promise((resolve,reject)=>{
+  let data='';req.on('data',c=>{data+=c;if(data.length>maxBytes){reject(new Error('Corpo muito grande'));req.destroy();}});
   req.on('end',()=>{try{resolve(JSON.parse(data||'{}'));}catch{reject(new Error('JSON inválido'));}});req.on('error',reject);
 });}
 const server=http.createServer(async(req,res)=>{
@@ -276,13 +276,50 @@ const server=http.createServer(async(req,res)=>{
       sendJSON(res,200,await logoutSession(id));return;
     }
     if(action==='send'&&req.method==='POST'){
-      const b=await readBody(req),s=sessions.get(id);
+      const b=await readBody(req,5_600_000),s=sessions.get(id);
       if(!s||s.status!=='conectado'||s.halted)throw new Error('WhatsApp da empresa desconectado');
-      if(!/^\d{5,22}@(c\.us|lid)$/.test(String(b.chat_id||'')))throw new Error('Contato inválido');
       const message=String(b.message||'').trim();
-      if(!message||message.length>4000)throw new Error('Mensagem inválida');
-      const sent=await s.client.sendMessage(b.chat_id,message);
-      sendJSON(res,200,{ok:true,message_id:digest(String(sent?.id?._serialized||Date.now()))});return;
+      const attachment=b.media && typeof b.media==='object'?b.media:null;
+      if(!attachment && !message)throw new Error('Mensagem vazia');
+      if(message.length>4000)throw new Error('Mensagem muito longa');
+      let chatId=String(b.chat_id||'');
+      if(b.phone) {
+        // Lead cadastrado manualmente: consulta o WhatsApp antes de enviar.
+        const phone=String(b.phone||'').replace(/\D/g,'');
+        if(!/^\d{12,15}$/.test(phone))throw new Error('Telefone inválido para WhatsApp');
+        const wid=await s.client.getNumberId(phone);
+        chatId=String(wid?._serialized||'');
+        if(!chatId)throw new Error('Número não encontrado no WhatsApp. Confira DDD e número do lead.');
+      }
+      if(!/^\d{5,22}@(c\.us|lid)$/.test(chatId))throw new Error('Contato WhatsApp inválido');
+      let sent;
+      if(attachment) {
+        const mimeFull=String(attachment.mime||'').toLowerCase().trim();
+        const mime=mimeFull.split(';')[0].trim();
+        if(!/^(image\/(jpeg|png|webp)|audio\/(ogg|mpeg|mp4|aac|webm))$/.test(mime))
+          throw new Error('Só fotos e áudios são aceitos; vídeos não são permitidos');
+        const base64=String(attachment.base64||'');
+        if(!base64||base64.length>5_400_000||!/^[A-Za-z0-9+/]+={0,2}$/.test(base64))
+          throw new Error('Mídia inválida ou maior que 4 MB');
+        const bytes=Buffer.from(base64,'base64');
+        if(bytes.length<1||bytes.length>4_000_000)throw new Error('Mídia maior que 4 MB');
+        if(mime.startsWith('audio/') && message)throw new Error('Envie o áudio separado do texto');
+        const fallback=mime.startsWith('audio/')?'audio.webm':'foto.jpg';
+        const fileName=String(attachment.filename||fallback).replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,100);
+        const media=new MessageMedia(mime,base64,fileName,bytes.length);
+        // WebM não é voz OGG/Opus: enviar como arquivo de áudio para evitar
+        // afirmar que um codec não suportado será reproduzido como voz nativa.
+        const options={
+          ...(mime.startsWith('image/') && message ? {caption:message}:{}),
+          ...(mime==='audio/webm'?{sendMediaAsDocument:true}:{}),
+          ...(mime==='audio/ogg' && /opus/.test(mimeFull)?{sendAudioAsVoice:true}:{}),
+        };
+        sent=await s.client.sendMessage(chatId,media,options);
+      } else {
+        sent=await s.client.sendMessage(chatId,message);
+      }
+      if(!sent?.id?._serialized)throw new Error('WhatsApp não confirmou o envio');
+      sendJSON(res,200,{ok:true,chat_id:chatId,message_id:digest(String(sent.id._serialized))});return;
     }
     sendJSON(res,405,{error:'Método não permitido'});
   }catch(e){sendJSON(res,409,{error:e.message});}
