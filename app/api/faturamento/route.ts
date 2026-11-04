@@ -47,8 +47,13 @@ export async function GET(req: NextRequest) {
       SELECT
         f.id, f.nome, f.cpf_cnpj, f.placa, f.marca, f.modelo, f.ano_modelo,
         f.entrada_total, f.status, f.vendedor_nome, f.criado_por_id,
-        f.created_at, f.loja, f.empresa_id
+        f.created_at, f.loja, f.empresa_id,
+        CASE WHEN origem.id IS NOT NULL AND (f.lead_id IS NULL OR fc.lead_id=f.lead_id)
+          THEN COALESCE(NULLIF(fc.valor_liberado, 0), NULLIF(fc.valor_financiado, 0))
+          ELSE NULL END AS valor_financiado
       FROM public.faturamentos f
+      LEFT JOIN public.fichas_credito fc ON fc.id=f.ficha_id
+      LEFT JOIN public.leads origem ON origem.id=fc.lead_id AND origem.empresa_id=f.empresa_id
       WHERE ${where.join(' AND ')}
       ORDER BY f.created_at DESC NULLS LAST
       LIMIT $${params.length}

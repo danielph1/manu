@@ -15,6 +15,20 @@ import { toast } from 'sonner';
 
 type Empresa = {id:number;nome:string;lojas:{codigo:string;nome:string}[]};
 type Config = Record<string,string>;
+
+// O backend pode devolver erros JSON como texto quando a resposta é HTML.
+// Exibir a causa real em vez de uma mensagem genérica ao tentar imprimir.
+async function mensagemErroDocumento(e: any, fallback: string): Promise<string> {
+  let payload = e?.response?.data;
+  if (payload instanceof Blob) {
+    try { payload = await payload.text(); } catch { return fallback; }
+  }
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch { return fallback; }
+  }
+  return (typeof payload?.error === 'string' && payload.error) || fallback;
+}
+
 const perfilCampos = [
   ['nome_fantasia','Nome comercial no documento'],['razao_social','Razão social'],['cnpj','CNPJ'],
   ['endereco','Endereço'],['bairro','Bairro'],['cidade','Cidade'],['cep','CEP'],['telefone','Telefone'],
@@ -97,7 +111,7 @@ export default function FaturamentoPage() {
       try {
         const d=await api.get(`/faturamento/${id}/html`,{responseType:'text'});
         setDocHtml(String(d.data||''));
-      }catch(e:any){setErroDoc(e?.response?.data?.error||'Não foi possível preparar o documento. Confira os dados da empresa.');}
+      }catch(e:any){setErroDoc(await mensagemErroDocumento(e,'Não foi possível preparar o documento. Confira os dados da empresa.'));}
     }catch(e:any){toast.error(e?.response?.data?.error||'Faturamento indisponível nesta empresa');}
     finally{setCarregandoDoc(false);}
   }
@@ -109,13 +123,19 @@ export default function FaturamentoPage() {
     }catch(e:any){toast.error(e?.response?.data?.error||'Falha ao baixar');}
   }
   async function imprimir(id:number){
+    // Abrir a aba durante o clique evita bloqueio de pop-up após o await.
+    const w=window.open('','_blank');
+    if(!w){toast.error('Permita janelas pop-up para imprimir');return;}
+    w.document.write('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Preparando documento</title><body style="font:16px Arial;padding:30px">Preparando documento para impressão…</body></html>');
+    w.document.close();
     try{
       const r=await api.get(`/faturamento/${id}/html`,{responseType:'text'});
-      const w=window.open('','_blank');
-      if(!w){toast.error('Libere as janelas pop-up');return;}
       w.document.open();w.document.write(String(r.data));w.document.close();w.focus();
-      setTimeout(()=>w.print(),550);
-    }catch(e:any){toast.error(e?.response?.data?.error||'Falha ao imprimir');}
+      setTimeout(()=>{ if(!w.closed) w.print(); },650);
+    }catch(e:any){
+      w.close();
+      toast.error(await mensagemErroDocumento(e,'Falha ao imprimir. Confira os dados do emissor.'));
+    }
   }
   async function salvar(e:FormEvent){
     e.preventDefault();
@@ -154,13 +174,13 @@ export default function FaturamentoPage() {
       </select>:<div className="flex h-10 items-center gap-2 font-medium"><Building2 size={16}/>{empresaAtual?.nome||'Empresa não vinculada'}</div>}</div>
       <div className="flex-[2] space-y-1"><Label className="text-xs">Buscar faturamento</Label><div className="flex gap-2"><Input placeholder="Nome, placa, CPF, vendedor..." value={busca} onChange={e=>setBusca(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')setQ(busca.trim());}}/><Button variant="outline" onClick={()=>setQ(busca.trim())}><Search size={16}/><span className="sr-only">Buscar</span></Button></div></div>
     </div>
-    {empresaId>0&&!configEmissor?.cnpj&&<p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-500">Configure razão social, CNPJ e termos deste emissor antes de imprimir documentos.</p>}
+    {empresaId>0&&(!String(configEmissor?.razao_social||'').trim()||!String(configEmissor?.cnpj||'').trim()||!String(configEmissor?.texto_contrato||'').trim())&&<p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-500">O documento desta empresa ainda não está pronto para impressão: faltam razão social, CNPJ ou cláusulas. {podeConfig?'Abra “Dados do emissor” para preencher e salvar.':'Solicite ao administrador a configuração dos dados legais.'}</p>}
     {erroLista&&<p className="text-sm text-red-400">Não foi possível carregar os faturamentos. Confira a migration do banco.</p>}
     {isLoading&&<p className="text-sm text-muted-foreground">Carregando faturamentos…</p>}
     <div className="grid gap-3 md:grid-cols-2">
       {(Array.isArray(rows)?rows:[]).map((f:any)=><Card key={f.id} className="cursor-pointer transition hover:border-primary/50" onClick={()=>abrir(f.id)}><CardContent className="flex items-center justify-between gap-3 p-4 sm:p-5">
         <div className="min-w-0"><div className="truncate font-semibold">{f.nome}</div><p className="mt-1 text-sm text-muted-foreground">{f.marca} {f.modelo} · {f.placa}</p><p className="mt-2 text-xs text-muted-foreground">{f.vendedor_nome||'—'} · {f.created_at?new Date(f.created_at).toLocaleDateString('pt-BR'):'—'}</p></div>
-        <div className="shrink-0 text-right"><FileText className="ml-auto mb-2 h-5 w-5 text-primary"/><p className="text-sm font-medium">R$ {Number(f.entrada_total||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</p><p className="mt-1 text-xs text-muted-foreground">{f.status||'emitido'}</p></div>
+        <div className="shrink-0 text-right"><FileText className="ml-auto mb-2 h-5 w-5 text-primary"/><p className="text-xs text-muted-foreground">Valor financiado</p><p className="text-sm font-medium">{f.valor_financiado != null && Number.isFinite(Number(f.valor_financiado)) ? `R$ ${Number(f.valor_financiado).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}` : 'Não informado'}</p><p className="mt-1 text-xs text-muted-foreground">{f.status||'emitido'}</p></div>
       </CardContent></Card>)}
     </div>
     {!isLoading&&!erroLista&&(!Array.isArray(rows)||!rows.length)&&<p className="rounded-xl border p-8 text-center text-sm text-muted-foreground">Nenhum faturamento encontrado para esta empresa.</p>}
