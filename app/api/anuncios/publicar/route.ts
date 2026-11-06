@@ -57,6 +57,16 @@ async function publicarMercadoLivre(
     throw new Error('Selecione um estado e uma cidade válidos no campo Localização da loja.');
   // Consulta a ficha da categoria em tempo real; exigências podem mudar sem alterar o Aurox.
   const esquema = await buscarAtributosML(token, categoria);
+  // O Mercado Livre valida KILOMETERS como number_unit: "824 km".
+  // O usuário informa apenas 824; a unidade nunca é digitada no formulário.
+  const formatarKmML = (entrada: unknown): string => {
+    const bruto=String(entrada ?? '').trim().replace(/\s*km\s*$/i, '').replace(/[.\s]/g, '');
+    if (!bruto) return '';
+    if (!/^\d+$/.test(bruto)) throw new Error('Quilometragem inválida: digite apenas números.');
+    const numero=Number(bruto);
+    if (!Number.isSafeInteger(numero) || numero<0) throw new Error('Quilometragem inválida.');
+    return `${numero} km`;
+  };
   const padroes: Record<string,string> = {
     BRAND:fabricante, MODEL:modelo,
     VEHICLE_YEAR:String(car.ano||'').split('/')[0], YEAR:String(car.ano||'').split('/')[0],
@@ -65,7 +75,10 @@ async function publicarMercadoLivre(
   const informados: Record<string,string> = {};
   for(const a of esquema) {
     // Somente IDs oferecidos pelo Mercado Livre; nunca confiar em IDs arbitrários do browser.
-    const valor=String(extras?.[a.id]||padroes[a.id]||'').trim().slice(0,255);
+    const bruto=extras?.[a.id]||padroes[a.id]||'';
+    const valor=a.id==='KILOMETERS'
+      ? formatarKmML(bruto)
+      : String(bruto).trim().slice(0,255);
     if(a.required && !valor) throw new Error(`Preencha o campo obrigatório do Mercado Livre: ${a.name} (${a.id}).`);
     if(valor) informados[a.id]=valor;
   }

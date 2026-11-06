@@ -28,6 +28,12 @@ function categoriaSugerida(c: string){
 }
 const BASICOS_ML = new Set(['BRAND','MODEL','COLOR','VEHICLE_YEAR','YEAR']);
 
+// Quilometragem digitada somente em números; 'km' é apenas um sufixo visual.
+function somenteDigitosKm(valor: unknown): string {
+  return String(valor ?? '').replace(/\D/g, '');
+}
+
+
 
 type Carro = {
   id: number;
@@ -221,7 +227,7 @@ export default function AnunciosPage() {
       ano: c.ano != null ? String(c.ano) : '',
       cor: c.cor || '',
       preco: c.preco != null ? String(c.preco) : '',
-      km: c.km != null ? String(c.km) : '',
+      km: somenteDigitosKm(c.km),
       patio: c.patio || '',
       carroceria: c.carroceria || '',
     });
@@ -241,7 +247,7 @@ export default function AnunciosPage() {
     if (!sel) return;
     setSaving(true);
     try {
-      const r = await api.patch('/anuncios', { id: sel.id, ...edit });
+      const r = await api.patch('/anuncios', { id: sel.id, ...edit, km: somenteDigitosKm(edit.km) });
       toast.success('Dados atualizados no estoque');
       setSel({ ...sel, ...r.data });
       await carregar();
@@ -267,7 +273,7 @@ export default function AnunciosPage() {
     setPublishing(true);
     try {
       // salva edição antes de publicar (espelho estoque)
-      await api.patch('/anuncios', { id: sel.id, ...edit });
+      await api.patch('/anuncios', { id: sel.id, ...edit, km: somenteDigitosKm(edit.km) });
       if(usarMl && lembrarLoja)await salvarPreferencias(sel.id);
       const r = await api.post('/anuncios/publicar', {
         estoque_id: sel.id,
@@ -428,11 +434,16 @@ export default function AnunciosPage() {
               ] as const).map(([k, lab]) => (
                 <label key={k} className="block text-xs">
                   {lab}
-                  <input
-                    className="mt-0.5 w-full rounded-md border bg-background p-2 text-sm"
-                    value={(edit as any)[k] ?? ''}
-                    onChange={(e) => setEdit((x) => ({ ...x, [k]: e.target.value }))}
-                  />
+                   <div className="relative">
+                     <input
+                       className={`mt-0.5 w-full rounded-md border bg-background p-2 text-sm ${k === 'km' ? 'pr-10' : ''}`}
+                       inputMode={k === 'km' ? 'numeric' : undefined}
+                       pattern={k === 'km' ? '[0-9]*' : undefined}
+                       value={k === 'km' ? somenteDigitosKm((edit as any)[k]) : (edit as any)[k] ?? ''}
+                       onChange={(e) => setEdit((x) => ({ ...x, [k]: k === 'km' ? somenteDigitosKm(e.target.value) : e.target.value }))}
+                     />
+                     {k === 'km' && <span aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">km</span>}
+                   </div>
                 </label>
               ))}
               <label className="block text-xs col-span-2">
@@ -586,15 +597,21 @@ export default function AnunciosPage() {
                   <button type="button" className="rounded border px-2 py-1" onClick={()=>setRecarregarMl(v=>v+1)}>Tentar novamente</button></div>}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {atributosMl.filter(a=>!BASICOS_ML.has(a.id)).map(a=>{
-                    const valor=valoresMl[a.id]??(a.id==='KILOMETERS' ? String(edit.km??'') : '');
+                    const ehKm = a.id === 'KILOMETERS';
+                    const valor = valoresMl[a.id] ?? (ehKm ? somenteDigitosKm(edit.km) : '');
                     return <label key={a.id} className="block text-xs">{a.name}{a.required?' *':''}{a.conditional?' (se aplicável)':''}
-                      {a.values.length>0 && a.values.length<=75 ? <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
+                      {!ehKm && a.values.length>0 && a.values.length<=75 ? <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
                         value={valor} onChange={e=>setValoresMl(v=>({...v,[a.id]:e.target.value}))}>
                         <option value="">Selecione</option>{a.values.map(o=><option key={o.id||o.name} value={o.name}>{o.name}</option>)}
-                      </select> : <input className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
-                        inputMode={a.value_type==='number'?'numeric':'text'}
-                        placeholder={a.id==='TRIM'?'Ex.: versão EX, LX…':`Informe ${a.name.toLowerCase()}`}
-                        value={valor} onChange={e=>setValoresMl(v=>({...v,[a.id]:e.target.value}))}/>}
+                      </select> : <div className="relative">
+                        <input className={`mt-1 w-full rounded-md border bg-background p-2 text-sm ${ehKm ? 'pr-10' : ''}`}
+                          inputMode={ehKm || a.value_type==='number'?'numeric':'text'}
+                          pattern={ehKm ? '[0-9]*' : undefined}
+                          placeholder={ehKm ? 'Ex.: 824' : a.id==='TRIM'?'Ex.: versão EX, LX…':`Informe ${a.name.toLowerCase()}`}
+                          value={ehKm ? somenteDigitosKm(valor) : valor}
+                          onChange={e=>setValoresMl(v=>({...v,[a.id]:ehKm ? somenteDigitosKm(e.target.value) : e.target.value}))}/>
+                        {ehKm && <span aria-hidden="true" className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">km</span>}
+                      </div>}
                     </label>;
                   })}
                 </div>
