@@ -62,6 +62,9 @@ export default function AnunciosPage() {
   const [edit, setEdit] = useState<Partial<Carro>>({});
   const [plats, setPlats] = useState<string[]>(['mercadolivre']);
   const [descricao, setDescricao] = useState('');
+  // AUROX_ML_V13: dados específicos da publicação da loja.
+  const [whatsappContato, setWhatsappContato] = useState('');
+  const [cidadeMlId, setCidadeMlId] = useState('');
   const [titulo, setTitulo] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -109,6 +112,8 @@ export default function AnunciosPage() {
       patio: c.patio || '',
       carroceria: c.carroceria || '',
     });
+    setWhatsappContato('');
+    setCidadeMlId('');
     setTitulo(nomeCarro(c));
     setDescricao('');
     setPlats(['mercadolivre']);
@@ -135,13 +140,15 @@ export default function AnunciosPage() {
     setPublishing(true);
     try {
       // salva edição antes de publicar (espelho estoque)
-      await api.patch('/anuncios', { id: sel.id, ...edit }).catch(() => null);
+      await api.patch('/anuncios', { id: sel.id, ...edit });
       const r = await api.post('/anuncios/publicar', {
         estoque_id: sel.id,
         plataformas: plats,
         descricao,
         preco: edit.preco || undefined,
         titulo: titulo || undefined,
+        telefone_whatsapp: whatsappContato,
+        cidade_ml_id: cidadeMlId,
       });
       toast.success(r.data.message || 'Publicado');
       if (r.data.links?.length) {
@@ -357,7 +364,7 @@ export default function AnunciosPage() {
                     try {
                       const fd = new FormData();
                       fd.append('carro_id', String(sel.id));
-                      fd.append('file', file);
+                      fd.append('foto', file);
                       await api.post('/estoque/fotos', fd);
                       await loadFotos(sel.id);
                       await carregar();
@@ -388,6 +395,23 @@ export default function AnunciosPage() {
               />
             </label>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-lg border border-border p-3">
+              <label className="block text-xs">WhatsApp da loja (DDD + número)
+                <input className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
+                  placeholder="Ex.: 21999999999" value={whatsappContato}
+                  onChange={(e) => setWhatsappContato(e.target.value)} />
+              </label>
+              <label className="block text-xs">ID da cidade (Mercado Livre)
+                <input className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
+                  placeholder="ID de classified_locations" value={cidadeMlId}
+                  onChange={(e) => setCidadeMlId(e.target.value)} />
+              </label>
+              <p className="sm:col-span-2 text-xs text-muted-foreground">
+                Para veículos, a loja deve ter pacote Prata (silver), ao menos uma foto real,
+                marca fabricante e modelo corretos. Localize o ID da cidade na API
+                classified_locations do Mercado Livre. Ouro/Diamante são destaques posteriores.
+              </p>
+            </div>
             <div className="text-sm font-medium">Plataformas (mín. 1)</div>
             <div className="flex flex-wrap gap-2">
               {PLATS.map((p) => {

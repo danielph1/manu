@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query, queryOne } from '@/lib/db';
 import { requireUser } from '@/lib/session';
 import { isSuperAdmin } from '@/lib/tenant';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,8 @@ type Body = {
   descricao?: string;
   preco?: number | string;
   titulo?: string;
+  telefone_whatsapp?: string;
+  cidade_ml_id?: string;
 };
 
 async function tokenML(empresaId: number) {
@@ -86,49 +89,97 @@ async function accessTokenMLValido(empresaId: number): Promise<string> {
   return tj.access_token as string;
 }
 
-async function publicarMercadoLivre(
-  token: string,
-  car: any,
-  descricao: string,
-  titulo: string,
-  preco: number,
-) {
-  // Categoria veículos usados BR — placeholder; produção: /sites/MLB/domain_discovery
-  const category_id = 'MLB1744'; // carros e caminhonetes (ajustar por discovery depois)
-  const body = {
-    title: titulo.slice(0, 60),
-    category_id,
-    price: preco,
-    currency_id: 'BRL',
-    available_quantity: 1,
-    buying_mode: 'classified',
-    listing_type_id: 'gold_special',
-    condition: 'used',
-    description: { plain_text: descricao.slice(0, 50000) },
-    attributes: [
-      { id: 'VEHICLE_YEAR', value_name: String(car.ano || '') },
-      { id: 'COLOR', value_name: String(car.cor || 'Não informado') },
-      { id: 'LICENSE_PLATE', value_name: String(car.placa || '') },
-    ].filter((a) => a.value_name),
-  };
+// AUROX_ML_V13 — publicação de veículos: pacote silver, localização, imagens e validação.
+function limparTelefone(v: unknown) {
+  const d=String(v ?? '').replace(/\D/g,'');
+  return d.startsWith('55') && d.length>=12 ? d.slice(2) : d;
+}
 
-  const res = await fetch('https://api.mercadolibre.com/items', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json();
-  if (!res.ok) {
-    const msg = json?.message || json?.error || `ML HTTP ${res.status}`;
-    if (String(msg).toLowerCase().includes('invalid') || res.status === 401) {
-      throw new Error('Token Mercado Livre inválido/expirado. Integrações → reconectar Mercado Livre.');
-    }
-    throw new Error(msg);
+function erroML(json: any, fallback: string) {
+  const causas=Array.isArray(json?.cause)
+    ? json.cause.map((c: any)=>String(c?.message || c?.code || '')).filter(Boolean)
+    : [];
+  const principal=String(json?.message || json?.error || fallback);
+  return [principal, ...causas.slice(0,5)].filter(Boolean).join(' | ').slice(0,800);
+}
+
+async function publicarMercadoLivre(
+  token: string, car: any, descricao: string, titulo: string, preco: number,
+  telefone: string, cidadeId: string,
+) {
+  const categoria = /moto|motocicleta|scooter/i.test(String(car.carroceria || ''))
+    || /motos?\s*(0|o)\s*km/i.test(String(car.marca || ''))
+    ? 'MLB1763' : 'MLB1744';
+  const fabricante=String(car.marca || '').trim();
+  const modelo=String(car.modelo || car.carro || '').trim();
+  if (!String(car.carroceria || '').trim())
+    throw new Error('Selecione a carroceria do veículo no estoque (ex.: moto, sedan, SUV).');
+  if (!fabricante || /^motos?\s*(0|o)\s*km$/i.test(fabricante) || !modelo)
+    throw new Error('Informe a marca fabricante real e o modelo do veículo no estoque (ex.: Honda / PCX).');
+  const tel=limparTelefone(telefone);
+  if (!/^\d{10,11}$/.test(tel))
+    throw new Error('Informe o WhatsApp da loja com DDD (10 ou 11 dígitos).');
+  if (!/^[A-Za-z0-9_-]{6,80}$/.test(cidadeId))
+    throw new Error('Informe o ID da cidade da loja no Mercado Livre (classificados).');
+  const { rows: fotos } = await query<{path: string}>(
+    'SELECT path FROM public.estoque_fotos WHERE carro_id=$1 ORDER BY ordem ASC, id ASC LIMIT 6',
+    [Number(car.id)],
+  );
+  if (!fotos.length)
+    throw new Error('Adicione pelo menos uma foto REAL do veículo antes de publicar (não a imagem AGUARDE).');
+  const fotosEnviadas: {id:string}[]=[];
+  for(const foto of fotos) {
+    const {data, error}=await supabaseAdmin.storage.from('manu_arquivos').download(foto.path);
+    if (error || !data) throw new Error('Não foi possível ler uma das fotos do estoque no Supabase Storage.');
+    const bytes=await data.arrayBuffer();
+    const form=new FormData();
+    const ext=String(foto.path.split('.').pop() || 'jpg').toLowerCase();
+    const mime=ext==='png'?'image/png':ext==='webp'?'image/webp':'image/jpeg';
+    form.append('file',new Blob([bytes],{type:mime}),'foto.'+ext);
+    const r=await fetch('https://api.mercadolibre.com/pictures/items/upload',{
+      method:'POST',headers:{Authorization:'Bearer '+token},body:form,
+      signal:AbortSignal.timeout(20000),
+    });
+    const j=await r.json().catch(()=>({}));
+    if (!r.ok || !j?.id) throw new Error('Falha no upload de foto para o Mercado Livre: '+erroML(j,'HTTP '+r.status));
+    fotosEnviadas.push({id:String(j.id)});
   }
+  const body={
+    title:titulo.slice(0,60),category_id:categoria,price:preco,currency_id:'BRL',
+    available_quantity:1,buying_mode:'classified',listing_type_id:'silver',
+    condition:/\b(0\s*km|zero\s*km)\b/i.test(titulo)?'new':'used',
+    channels:['marketplace'],
+    description:{plain_text:descricao.slice(0,50000)},
+    pictures:fotosEnviadas,
+    seller_contact:{contact:'',other_info:'',country_code:'55',area_code:'',phone:tel,
+      country_code2:'55',phone2:tel,email:'',webpage:''},
+    location:{city:{id:cidadeId}},
+    attributes:[
+      {id:'BRAND',value_name:fabricante},
+      {id:'MODEL',value_name:modelo},
+      {id:'VEHICLE_YEAR',value_name:String(car.ano || '').split('/')[0]},
+      {id:'COLOR',value_name:String(car.cor || '')},
+    ].filter(a=>a.value_name),
+  };
+  // O validado não publica nem consome uma nova cota. Em caso de erro,
+  // manter dados e detalhar os motivos antes de POST /items.
+  const validacao=await fetch('https://api.mercadolibre.com/items/validate',{
+    method:'POST',headers:{Authorization:'Bearer '+token,
+      'Content-Type':'application/json',Accept:'application/json'},
+    body:JSON.stringify(body),signal:AbortSignal.timeout(20000),
+  });
+  if (!validacao.ok) {
+    const j=await validacao.json().catch(()=>({}));
+    throw new Error('Pré-validação Mercado Livre: '+erroML(j,'HTTP '+validacao.status));
+  }
+  const res=await fetch('https://api.mercadolibre.com/items',{
+    method:'POST',headers:{Authorization:'Bearer '+token,
+      'Content-Type':'application/json',Accept:'application/json'},
+    body:JSON.stringify(body),signal:AbortSignal.timeout(30000),
+  });
+  const json=await res.json().catch(()=>({}));
+  if (!res.ok)throw new Error('Mercado Livre: '+erroML(json,'HTTP '+res.status));
+  if (!json?.id)throw new Error('Mercado Livre não devolveu ID da publicação: verifique a conta antes de repetir.');
   return json;
 }
 
@@ -204,13 +255,21 @@ export async function POST(req: NextRequest) {
           erros.push(e?.message || 'Mercado Livre: reconecte em Integrações');
           continue;
         }
-        const item = await publicarMercadoLivre(mlToken, car, descricao, titulo, precoNum);
+        const existente = await queryOne<{id:string}>(
+          "SELECT anuncios_meta->'mercadolivre'->>'id' AS id FROM public.estoque_carros WHERE id=$1",
+          [estoqueId],
+        );
+        if (existente?.id) {
+          erros.push('Mercado Livre: este veículo já tem anúncio registrado ('+existente.id+'). Consulte o anúncio antes de publicar novamente.');
+          continue;
+        }
+        const item = await publicarMercadoLivre(mlToken, car, descricao, titulo, precoNum, String(body.telefone_whatsapp || ''), String(body.cidade_ml_id || ''));
         resultados.mercadolivre = {
           id: item.id,
           permalink: item.permalink,
           status: item.status,
         };
-        await query(
+        try { await query(
           `INSERT INTO public.anuncios_log (empresa_id, estoque_id, placa, plataforma, external_id, status, payload, criado_por)
            VALUES ($1,$2,$3,'mercadolivre',$4,'publicado',$5::jsonb,$6)`,
           [
@@ -221,7 +280,7 @@ export async function POST(req: NextRequest) {
             JSON.stringify({ permalink: item.permalink, title: titulo }),
             u.id,
           ],
-        );
+        ); } catch(e) { console.warn('[Aurox ML] publicação criada; auditoria não gravada', e instanceof Error ? e.message : 'erro'); }
       } else if (['olx', 'webmotors', 'napista', 'icarros', 'chavesnamao', 'facebook', 'instagram'].includes(p)) {
         // Token da loja existe, mas API de publicação de cada portal varia — registra intenção
         const conn = await queryOne(
