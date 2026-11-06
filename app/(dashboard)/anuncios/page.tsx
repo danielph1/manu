@@ -117,7 +117,13 @@ export default function AnunciosPage() {
       setWhatsappContato(String(data.telefone_whatsapp||''));
       setEstadoMlId(String(data.estado_ml_id||''));
       setCidadeMlId(String(data.cidade_ml_id||''));
-    }).catch(()=>{ /* primeira execução sem preferências, usar campos vazios */ });
+    }).catch((e:any)=>{
+      if(!viva)return;
+      const status=e?.response?.status;
+      if(status===404)toast.error('Preferências: rota ausente na Vercel. Publique /api/anuncios/preferencias.');
+      else if(status===503)toast.error('Preferências: execute a migration v16 no Supabase.');
+      else toast.error('Não foi possível consultar as preferências desta empresa.');
+    });
     return ()=>{viva=false;};
   },[sel?.id]);
 

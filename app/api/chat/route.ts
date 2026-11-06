@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, queryOne } from '@/lib/db';
+import { getPool, query, queryOne } from '@/lib/db';
 import { requireUser } from '@/lib/session';
 import { leadAcessivel } from '@/lib/lead-access';
 import { notificar } from '@/lib/notify';
@@ -94,6 +94,42 @@ export async function POST(req: NextRequest) {
     if (b64 && mimeBase.startsWith('audio/') && msg) return NextResponse.json({ error: 'Envie o áudio e o texto separadamente.' }, { status: 400 });
     if (b64 && Buffer.from(b64,'base64').length > 4_000_000)
       return NextResponse.json({ error: 'Arquivo ultrapassa 4 MB.' }, { status: 413 });
+    const notaInterna = Boolean(b?.interno===true || /^\[interno\]/i.test(msg));
+    if (notaInterna) {
+      const papel=String(u.tipo||'').toLowerCase();
+      if (!['vendedor','superadmin'].includes(papel))
+        return NextResponse.json({error:'Somente vendedor responsável ou superadmin pode registrar nota interna.'},{status:403});
+      if (b64)return NextResponse.json({error:'Nota interna deve ser escrita em texto.'},{status:400});
+      const nota=msg.replace(/^\[interno\]\s*/i,'').trim();
+      if(!nota)return NextResponse.json({error:'Escreva a observação interna.'},{status:400});
+      const db=getPool();
+      const client=await db.connect();
+      try{
+        await client.query('BEGIN');
+        const {rows:[atual]}=await client.query<{vendedor_id:number|null}>(
+          'SELECT vendedor_id FROM public.leads WHERE id=$1 FOR UPDATE',[leadId]);
+        if (!atual?.vendedor_id || (papel==='vendedor' && Number(atual.vendedor_id)!==Number(u.vendedor_id))) {
+          await client.query('ROLLBACK');
+          return NextResponse.json({error:'Lead não está atribuído a você. A nota só pode fixar o vendedor já responsável.'},{status:403});
+        }
+        // Operação atômica: a nota e o bloqueio da rotação são gravados juntos.
+        await client.query(`UPDATE public.leads SET
+          comentario_interno=CONCAT_WS(E'\n',NULLIF(TRIM(comentario_interno),''),$2),
+          rotacionar=FALSE
+          WHERE id=$1`,[leadId,`[${new Date().toISOString()}] ${u.nome||u.login}: ${nota}`]);
+        const r=await client.query(`INSERT INTO public.chat_geral_mensagens
+          (remetente_id,mensagem,lead_id) VALUES ($1,$2,$3)
+          RETURNING id,mensagem,created_at,remetente_id`,[u.id,`[interno] ${nota}`,leadId]);
+        await client.query('COMMIT');
+        return NextResponse.json({...r.rows[0],remetente_nome:u.nome||u.login,
+          whatsapp:{ok:true,status:'internal_only',message:'Nota privada: lead permanece com o vendedor atual.'},
+          salvo_no_manu:true,interno:true});
+      }catch(e:any){
+        await client.query('ROLLBACK').catch(()=>{});
+        console.error('[Aurox nota interna]',e?.code||'',e?.message||'');
+        return NextResponse.json({error:'Falha ao gravar nota e fixar o vendedor.'},{status:500});
+      }finally{client.release();}
+    }
     const texto = msg || (mimeBase.startsWith('audio/') ? '[Áudio]' : '[Foto]');
     const row = await queryOne<any>(
       `INSERT INTO public.chat_geral_mensagens

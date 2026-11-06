@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { setStoredToken, TOKEN_STORAGE_KEY, USER_STORAGE_KEY, api } from '@/lib/api';
 import type { LoginPayload, User } from '@/types';
 import { authService } from '@/lib/services';
+import { desativarInscricaoPush } from '@/lib/push/client';
 
 interface AuthContextValue {
   user: User | null;
@@ -49,7 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [router]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Antes de revogar o JWT, remove a inscrição deste dispositivo da conta atual.
+    try { if ('serviceWorker' in navigator && 'PushManager' in window) await desativarInscricaoPush(); } catch {}
     window.localStorage.removeItem(TOKEN_STORAGE_KEY);
     window.localStorage.removeItem(USER_STORAGE_KEY);
     setUser(null);

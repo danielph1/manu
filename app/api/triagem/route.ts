@@ -28,7 +28,7 @@ async function expirar(empresaId: number | null, superadmin: boolean) {
 /** Operação atômica: row lock, valida empresa do vendedor e registra lead exatamente uma vez. */
 async function virarLead(triagemId:number,vendedorId:number,empresaPermitida:number | null) {
   const client=await getPool().connect();
-  let leadId:number | null=null; let mensagem='';
+  let leadId:number | null=null; let mensagem=''; let origem=''; let empresaDoLead:number|null=null;
   try {
     await client.query('BEGIN');
     const {rows:[t]}=await client.query(
@@ -46,7 +46,7 @@ async function virarLead(triagemId:number,vendedorId:number,empresaPermitida:num
        VALUES($1,$2,$3,$4,$5,$6,now(),now(),TRUE) RETURNING id`,
       [t.nome,t.telefone,t.email,t.interesse,`[${t.origem}] ${t.mensagem||''}`.trim(),vendedorId],
     );
-    leadId=Number(lead.id);mensagem=String(t.mensagem||'');
+    leadId=Number(lead.id);mensagem=String(t.mensagem||'');origem=String(t.origem||'');empresaDoLead=Number(v.empresa_id);
     await client.query(
       `UPDATE public.triagem SET status='atribuido',empresa_id=$1,vendedor_id=$2,lead_id=$3 WHERE id=$4`,
       [v.empresa_id,vendedorId,leadId,triagemId],
@@ -54,12 +54,27 @@ async function virarLead(triagemId:number,vendedorId:number,empresaPermitida:num
     await client.query('COMMIT');
   } catch(err) {await client.query('ROLLBACK');throw err;}
   finally {client.release();}
-  if(leadId && mensagem) {
-    // Falha em chat não desfaz um lead já criado.
+  if (leadId && origem==='aurox-whatsapp' && empresaDoLead) {
+    // Vincula todas as mensagens originais: foto/áudio continuam no Storage privado.
+    // Filtro por empresa em todas as junções, evitando misturar concessionárias.
+    try {
+      await query(`UPDATE public.aurox_wa_contatos SET lead_id=$1
+        WHERE triagem_id=$2 AND empresa_id=$3 AND (lead_id IS NULL OR lead_id=$1)`,
+        [leadId,triagemId,empresaDoLead]);
+      await query(`INSERT INTO public.chat_geral_mensagens
+        (remetente_id,lead_id,mensagem,aurox_wa_mensagem_id)
+        SELECT NULL,$1,m.corpo,m.id
+          FROM public.aurox_wa_contatos c
+          JOIN public.aurox_wa_mensagens m ON m.contato_id=c.id AND m.empresa_id=c.empresa_id
+         WHERE c.triagem_id=$2 AND c.empresa_id=$3 AND m.direcao='recebida'
+         ORDER BY m.recebida_em,m.id
+        ON CONFLICT (aurox_wa_mensagem_id) DO NOTHING`,[leadId,triagemId,empresaDoLead]);
+    }catch(err){console.error('triagem histórico Aurox:',err instanceof Error?err.message:'erro');}
+  } else if(leadId && mensagem) {
     try {
       await query(`INSERT INTO public.chat_geral_mensagens(remetente_id,mensagem,lead_id)
-        VALUES(NULL,$1,$2)`,[`[cliente] ${mensagem}`,leadId]);
-    } catch {/* configuração de chat pode ser diferente */}
+        VALUES(NULL,$1,$2)`,[mensagem,leadId]);
+    } catch {/* chat opcional */}
   }
   return leadId;
 }

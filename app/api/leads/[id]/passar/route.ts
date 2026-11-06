@@ -34,9 +34,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     await client.query('BEGIN');
     const { rows: [lead] } = await client.query<{
-      vendedor_id: number | null; empresa_id: number | null; loja: string | null; de_nome: string | null;
+      vendedor_id: number | null; empresa_id: number | null; loja: string | null; de_nome: string | null; comentario_interno:string|null; rotacionar:boolean|null;
     }>(`
-      SELECT l.vendedor_id, v.empresa_id, v.loja, v.nome AS de_nome
+      SELECT l.vendedor_id, v.empresa_id, v.loja, v.nome AS de_nome, l.comentario_interno, l.rotacionar
         FROM public.leads l
         LEFT JOIN public.vendedores v ON v.id=l.vendedor_id
        WHERE l.id=$1 FOR UPDATE OF l`, [leadId]);
@@ -44,6 +44,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!lead || lead.empresa_id == null || lead.vendedor_id == null) {
       await client.query('ROLLBACK');
       return NextResponse.json({ error: 'Lead sem vendedor/empresa. Encaminhe pela Triagem.' }, { status: 404 });
+    }
+    if ((String(lead.comentario_interno||'').trim() || lead.rotacionar===false) && !(role==='superadmin' && body.forcar_transferencia===true)) {
+      await client.query('ROLLBACK');
+      return NextResponse.json({error:'Lead fixado por comentário interno. Somente superadmin pode transferir com confirmação explícita.'},{status:409});
     }
     const empresaId = Number(lead.empresa_id);
     if (role !== 'superadmin' && (!user.empresa_id || Number(user.empresa_id) !== empresaId)) {
@@ -72,7 +76,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     await client.query(`UPDATE public.leads
-      SET vendedor_id=$2, atribuido_em=now(), rotacionar=TRUE WHERE id=$1`, [leadId, para.id]);
+      SET vendedor_id=$2, atribuido_em=now(), rotacionar=CASE WHEN COALESCE(TRIM(comentario_interno),'')<>'' THEN FALSE ELSE TRUE END WHERE id=$1`, [leadId, para.id]);
     await client.query(`INSERT INTO public.manu_atendimento_transferencias
       (empresa_id,lead_id,de_vendedor_id,para_vendedor_id,por_usuario_id,motivo)
       VALUES ($1,$2,$3,$4,$5,$6)`,

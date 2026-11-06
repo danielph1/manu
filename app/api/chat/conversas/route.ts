@@ -56,6 +56,7 @@ export async function GET(req: NextRequest) {
     SELECT l.id,
            COALESCE(NULLIF(TRIM(l.nome_completo),''), NULLIF(TRIM(l.nome_lead),''), l.telefone, 'Lead') AS nome,
            l.telefone, l.email,
+           (COALESCE(TRIM(l.comentario_interno),'')<>'' OR COALESCE(l.rotacionar,TRUE)=FALSE) AS fixado,
            COALESCE(l.produto_interesse, '') AS interesse,
            (SELECT mensagem FROM public.chat_geral_mensagens m WHERE m.lead_id = l.id ORDER BY m.created_at DESC LIMIT 1) AS ultima,
            (SELECT COUNT(*)::int FROM public.chat_geral_mensagens m WHERE m.lead_id = l.id) AS total,

@@ -6,6 +6,7 @@ import { ThemeProvider } from '@/contexts/theme-context';
 import { FavoritosProvider } from '@/contexts/favoritos-context';
 import { I18nProvider } from '@/contexts/i18n-context';
 import { Toaster } from '@/components/ui/sonner';
+import { PWAProvider } from '@/components/pwa-provider';
 
 export function Providers({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -17,6 +18,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={client}>
       <ThemeProvider>
       <AuthProvider>
+        <PWAProvider />
         <I18nProvider>
         <FavoritosProvider>
         {children}

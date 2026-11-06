@@ -5,6 +5,7 @@ import { isSuperAdmin } from '@/lib/tenant';
 import { supabaseAdmin } from '@/lib/supabase';
 import { accessTokenMLValido } from '@/lib/mercadolivre/access-token';
 import { prepararFotoMercadoLivre } from '@/lib/mercadolivre/photo';
+import { buscarAtributosML, categoriaVeiculo, isCategoriaVeiculo } from '@/lib/mercadolivre/atributos';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,8 @@ type Body = {
   titulo?: string;
   telefone_whatsapp?: string;
   cidade_ml_id?: string;
+  categoria_ml_id?: string;
+  atributos_ml?: Record<string, string>;
 };
 
 // AUROX_ML_V13 — publicação de veículos: pacote silver, localização, imagens e validação.
@@ -37,11 +40,10 @@ function erroML(json: any, fallback: string) {
 
 async function publicarMercadoLivre(
   token: string, car: any, descricao: string, titulo: string, preco: number,
-  telefone: string, cidadeId: string,
+  telefone: string, cidadeId: string, categoriaEscolhida: string, extras: Record<string,string>,
 ) {
-  const categoria = /moto|motocicleta|scooter/i.test(String(car.carroceria || ''))
-    || /motos?\s*(0|o)\s*km/i.test(String(car.marca || ''))
-    ? 'MLB1763' : 'MLB1744';
+  const categoria = categoriaEscolhida || categoriaVeiculo(car.carroceria);
+  if (!isCategoriaVeiculo(categoria)) throw new Error('Escolha uma categoria de veículo válida para este anúncio.');
   const fabricante=String(car.marca || '').trim();
   const modelo=String(car.modelo || car.carro || '').trim();
   if (!String(car.carroceria || '').trim())
@@ -53,6 +55,26 @@ async function publicarMercadoLivre(
     throw new Error('Informe o WhatsApp da loja com DDD (10 ou 11 dígitos).');
   if (!/^[A-Za-z0-9_-]{6,80}$/.test(cidadeId))
     throw new Error('Selecione um estado e uma cidade válidos no campo Localização da loja.');
+  // Consulta a ficha da categoria em tempo real; exigências podem mudar sem alterar o Aurox.
+  const esquema = await buscarAtributosML(token, categoria);
+  const padroes: Record<string,string> = {
+    BRAND:fabricante, MODEL:modelo,
+    VEHICLE_YEAR:String(car.ano||'').split('/')[0], YEAR:String(car.ano||'').split('/')[0],
+    COLOR:String(car.cor||''), KILOMETERS:String(car.km??''),
+  };
+  const informados: Record<string,string> = {};
+  for(const a of esquema) {
+    // Somente IDs oferecidos pelo Mercado Livre; nunca confiar em IDs arbitrários do browser.
+    const valor=String(extras?.[a.id]||padroes[a.id]||'').trim().slice(0,255);
+    if(a.required && !valor) throw new Error(`Preencha o campo obrigatório do Mercado Livre: ${a.name} (${a.id}).`);
+    if(valor) informados[a.id]=valor;
+  }
+  for(const id of ['BRAND','MODEL'])if(!informados[id])informados[id]=padroes[id];
+  const atributosPublicar=Object.entries(informados).map(([id,valor])=>{
+    const def=esquema.find(a=>a.id===id);
+    const opcao=def?.values?.find(v=>v.id===valor||v.name.toLowerCase()===valor.toLowerCase());
+    return opcao?{id,value_id:opcao.id}:{id,value_name:valor};
+  });
   const { rows: fotos } = await query<{path: string}>(
     'SELECT path FROM public.estoque_fotos WHERE carro_id=$1 ORDER BY ordem ASC, id ASC LIMIT 6',
     [Number(car.id)],
@@ -98,12 +120,7 @@ async function publicarMercadoLivre(
     seller_contact:{contact:'',other_info:'',country_code:'55',area_code:'',phone:tel,
       country_code2:'55',phone2:tel,email:'',webpage:''},
     location:{city:{id:cidadeId}},
-    attributes:[
-      {id:'BRAND',value_name:fabricante},
-      {id:'MODEL',value_name:modelo},
-      {id:'VEHICLE_YEAR',value_name:String(car.ano || '').split('/')[0]},
-      {id:'COLOR',value_name:String(car.cor || '')},
-    ].filter(a=>a.value_name),
+    attributes:atributosPublicar,
   };
   // O validado não publica nem consome uma nova cota. Em caso de erro,
   // manter dados e detalhar os motivos antes de POST /items.
@@ -207,7 +224,18 @@ export async function POST(req: NextRequest) {
           erros.push('Mercado Livre: este veículo já tem anúncio registrado ('+existente.id+'). Consulte o anúncio antes de publicar novamente.');
           continue;
         }
-        const item = await publicarMercadoLivre(mlToken, car, descricao, titulo, precoNum, String(body.telefone_whatsapp || ''), String(body.cidade_ml_id || ''));
+        // Preferências da empresa servem de fallback para integrações que não usam o formulário.
+        let pref: {telefone_whatsapp:string;cidade_ml_id:string} | null = null;
+        try {
+          pref = await queryOne<{telefone_whatsapp:string;cidade_ml_id:string}>(
+            'SELECT telefone_whatsapp,cidade_ml_id FROM public.manu_anuncios_preferencias WHERE empresa_id=$1',
+            [empresaId],
+          );
+        } catch { /* instalação antiga: publicação continua possível com os campos enviados */ }
+        const item = await publicarMercadoLivre(mlToken, car, descricao, titulo, precoNum,
+          String(body.telefone_whatsapp || pref?.telefone_whatsapp || ''),
+          String(body.cidade_ml_id || pref?.cidade_ml_id || ''),
+          String(body.categoria_ml_id || ''), body.atributos_ml || {});
         resultados.mercadolivre = {
           id: item.id,
           permalink: item.permalink,

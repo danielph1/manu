@@ -8,54 +8,7 @@ import { query } from '@/lib/db';
  *   VAPID_SUBJECT=mailto:seu@email.com
  */
 
-async function sendWebPush(usuarioIds: number[], title: string, body: string, url?: string) {
-  const pub = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || process.env.VAPID_PUBLIC_KEY;
-  const priv = process.env.VAPID_PRIVATE_KEY;
-  const subject = process.env.VAPID_SUBJECT || 'mailto:admin@manu.local';
-  if (!pub || !priv || !usuarioIds.length) return;
-
-  let webpush: any;
-  try {
-    webpush = (await import('web-push')).default;
-  } catch {
-    return; // pacote não instalado
-  }
-  webpush.setVapidDetails(subject, pub, priv);
-
-  let subs: any[] = [];
-  try {
-    const { rows } = await query(
-      `SELECT id, endpoint, p256dh, auth FROM public.push_subscriptions
-       WHERE ativo = TRUE AND usuario_id = ANY($1)`,
-      [usuarioIds],
-    );
-    subs = rows || [];
-  } catch {
-    return;
-  }
-
-  const payload = JSON.stringify({
-    title: title || 'Manu Automóveis',
-    body: body || '',
-    url: url || '/painel',
-  });
-
-  for (const s of subs) {
-    try {
-      await webpush.sendNotification(
-        { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        payload,
-      );
-    } catch (err: any) {
-      const code = err?.statusCode || err?.status;
-      if (code === 404 || code === 410) {
-        try {
-          await query(`UPDATE public.push_subscriptions SET ativo = FALSE WHERE id = $1`, [s.id]);
-        } catch { /* ok */ }
-      }
-    }
-  }
-}
+import { dispatchAuroxPush } from '@/lib/push/dispatch';
 
 export async function notificar(opts: {
   titulo: string;
@@ -92,8 +45,9 @@ export async function notificar(opts: {
         [id, opts.tipo || 'geral', opts.titulo, opts.mensagem],
       );
     }
-    // push em paralelo (não bloqueia se falhar)
-    sendWebPush(ids, opts.titulo, opts.mensagem, opts.url).catch(() => {});
+    // Os inserts são enfileirados por trigger SQL. Tenta envio imediato, sem perder
+    // o aviso se o provedor estiver indisponível; o worker reprocessa posteriormente.
+    if (ids.length) await dispatchAuroxPush(Math.min(35, ids.length)).catch(() => {});
   } catch {
     /* tabela pode falhar; nao derruba o fluxo */
   }

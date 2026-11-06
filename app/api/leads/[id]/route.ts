@@ -44,11 +44,14 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     payload.score = Number.isFinite(n) ? n : null;
   }
 
+  if ('comentario_interno' in body && !['vendedor','superadmin'].includes(String(u.tipo||'').toLowerCase())) {
+    return NextResponse.json({error:'Somente vendedor responsável e superadmin podem editar o comentário interno.'},{status:403});
+  }
   // comentário interno segura o lead — para de rotacionar
   if ('comentario_interno' in body) {
     const ci = String(body.comentario_interno || '').trim();
     payload.comentario_interno = ci;
-    payload.rotacionar = ci.length === 0;
+    if (ci.length > 0) payload.rotacionar = false; // limpar texto não reativa rotação sozinho
   }
 
   const { data, error } = await supabaseAdmin.from('leads').update(payload).eq('id', id).select().single();

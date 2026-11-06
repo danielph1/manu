@@ -1,20 +1,42 @@
 {
-  "name": "Project Manu  Gestao de Leads",
-  "short_name": "Manu",
-  "description": "Sistema de gestao de leads, estoque e vendas",
+  "name": "Aurox — Gestão Automotiva",
+  "short_name": "Aurox",
+  "description": "Gestão de leads, estoque, atendimento e vendas",
   "start_url": "/painel",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0a0a0b",
-  "theme_color": "#dc2626",
+  "theme_color": "#24172f",
   "icons": [
-    { "src": "/aurox.jpeg", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/aurox.jpeg", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
   ],
   "shortcuts": [
-    { "name": "Painel de Leads", "url": "/painel" },
-    { "name": "Fichas", "url": "/fichas" },
-    { "name": "Novo Lead", "url": "/novo-lead" },
-    { "name": "Chat", "url": "/chat" }
+    {
+      "name": "Painel de Leads",
+      "url": "/painel"
+    },
+    {
+      "name": "Fichas",
+      "url": "/fichas"
+    },
+    {
+      "name": "Novo Lead",
+      "url": "/novo-lead"
+    },
+    {
+      "name": "Chat",
+      "url": "/chat"
+    }
   ]
 }

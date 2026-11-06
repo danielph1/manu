@@ -1,3 +1,4 @@
+import { startPushDispatcher } from './push-dispatcher.mjs';
 import http from 'node:http';
 import { createHash, createHmac, createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from 'node:crypto';
 import * as fs from 'node:fs/promises';
@@ -340,3 +341,5 @@ server.listen(PORT,'0.0.0.0',()=>console.log(`Aurox-WhatsApp worker: porta ${POR
 setInterval(()=>{void flushOutbox();},8000).unref();
 setInterval(()=>{void restore();},120000).unref();
 void restore();
+
+startPushDispatcher(BASE);
