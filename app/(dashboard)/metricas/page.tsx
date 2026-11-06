@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -103,6 +104,7 @@ export default function MetricasPage() {
         <h1 className="mt-1 text-3xl font-semibold tracking-tight">Métricas e resultados</h1>
         <p className="mt-2 text-sm text-muted-foreground">{d?.empresa?.nome||'Escolha a empresa'} · {range||'Indicadores por empresa e loja'} · Dados operacionais, não estimativas disfarçadas.</p>
       </div>
+      <Link href="/desempenho" className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted">Desempenho por vendedor e origem</Link>
       <button className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-muted" onClick={()=>r.refetch()}><RefreshCw size={16}/> Atualizar</button>
     </header>
     <div className="grid gap-3 sm:grid-cols-3">

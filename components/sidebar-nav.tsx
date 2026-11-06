@@ -31,6 +31,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
     { href: '/painel', label: 'Painel de Leads', icon: LayoutDashboard, show: Role.verLeads(user) || isSuper },
     { href: '/documental', label: 'Documental', icon: FileSearch, show: Role.verDocumental(user) || isSuper },
     { href: '/metricas', label: t('nav.metricas'), icon: BarChart3, show: Role.verMetricas(user) || isSuper },
+    { href: '/desempenho', label: 'Desempenho', icon: BarChart3, show: ['admin','marketing','gerente','superadmin'].includes(tipo) },
     { href: '/gestao-usuarios', label: 'Usuários / vendedores', icon: UserRoundPlus, show: ['superadmin','admin','marketing'].includes(tipo) },
     { href: '/equipe', label: t('nav.equipe'), icon: Users, show: Role.isGerente(user) || isSuper },
     { href: '/feed', label: t('nav.feed'), icon: Sparkles, show: isSuper },
