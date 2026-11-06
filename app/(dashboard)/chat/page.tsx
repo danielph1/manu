@@ -7,7 +7,7 @@ import { useI18n } from '@/contexts/i18n-context';
 import { compressGallery } from '@/lib/compress-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Camera, Mic, Paperclip, Smile } from 'lucide-react';
+import { ArrowLeft, Camera, Info, LockKeyhole, MessageCircle, Mic, MoreVertical, Paperclip, Search, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/auth-context';
 
@@ -54,6 +54,9 @@ function ChatPageInner() {
   const router = useRouter();
   const leadId = sp.get('lead');
   const [info, setInfo] = useState(false);
+  const [menuMensagem,setMenuMensagem] = useState<number|null>(null);
+  const [salvandoNota,setSalvandoNota] = useState(false);
+  const mensagensRef=useRef<HTMLDivElement>(null);
   const [obs, setObs] = useState('');
   const [texto, setTexto] = useState('');
     const [camOpen, setCamOpen] = useState(false);
@@ -112,6 +115,11 @@ function ChatPageInner() {
     localStorage.setItem('manu.lidos', JSON.stringify(lidos));
   }, [leadId, Array.isArray(data) ? data.length : 0]);
 
+  useEffect(()=>{
+    if(!leadId)return;
+    const el=mensagensRef.current;
+    if(el)el.scrollTop=el.scrollHeight;
+  },[leadId,Array.isArray(data)?data.length:0]);
   const enviandoRef = useRef(false);
   const [enviando, setEnviando] = useState(false);
 
@@ -281,144 +289,171 @@ function ChatPageInner() {
   }
 
   
-  if (!leadId) {
-    const lidos = (() => { try { return JSON.parse(localStorage.getItem('manu.lidos') || '{}'); } catch { return {}; } })();
-    return (
-      <div className="mx-auto max-w-2xl space-y-3">
-        <h1 className="text-2xl font-bold">{t('page.chat.title')}</h1>
-        <input
-          className="mb-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
-          placeholder="Buscar nome, telefone, e-mail, CPF, carro..."
-          value={buscaConv}
-          onChange={(e) => setBuscaConv(e.target.value)}
-        />
-        {(Array.isArray(conversas) ? conversas : []).map((c: any) => {
-          const nao = Math.max(0, Number(c.total || 0) - Number(lidos[c.id] || 0));
-          return (
-            <button key={c.id} onClick={() => router.push(`/chat?lead=${c.id}`)} className="flex w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left">
-              <div>
-                <div className="font-medium">{c.nome || 'Sem nome'}</div>
-                <div className="text-xs text-muted-foreground">{c.ultima || c.telefone || 'nova conversa'}</div>
-              </div>
-              {nao > 0 && <span className="rounded-full bg-primary px-2 text-xs text-primary-foreground">{nao}</span>}
-            </button>
-          );
-        })}
-      </div>
-    );
+  const conv = (Array.isArray(conversasAll) ? conversasAll : []).find((c:any)=>String(c.id)===String(leadId));
+  const papel = String(user?.tipo||'').toLowerCase();
+  const podeNota = papel==='vendedor' || papel==='superadmin';
+  const podeTransferir = ['superadmin','admin','marketing','gerente'].includes(papel);
+  const podeExcluir = ['superadmin','admin','marketing','gerente'].includes(papel);
+  const mensagens = Array.isArray(data) ? data : [];
+  const nomeConv = String(conv?.nome || 'Conversa');
+  const initials = (v:unknown)=>String(v||'?').trim().slice(0,1).toUpperCase();
+  const resumo = (v:unknown)=>{
+    const x=String(v||'').replace(/^(?:\[(?:cliente|Aurox-WhatsApp)\]\s*)+/gi,'').trim();
+    return /^\[interno\]/i.test(x) ? '🔒 Nota interna' : x || 'Inicie uma conversa';
+  };
+  async function salvarNota(){
+    if(!leadId || !obs.trim() || !podeNota)return;
+    setSalvandoNota(true);
+    try {
+      await api.post('/chat',{lead_id:Number(leadId),mensagem:obs.trim(),interno:true});
+      setObs('');
+      toast.success('Nota interna registrada. Lead mantido com o vendedor responsável.');
+      await Promise.all([qc.invalidateQueries({queryKey:['chat',leadId]}),qc.invalidateQueries({queryKey:['conversas']})]);
+    }catch(e:any){toast.error(e?.response?.data?.error||'Não foi possível registrar a nota.');}
+    finally{setSalvandoNota(false);}
   }
-
-  const conv = (Array.isArray(conversas) ? conversas : []).find((c: any) => String(c.id) === String(leadId));
+  async function transferirLead(){
+    if(!leadId || !podeTransferir)return;
+    const fixado=Boolean(conv?.fixado);
+    if(fixado && papel!=='superadmin')return toast.error('O comentário interno fixou este lead ao vendedor.');
+    if(fixado && !window.confirm('Este lead está fixado por nota interna. Confirma a transferência excepcional como superadmin?'))return;
+    try {
+      await api.post(`/leads/${leadId}/passar`,fixado?{forcar_transferencia:true}:{});
+      toast.success('Lead transferido.');router.push('/chat');qc.invalidateQueries({queryKey:['conversas']});
+    }catch(e:any){toast.error(e?.response?.data?.error||'Falha ao transferir lead.');}
+  }
+  const telConv = String(conv?.telefone||'').replace(/\D/g,'');
+  const urlTelefone = telConv ? `https://wa.me/${telConv.startsWith('55')?telConv:'55'+telConv}` : '';
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-9rem)] max-w-2xl flex-col">
-      <div className="mb-2 flex items-center gap-2">
-        <button onClick={() => router.push('/chat')} className="text-sm text-muted-foreground">← voltar</button>
-        <button className="text-lg font-semibold" onClick={() => setInfo((v) => !v)}>{conv?.nome || 'Conversa'}</button>
-      </div>
-      {info && (
-        <div className="mb-2 space-y-2 rounded-xl border border-border bg-card p-3 text-sm" onClick={(e) => e.stopPropagation()}>
-          <div>Nome: {conv?.nome || '—'}</div>
-          <div>Telefone: {conv?.telefone ? <a className="text-primary underline" href={`https://wa.me/55${String(conv.telefone).replace(/\D/g,'')}`} target="_blank">{conv.telefone}</a> : '—'}</div>
-          <div>E-mail: {conv?.email || '—'}</div>
-          <div>Interesse: {conv?.interesse || '—'}</div>
-          <div className="flex gap-2">
-            <input className="flex-1 rounded border bg-background px-2 py-1" placeholder="Observação interna" value={obs} onChange={(e) => setObs(e.target.value)} />
-            <button className="rounded border px-2 py-1" onClick={async () => { if (!obs.trim()) return; await api.post('/chat', { mensagem: '[interno] ' + obs.trim(), lead_id: leadId }); setObs(''); qc.invalidateQueries({ queryKey: ['chat'] }); }}>Enviar</button>
+    <div className="mx-auto flex h-[calc(100dvh-8rem)] min-h-[400px] w-full max-w-7xl overflow-hidden rounded-xl border border-border/70 bg-card shadow-xl shadow-black/10 md:h-[calc(100dvh-7rem)] md:rounded-2xl">
+      {/* Duas colunas no desktop; no celular exibe a lista OU a conversa. */}
+      <aside className={`${leadId?'hidden md:flex':'flex'} w-full shrink-0 flex-col border-r border-border/60 bg-background/70 md:w-[330px] lg:w-[365px]`}>
+        <div className="flex items-center justify-between border-b border-border/60 px-4 py-4">
+          <div>
+            <div className="text-xl font-bold tracking-tight">Conversas</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">Atendimento Aurox · {conversasAll.length} contato(s)</div>
           </div>
-          <div className="max-h-28 overflow-y-auto rounded border border-border/50 p-2 text-xs">
-            <div className="mb-1 font-medium text-muted-foreground">Histórico de transferências</div>
-            {(Array.isArray(data) ? data : [])
-              .filter((m: any) => String(m.mensagem || '').startsWith('Transferido de'))
-              .map((m: any) => (
-                <div key={m.id} className="py-0.5">{m.mensagem}</div>
-              ))}
-            {(Array.isArray(data) ? data : []).filter((m: any) => String(m.mensagem || '').startsWith('Transferido de')).length === 0 && (
-              <div className="text-muted-foreground">Nenhuma transferência registrada neste chat.</div>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button className="rounded border px-2 py-1" onClick={async () => { await api.post(`/leads/${leadId}/passar`); router.push('/chat'); }}>Passar</button>
-            <button className="rounded border border-red-500 px-2 py-1 text-red-400" onClick={async () => { await api.delete(`/leads/${leadId}`); router.push('/chat'); }}>Apagar lead</button>
-          </div>
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><MessageCircle className="h-5 w-5"/></span>
         </div>
-      )}
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto rounded-xl border border-border bg-card/30 p-3">
-        {(Array.isArray(data) ? data : []).map((m: any) => {
-          const meu = Number(m.remetente_id) === Number(user?.id);
-          const inicial = String(m.remetente_nome || '?').trim().charAt(0).toUpperCase();
-          const textoLimpo=String(m.mensagem||'').replace(/^(?:\[(?:cliente|Aurox-WhatsApp)\]\s*)+/gi,'').trim();
-          const temMidia=Boolean(m.arquivo_b64||m.aurox_media_chat_id);
-          const legenda=temMidia && /^\[(?:Áudio|Mensagem de voz|Foto|Imagem)(?: recebida)?\]$/i.test(textoLimpo)?'':textoLimpo;
-          return (
-          <div key={m.id} className={`group flex items-end gap-2 ${meu ? 'flex-row-reverse' : ''}`}>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">{inicial}</div>
-            <div
-              className={`relative max-w-[78%] rounded-2xl px-3 py-2 ${meu ? 'rounded-br-sm bg-primary text-primary-foreground' : 'rounded-bl-sm bg-muted'}`}
-            >
-              {!meu && <div className="text-xs font-medium opacity-70">{m.remetente_nome || 'alguém'}</div>}
-              {legenda && <div className="mt-0.5 whitespace-pre-wrap break-words">{legenda}</div>}
-              {m.aurox_media_chat_id && m.aurox_media_mime && (
-                <MidiaPrivadaAurox mensagemId={Number(m.aurox_media_chat_id)} mime={String(m.aurox_media_mime)}/>
-              )}
-              {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('image') && (
-                <img alt="" className="mt-2 max-h-52 rounded-lg" src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} />
-              )}
-              {m.arquivo_b64 && String(m.arquivo_mime || '').startsWith('audio') && (
-                <div className="mt-2 min-w-[220px] max-w-full sm:min-w-[280px]"><audio className="block w-full" controls preload="metadata" src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} /></div>
-              )}
-              {m.arquivo_b64 && !String(m.arquivo_mime || '').startsWith('image') && !String(m.arquivo_mime || '').startsWith('audio') && (
-                <a className="mt-2 block text-sm text-primary underline" href={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} download={m.arquivo_nome}>
-                  {m.arquivo_nome || 'arquivo'}
-                </a>
-              )}
-              <div className={`absolute -top-2 hidden gap-1 group-hover:flex ${meu ? 'right-0' : 'left-0'}`}>
-                <button className="rounded-full border bg-card px-1 text-xs" onClick={() => setEditando({ id: m.id, texto: m.mensagem || '' })}>editar</button>
-                <button className="rounded-full border bg-card px-1 text-xs" onClick={() => apagar(m.id)}>apagar</button>
-              </div>
-              {editando?.id === m.id && (
-                <div className="mt-1 flex gap-1">
-                  <input className="flex-1 rounded border bg-background px-2 text-sm" value={editando.texto} onChange={(e) => setEditando({ ...editando, texto: e.target.value })} />
-                  <button className="text-xs underline" onClick={salvarEdicao}>ok</button>
+        <div className="relative mx-3 my-3">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground"/>
+          <input aria-label="Buscar conversas" value={buscaConv} onChange={e=>setBuscaConv(e.target.value)}
+            placeholder="Buscar contato ou telefone" className="w-full rounded-xl border border-border/70 bg-muted/50 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-primary"/>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {conversas.map((c:any)=>{
+            const ativo=String(c.id)===String(leadId);
+            return <button type="button" key={c.id}
+              className={`flex w-full items-center gap-3 border-b border-border/40 px-3 py-3 text-left transition-colors hover:bg-primary/5 ${ativo?'bg-primary/10':''}`}
+              onClick={()=>{setInfo(false);router.push(`/chat?lead=${c.id}`);}}>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/25 to-violet-500/10 font-bold text-primary">{initials(c.nome)}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-sm font-semibold">{c.nome||'Sem nome'}</span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">{c.ultima_em?new Date(c.ultima_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</span>
                 </div>
-              )}
-            </div>
-          </div>
-          );
-        })}
-      </div>
-
-      {camOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="space-y-3">
-            <video ref={videoRef} autoPlay playsInline className="max-h-[70vh] rounded-lg" />
-            <div className="flex justify-center gap-3">
-              <Button onClick={() => tirarFoto()}>Tirar foto</Button>
-              <Button variant="outline" onClick={() => fecharCamera()}>Cancelar</Button>
-            </div>
-          </div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span className="truncate">{resumo(c.ultima)||c.telefone||'Nova conversa'}</span>
+                  {c.fixado && <LockKeyhole aria-label="Lead fixado" className="h-3.5 w-3.5 shrink-0 text-amber-500"/>}
+                </div>
+              </div>
+            </button>;
+          })}
+          {conversas.length===0 && <div className="p-8 text-center text-sm text-muted-foreground">Nenhuma conversa encontrada.</div>}
         </div>
-      )}
-
-      {audioPendente && (
-        <div className="mt-2 flex items-center gap-2 text-sm">
-          {previewAudio && <audio className="max-w-[min(74vw,320px)]" controls src={previewAudio} />}
-          <button className="text-xs underline" onClick={() => setAudioPendente(null)}>descartar</button>
-          <span className="text-muted-foreground">clique em Enviar para mandar</span>
-        </div>
-      )}
-      <div className="mt-3 flex items-center gap-2">
-        <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,audio/ogg,audio/mpeg,audio/mp4,audio/aac,audio/webm" className="hidden" onChange={(e) => onArquivo(e.target.files?.[0])} />
-        <Button type="button" size="icon" variant="ghost" onClick={abrirCamera} title="Foto"><Camera className="h-5 w-5" /></Button>
-        <Button type="button" size="icon" variant={recording ? 'default' : 'ghost'} onClick={gravarAudio} title={recording ? 'Parar' : 'Gravar áudio'}>
-          <Mic className={`h-5 w-5 ${recording ? 'animate-pulse' : ''}`} />
-        </Button>
-        <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} title="Arquivo"><Paperclip className="h-5 w-5" /></Button>
-        <Input className="flex-1 rounded-full" value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Mensagem" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(); } }} />
-        <Button className="rounded-full" disabled={enviando} onClick={() => enviar()}>{enviando ? "…" : "Enviar"}</Button>
-      </div>
+      </aside>
+      <section className={`${!leadId?'hidden md:flex':'flex'} min-w-0 flex-1 flex-col bg-background/30`}>
+        {!leadId ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary/10 text-primary"><MessageCircle className="h-9 w-9"/></div>
+            <h2 className="text-2xl font-semibold">Atendimento em um só lugar</h2>
+            <p className="max-w-sm text-sm leading-relaxed text-muted-foreground">Selecione um contato à esquerda para abrir as mensagens, imagens e áudios da conversa.</p>
+          </div>
+        ) : <>
+          <header className="flex shrink-0 items-center gap-2 border-b border-border/60 bg-card/90 px-2 py-2.5 shadow-sm sm:px-4">
+            <button aria-label="Voltar às conversas" type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-muted md:hidden" onClick={()=>{setInfo(false);router.push('/chat');}}><ArrowLeft className="h-5 w-5"/></button>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/30 to-fuchsia-300/20 text-sm font-bold text-primary">{initials(nomeConv)}</div>
+            <button type="button" className="min-w-0 flex-1 text-left" onClick={()=>setInfo(v=>!v)}>
+              <div className="flex items-center gap-2"><span className="truncate text-sm font-bold sm:text-base">{nomeConv}</span>{conv?.fixado && <LockKeyhole className="h-3.5 w-3.5 text-amber-500"/>}</div>
+              <span className="block truncate text-xs text-muted-foreground">{conv?.telefone||'Contato do MANU'} {conv?.interesse?'· '+conv.interesse:''}</span>
+            </button>
+            <button type="button" className={`flex h-9 w-9 items-center justify-center rounded-full hover:bg-muted ${info?'bg-muted':''}`} title="Informações e nota interna" aria-label="Informações da conversa" onClick={()=>setInfo(v=>!v)}><Info className="h-5 w-5"/></button>
+          </header>
+          {info && <div className="z-10 max-h-[45vh] shrink-0 space-y-3 overflow-y-auto border-b border-border/70 bg-card p-3 text-sm shadow-lg sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><div className="font-semibold">{nomeConv}</div><div className="text-xs text-muted-foreground">{conv?.interesse||'Sem interesse informado'}</div></div>
+              {urlTelefone && <a href={urlTelefone} target="_blank" rel="noopener noreferrer" className="rounded-full border px-3 py-2 text-xs text-primary">Abrir WhatsApp</a>}
+            </div>
+            <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+              <span>Telefone: {conv?.telefone||'—'}</span><span>E-mail: {conv?.email||'—'}</span>
+            </div>
+            {conv?.fixado && <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-600 dark:text-amber-300"><LockKeyhole className="h-4 w-4"/>Lead fixado: sem rotação automática para outro vendedor.</div>}
+            {podeNota && <div className="rounded-xl border border-border bg-muted/20 p-3">
+              <label htmlFor="aurox-nota" className="flex items-center gap-2 text-xs font-semibold"><LockKeyhole className="h-4 w-4"/>Nota interna — não enviada ao cliente</label>
+              <textarea id="aurox-nota" rows={2} maxLength={7800} className="mt-2 w-full resize-y rounded-lg border bg-background p-2 text-sm" placeholder="Ex.: cliente pediu retorno amanhã; manter com o vendedor atual" value={obs} onChange={e=>setObs(e.target.value)}/>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">Ao salvar, o lead permanece com o vendedor responsável.</span>
+                <button disabled={salvandoNota||!obs.trim()} onClick={salvarNota} type="button" className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-50">{salvandoNota?'Salvando…':'Salvar nota interna'}</button></div>
+            </div>}
+            {(podeTransferir||podeExcluir) && <div className="flex flex-wrap gap-2 border-t border-border/60 pt-3">
+              {podeTransferir && <button type="button" className="rounded-lg border px-3 py-2 text-xs" onClick={transferirLead}>Transferir lead</button>}
+              {podeExcluir && <button type="button" className="rounded-lg border border-destructive/50 px-3 py-2 text-xs text-destructive" onClick={async()=>{
+                if(!confirm('Excluir definitivamente este lead?'))return;
+                try{await api.delete(`/leads/${leadId}`);router.push('/chat');qc.invalidateQueries({queryKey:['conversas']});}
+                catch(e:any){toast.error(e?.response?.data?.error||'Não foi possível excluir.');}
+              }}>Excluir lead</button>}
+            </div>}
+          </div>}
+          <div ref={mensagensRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-4 sm:px-6"
+            style={{backgroundImage:'radial-gradient(circle at 15% 20%, rgba(168,85,247,0.035) 0 2px, transparent 3px), radial-gradient(circle at 75% 50%, rgba(168,85,247,0.035) 0 1.5px, transparent 3px)',backgroundSize:'72px 72px,110px 110px'}}>
+            {mensagens.length===0 && <div className="mx-auto mt-20 max-w-xs rounded-xl bg-card/90 p-4 text-center text-sm text-muted-foreground">Nenhuma mensagem ainda. Escreva abaixo para começar o atendimento.</div>}
+            {mensagens.map((m:any)=>{
+              const meu=Number(m.remetente_id)===Number(user?.id);
+              const interno=/^\[interno\]/i.test(String(m.mensagem||''));
+              const transfer=/^Transferido de /i.test(String(m.mensagem||''));
+              const textoLimpo=String(m.mensagem||'').replace(/^(?:\[(?:cliente|Aurox-WhatsApp)\]\s*)+/gi,'').replace(/^\[interno\]\s*/i,'').trim();
+              const temMidia=Boolean(m.arquivo_b64||m.aurox_media_chat_id);
+              const legenda=temMidia && /^\[(?:Áudio|Mensagem de voz|Foto|Imagem)(?: recebida)?\]$/i.test(textoLimpo)?'':textoLimpo;
+              if(transfer)return <div key={m.id} className="mx-auto max-w-[85%] rounded-full bg-muted px-3 py-1 text-center text-[11px] text-muted-foreground">{textoLimpo}</div>;
+              return <div key={m.id} className={`group flex ${interno?'justify-center':meu?'justify-end':'justify-start'}`}>
+                <div className={`relative min-w-0 max-w-[88%] rounded-2xl px-3 py-2 shadow-sm sm:max-w-[72%] ${interno?'border border-amber-500/25 bg-amber-500/10':meu?'rounded-br-sm bg-primary text-primary-foreground':'rounded-bl-sm border border-border/70 bg-card'}`}>
+                  {interno && <div className="mb-1 flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-300"><LockKeyhole className="h-3 w-3"/>Nota interna · {m.remetente_nome||'Equipe'}</div>}
+                  {legenda && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{legenda}</p>}
+                  {m.aurox_media_chat_id && m.aurox_media_mime && <MidiaPrivadaAurox mensagemId={Number(m.aurox_media_chat_id)} mime={String(m.aurox_media_mime)}/>}
+                  {m.arquivo_b64 && String(m.arquivo_mime||'').startsWith('image') && <img alt="Imagem enviada" className="mt-1 max-h-72 max-w-full rounded-lg object-contain" src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`}/>}
+                  {m.arquivo_b64 && String(m.arquivo_mime||'').startsWith('audio') && <audio className="mt-2 block w-full min-w-[185px] max-w-[260px]" controls preload="metadata" src={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`}/>}
+                  {m.arquivo_b64 && !/^(image|audio)/.test(String(m.arquivo_mime||'')) && <a className="mt-2 block underline" href={`data:${m.arquivo_mime};base64,${m.arquivo_b64}`} download={m.arquivo_nome}>{m.arquivo_nome||'Arquivo'}</a>}
+                  <div className="mt-1 flex items-center justify-end gap-2 text-[10px] opacity-60">
+                    <time>{m.created_at?new Date(m.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):''}</time>
+                    {meu && <button type="button" aria-label="Opções da mensagem" className="rounded-full px-1 hover:bg-black/10" onClick={()=>setMenuMensagem(menuMensagem===m.id?null:m.id)}><MoreVertical className="h-3.5 w-3.5"/></button>}
+                  </div>
+                  {meu && menuMensagem===m.id && <div className="absolute bottom-full right-0 z-10 mb-1 flex gap-1 rounded-lg border bg-card p-1 text-xs text-foreground shadow-lg">
+                    <button className="rounded px-2 py-1 hover:bg-muted" onClick={()=>{setEditando({id:m.id,texto:m.mensagem||''});setMenuMensagem(null);}}>Editar no MANU</button>
+                    <button className="rounded px-2 py-1 hover:bg-muted" onClick={()=>{setMenuMensagem(null);apagar(m.id);}}>Apagar do MANU</button>
+                  </div>}
+                  {editando?.id===m.id && <div className="mt-2 flex gap-1"><input className="min-w-0 flex-1 rounded border bg-background px-2 py-1 text-xs text-foreground" value={editando.texto} onChange={e=>setEditando({...editando,texto:e.target.value})}/><button onClick={salvarEdicao} className="rounded border px-2 text-xs">Salvar</button></div>}
+                </div>
+              </div>;
+            })}
+          </div>
+          {camOpen && <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/85 p-4"><div className="space-y-3"><video ref={videoRef} autoPlay playsInline className="max-h-[70vh] max-w-full rounded-lg"/><div className="flex justify-center gap-3"><Button onClick={tirarFoto}>Tirar foto</Button><Button variant="outline" onClick={fecharCamera}>Cancelar</Button></div></div></div>}
+          <div className="shrink-0 border-t border-border/50 bg-card p-2.5 sm:p-3">
+            {audioPendente && <div className="mb-2 flex items-center gap-2 rounded-xl border border-border/50 p-2 text-xs">{previewAudio && <audio className="min-w-0 max-w-[230px] flex-1" controls src={previewAudio}/>}<button className="underline" onClick={()=>setAudioPendente(null)}>Descartar</button></div>}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,audio/ogg,audio/mpeg,audio/mp4,audio/aac,audio/webm" className="hidden" onChange={e=>onArquivo(e.target.files?.[0])}/>
+              <button type="button" aria-label="Tirar foto" title="Tirar foto" onClick={abrirCamera} className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted sm:flex"><Camera className="h-5 w-5"/></button>
+              <button type="button" aria-label="Anexar foto ou áudio" title="Anexar" onClick={()=>fileRef.current?.click()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"><Paperclip className="h-5 w-5"/></button>
+              <button type="button" aria-label={recording?'Parar gravação':'Gravar áudio'} onClick={gravarAudio} className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${recording?'bg-destructive/15 text-destructive animate-pulse':'text-muted-foreground hover:bg-muted'}`}><Mic className="h-5 w-5"/></button>
+              <Input aria-label="Escrever mensagem" className="min-w-0 flex-1 rounded-full border-border/80 bg-background text-sm" value={texto} onChange={e=>setTexto(e.target.value)} placeholder="Mensagem" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(texto.trim()||audioPendente)enviar();}}}/>
+              <button type="button" aria-label="Enviar mensagem" disabled={enviando||(!texto.trim()&&!audioPendente)} onClick={()=>enviar()} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground disabled:opacity-50"><Send className="h-5 w-5"/></button>
+            </div>
+            <div className="mt-1 text-center text-[10px] text-muted-foreground">Notas internas não são enviadas ao cliente. Fotos e áudios permitidos; vídeos não.</div>
+          </div>
+        </>}
+      </section>
     </div>
   );
+
 }
 
 export default function ChatPage() {

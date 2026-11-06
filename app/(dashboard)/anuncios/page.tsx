@@ -8,6 +8,26 @@ import { Megaphone, Search, X, Car } from 'lucide-react';
 import { nomeVeiculo } from '@/lib/nome-veiculo';
 
 type LocalidadeML = { id: string; name: string };
+type AtributoML = {id:string; name:string; required:boolean; conditional:boolean;value_type:string; values:Array<{id:string;name:string}>};
+const CATEGORIAS_ML = [
+  {id:'MLB1744',nome:'Carros e caminhonetes'},
+  {id:'MLB1763',nome:'Motos e scooters'},
+  {id:'MLB5839',nome:'Caminhões'},
+  {id:'MLB7370',nome:'Motorhomes'},
+  {id:'MLB47400',nome:'Ônibus'},
+  {id:'MLB1785',nome:'Náutica'},
+];
+function categoriaSugerida(c: string){
+  const x=String(c||'').toLowerCase();
+  if (/moto|scooter/.test(x))return 'MLB1763';
+  if (/caminh[aã]o/.test(x))return 'MLB5839';
+  if (/motorhome/.test(x))return 'MLB7370';
+  if (/[oô]nibus/.test(x))return 'MLB47400';
+  if (/barco|n[aá]utic/.test(x))return 'MLB1785';
+  return 'MLB1744';
+}
+const BASICOS_ML = new Set(['BRAND','MODEL','COLOR','VEHICLE_YEAR','YEAR']);
+
 
 type Carro = {
   id: number;
@@ -74,12 +94,57 @@ export default function AnunciosPage() {
   const [carregandoCidadesMl, setCarregandoCidadesMl] = useState(false);
   const [erroLocalidadeMl, setErroLocalidadeMl] = useState('');
   const [recarregarMl, setRecarregarMl] = useState(0);
+  const [categoriaMlId, setCategoriaMlId] = useState('MLB1744');
+  const [atributosMl, setAtributosMl] = useState<AtributoML[]>([]);
+  const [valoresMl, setValoresMl] = useState<Record<string,string>>({});
+  const [carregandoAtributos, setCarregandoAtributos] = useState(false);
+  const [erroAtributos, setErroAtributos] = useState('');
+  const [lembrarLoja,setLembrarLoja] = useState(true);
+  const [salvandoPreferencias,setSalvandoPreferencias] = useState(false);
   const usarMl = plats.includes('mercadolivre');
   const [titulo, setTitulo] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fotos, setFotos] = useState<{ id: number; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  // Preferências pertencem à empresa do veículo; nunca usar localStorage compartilhado.
+  useEffect(()=>{
+    if(!sel?.id)return;
+    let viva=true;
+    api.get('/anuncios/preferencias',{params:{estoque_id:sel.id}}).then(({data})=>{
+      if(!viva)return;
+      setWhatsappContato(String(data.telefone_whatsapp||''));
+      setEstadoMlId(String(data.estado_ml_id||''));
+      setCidadeMlId(String(data.cidade_ml_id||''));
+    }).catch(()=>{ /* primeira execução sem preferências, usar campos vazios */ });
+    return ()=>{viva=false;};
+  },[sel?.id]);
+
+  useEffect(()=>{
+    if(!sel?.id || !usarMl)return;
+    let viva=true;
+    setCarregandoAtributos(true);setErroAtributos('');setAtributosMl([]);
+    api.get('/anuncios/mercadolivre/atributos',{params:{estoque_id:sel.id,categoria_ml_id:categoriaMlId}})
+      .then(({data})=>{if(viva)setAtributosMl(data.atributos||[]);})
+      .catch((e)=>{if(viva)setErroAtributos(e?.response?.data?.error || 'Não foi possível consultar a ficha técnica desta categoria.');})
+      .finally(()=>{if(viva)setCarregandoAtributos(false);});
+    return ()=>{viva=false;};
+  },[sel?.id,usarMl,categoriaMlId,recarregarMl]);
+
+  async function salvarPreferencias(id:number) {
+    await api.put('/anuncios/preferencias', {
+      telefone_whatsapp:whatsappContato,estado_ml_id:estadoMlId,cidade_ml_id:cidadeMlId,
+    }, {params:{estoque_id:id}});
+  }
+
+  async function guardarLoja(){
+    if(!sel?.id)return;
+    setSalvandoPreferencias(true);
+    try {await salvarPreferencias(sel.id);toast.success('Contato e localização salvos para esta empresa.');}
+    catch(e:any){toast.error(e?.response?.data?.error || 'Não foi possível salvar dados da loja.');}
+    finally{setSalvandoPreferencias(false);}
+  }
 
   // A UI mostra somente nomes; a API do MANU resolve os IDs oficiais com o token da empresa.
   useEffect(() => {
@@ -154,6 +219,8 @@ export default function AnunciosPage() {
       patio: c.patio || '',
       carroceria: c.carroceria || '',
     });
+    setCategoriaMlId(categoriaSugerida(String(c.carroceria||'')));
+    setAtributosMl([]);setValoresMl({});setErroAtributos('');
     setWhatsappContato('');
     setEstadoMlId('');
     setCidadeMlId('');
@@ -185,10 +252,17 @@ export default function AnunciosPage() {
     if (usarMl && (!estadoMlId || !cidadeMlId)) {
       return toast.error('Selecione o estado e a cidade da loja para anunciar no Mercado Livre.');
     }
+    if(usarMl && (carregandoAtributos || erroAtributos || !atributosMl.length)) {
+      return toast.error('Aguarde os campos oficiais da categoria ou clique em Tentar novamente.');
+    }
+    const faltantes=atributosMl.filter(a=>a.required&&!BASICOS_ML.has(a.id)
+      && !String(valoresMl[a.id] || (a.id==='KILOMETERS' ? edit.km??'' : '')).trim());
+    if(usarMl && faltantes.length)return toast.error(`Preencha: ${faltantes.map(a=>a.name).join(', ')}`);
     setPublishing(true);
     try {
       // salva edição antes de publicar (espelho estoque)
       await api.patch('/anuncios', { id: sel.id, ...edit });
+      if(usarMl && lembrarLoja)await salvarPreferencias(sel.id);
       const r = await api.post('/anuncios/publicar', {
         estoque_id: sel.id,
         plataformas: plats,
@@ -197,6 +271,8 @@ export default function AnunciosPage() {
         titulo: titulo || undefined,
         telefone_whatsapp: whatsappContato,
         cidade_ml_id: cidadeMlId,
+        categoria_ml_id: categoriaMlId,
+        atributos_ml: valoresMl,
       });
       toast.success(r.data.message || 'Publicado');
       if (r.data.links?.length) {
@@ -358,7 +434,11 @@ export default function AnunciosPage() {
                 <select
                   className="mt-0.5 w-full rounded-md border bg-background p-2 text-sm"
                   value={edit.carroceria || ''}
-                  onChange={(e) => setEdit((x) => ({ ...x, carroceria: e.target.value }))}
+                  onChange={(e) => {
+                    setEdit((x) => ({ ...x, carroceria: e.target.value }));
+                    setCategoriaMlId(categoriaSugerida(e.target.value));
+                    setValoresMl({});
+                  }}
                 >
                   <option value="">—</option>
                   {CARROCERIAS.filter((c) => c !== 'todas').map((c) => (
@@ -487,6 +567,40 @@ export default function AnunciosPage() {
                   )}
                 </>
               )}
+              {usarMl && <div className="sm:col-span-2 space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                <label className="block text-xs font-semibold">Categoria do veículo no Mercado Livre
+                  <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
+                    value={categoriaMlId} onChange={e=>{setCategoriaMlId(e.target.value);setValoresMl({});}}>
+                    {CATEGORIAS_ML.map(c=><option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </select>
+                </label>
+                <p className="text-xs text-muted-foreground">Atributos exigidos pela categoria escolhida, consultados diretamente no Mercado Livre.</p>
+                {carregandoAtributos && <p className="text-xs">Consultando campos obrigatórios…</p>}
+                {erroAtributos && <div role="alert" className="flex items-center gap-2 text-xs text-destructive"><span>{erroAtributos}</span>
+                  <button type="button" className="rounded border px-2 py-1" onClick={()=>setRecarregarMl(v=>v+1)}>Tentar novamente</button></div>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {atributosMl.filter(a=>!BASICOS_ML.has(a.id)).map(a=>{
+                    const valor=valoresMl[a.id]??(a.id==='KILOMETERS' ? String(edit.km??'') : '');
+                    return <label key={a.id} className="block text-xs">{a.name}{a.required?' *':''}{a.conditional?' (se aplicável)':''}
+                      {a.values.length>0 && a.values.length<=75 ? <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
+                        value={valor} onChange={e=>setValoresMl(v=>({...v,[a.id]:e.target.value}))}>
+                        <option value="">Selecione</option>{a.values.map(o=><option key={o.id||o.name} value={o.name}>{o.name}</option>)}
+                      </select> : <input className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
+                        inputMode={a.value_type==='number'?'numeric':'text'}
+                        placeholder={a.id==='TRIM'?'Ex.: versão EX, LX…':`Informe ${a.name.toLowerCase()}`}
+                        value={valor} onChange={e=>setValoresMl(v=>({...v,[a.id]:e.target.value}))}/>}
+                    </label>;
+                  })}
+                </div>
+              </div>}
+              <div className="sm:col-span-2 flex flex-col gap-2 rounded-lg border border-border/70 p-3">
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" checked={lembrarLoja} onChange={e=>setLembrarLoja(e.target.checked)}/>
+                  Lembrar WhatsApp e localização para os próximos anúncios desta empresa
+                </label>
+                <button type="button" className="self-start rounded-md border px-3 py-2 text-xs font-medium" disabled={salvandoPreferencias}
+                  onClick={guardarLoja}>{salvandoPreferencias?'Salvando…':'Salvar dados da loja agora'}</button>
+              </div>
               <p className="sm:col-span-2 text-xs text-muted-foreground">
                 {usarMl ? 'Aurox identifica o código oficial da cidade automaticamente. ' : ''}
                 Veículos precisam de marca/modelo reais, foto do carro e pacote Prata (silver)
