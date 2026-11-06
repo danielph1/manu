@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/session';
 import { isSuperAdmin } from '@/lib/tenant';
 import { supabaseAdmin } from '@/lib/supabase';
 import { accessTokenMLValido } from '@/lib/mercadolivre/access-token';
+import { prepararFotoMercadoLivre } from '@/lib/mercadolivre/photo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -62,17 +63,29 @@ async function publicarMercadoLivre(
   for(const foto of fotos) {
     const {data, error}=await supabaseAdmin.storage.from('manu_arquivos').download(foto.path);
     if (error || !data) throw new Error('Não foi possível ler uma das fotos do estoque no Supabase Storage.');
-    const bytes=await data.arrayBuffer();
+    // O original permanece no Storage. Apenas a cópia enviada ao ML é normalizada:
+    // remove margens brancas excessivas, reposiciona o veículo e gera JPEG RGB 1200px.
+    const original=Buffer.from(await data.arrayBuffer());
+    let imagem: Awaited<ReturnType<typeof prepararFotoMercadoLivre>>;
+    try {
+      imagem=await prepararFotoMercadoLivre(original);
+    } catch (err: any) {
+      throw new Error('Foto do estoque inválida para o Mercado Livre: '+(err?.message || 'Arquivo não suportado'));
+    }
     const form=new FormData();
-    const ext=String(foto.path.split('.').pop() || 'jpg').toLowerCase();
-    const mime=ext==='png'?'image/png':ext==='webp'?'image/webp':'image/jpeg';
-    form.append('file',new Blob([bytes],{type:mime}),'foto.'+ext);
+    form.append('file',new Blob([new Uint8Array(imagem.buffer)],{type:'image/jpeg'}),'aurox-veiculo.jpg');
     const r=await fetch('https://api.mercadolibre.com/pictures/items/upload',{
       method:'POST',headers:{Authorization:'Bearer '+token},body:form,
       signal:AbortSignal.timeout(20000),
     });
     const j=await r.json().catch(()=>({}));
-    if (!r.ok || !j?.id) throw new Error('Falha no upload de foto para o Mercado Livre: '+erroML(j,'HTTP '+r.status));
+    if (!r.ok || !j?.id) {
+      const detalhe=erroML(j,'HTTP '+r.status);
+      const orientacao=/p[ií]xel|pixel|borde|marg[ei]n|tama[nñ]o|resolution|dimens/i.test(detalhe)
+        ? ' Use uma foto nítida de boa resolução, de preferência 1200 × 1200, com a moto/carro em destaque e sem bordas brancas grandes.'
+        : '';
+      throw new Error('Foto '+(fotosEnviadas.length+1)+' recusada pelo Mercado Livre: '+detalhe+orientacao);
+    }
     fotosEnviadas.push({id:String(j.id)});
   }
   const body={

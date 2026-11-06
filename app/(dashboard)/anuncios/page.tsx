@@ -428,6 +428,13 @@ export default function AnunciosPage() {
               </label>
             </div>
 
+            <p className="text-xs text-muted-foreground">
+              Para Mercado Livre, prefira fotos reais e nítidas (ideal: 1200 × 1200 px),
+              com o veículo em destaque. O Aurox remove bordas brancas excessivas e
+              prepara uma cópia para o portal, sem alterar a foto original do estoque.
+              Se a imagem tiver pouca definição, substitua-a por uma foto melhor.
+            </p>
+
             <hr className="border-border" />
 
             <label className="block text-sm">
