@@ -7,6 +7,8 @@ import { toast } from 'sonner';
 import { Megaphone, Search, X, Car } from 'lucide-react';
 import { nomeVeiculo } from '@/lib/nome-veiculo';
 
+type LocalidadeML = { id: string; name: string };
+
 type Carro = {
   id: number;
   marca?: string;
@@ -64,12 +66,52 @@ export default function AnunciosPage() {
   const [descricao, setDescricao] = useState('');
   // AUROX_ML_V13: dados específicos da publicação da loja.
   const [whatsappContato, setWhatsappContato] = useState('');
+  const [estadoMlId, setEstadoMlId] = useState('');
   const [cidadeMlId, setCidadeMlId] = useState('');
+  const [estadosMl, setEstadosMl] = useState<LocalidadeML[]>([]);
+  const [cidadesMl, setCidadesMl] = useState<LocalidadeML[]>([]);
+  const [carregandoEstadosMl, setCarregandoEstadosMl] = useState(false);
+  const [carregandoCidadesMl, setCarregandoCidadesMl] = useState(false);
+  const [erroLocalidadeMl, setErroLocalidadeMl] = useState('');
+  const [recarregarMl, setRecarregarMl] = useState(0);
+  const usarMl = plats.includes('mercadolivre');
   const [titulo, setTitulo] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fotos, setFotos] = useState<{ id: number; url: string }[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  // A UI mostra somente nomes; a API do MANU resolve os IDs oficiais com o token da empresa.
+  useEffect(() => {
+    if (!sel?.id || !usarMl) return;
+    let cancelled = false;
+    setCarregandoEstadosMl(true);
+    setErroLocalidadeMl('');
+    setEstadosMl([]);
+    api.get('/anuncios/mercadolivre/localidades', { params: { estoque_id: sel.id } })
+      .then((res) => { if (!cancelled) setEstadosMl(res.data.itens || []); })
+      .catch((err) => { if (!cancelled) setErroLocalidadeMl(err?.response?.data?.error || 'Falha ao carregar estados.'); })
+      .finally(() => { if (!cancelled) setCarregandoEstadosMl(false); });
+    return () => { cancelled = true; };
+  }, [sel?.id, usarMl, recarregarMl]);
+
+  useEffect(() => {
+    if (!sel?.id || !estadoMlId || !usarMl) {
+      setCidadesMl([]);
+      return;
+    }
+    let cancelled = false;
+    setCarregandoCidadesMl(true);
+    setErroLocalidadeMl('');
+    setCidadesMl([]);
+    api.get('/anuncios/mercadolivre/localidades', {
+      params: { estoque_id: sel.id, estado_id: estadoMlId },
+    })
+      .then((res) => { if (!cancelled) setCidadesMl(res.data.itens || []); })
+      .catch((err) => { if (!cancelled) setErroLocalidadeMl(err?.response?.data?.error || 'Falha ao carregar cidades.'); })
+      .finally(() => { if (!cancelled) setCarregandoCidadesMl(false); });
+    return () => { cancelled = true; };
+  }, [sel?.id, estadoMlId, usarMl, recarregarMl]);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -113,7 +155,10 @@ export default function AnunciosPage() {
       carroceria: c.carroceria || '',
     });
     setWhatsappContato('');
+    setEstadoMlId('');
     setCidadeMlId('');
+    setCidadesMl([]);
+    setErroLocalidadeMl('');
     setTitulo(nomeCarro(c));
     setDescricao('');
     setPlats(['mercadolivre']);
@@ -137,6 +182,9 @@ export default function AnunciosPage() {
   async function publicar() {
     if (!sel) return;
     if (!plats.length) return toast.error('Escolha pelo menos uma plataforma');
+    if (usarMl && (!estadoMlId || !cidadeMlId)) {
+      return toast.error('Selecione o estado e a cidade da loja para anunciar no Mercado Livre.');
+    }
     setPublishing(true);
     try {
       // salva edição antes de publicar (espelho estoque)
@@ -401,15 +449,41 @@ export default function AnunciosPage() {
                   placeholder="Ex.: 21999999999" value={whatsappContato}
                   onChange={(e) => setWhatsappContato(e.target.value)} />
               </label>
-              <label className="block text-xs">ID da cidade (Mercado Livre)
-                <input className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
-                  placeholder="ID de classified_locations" value={cidadeMlId}
-                  onChange={(e) => setCidadeMlId(e.target.value)} />
-              </label>
+              {usarMl && (
+                <>
+                  <label className="block text-xs">Estado da loja
+                    <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
+                      value={estadoMlId} disabled={carregandoEstadosMl || !estadosMl.length}
+                      onChange={(e) => {
+                        setEstadoMlId(e.target.value);
+                        setCidadeMlId('');
+                        setCidadesMl([]);
+                      }}>
+                      <option value="">{carregandoEstadosMl ? 'Carregando estados…' : 'Selecione o estado'}</option>
+                      {estadosMl.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-xs">Cidade da loja
+                    <select className="mt-1 w-full rounded-md border bg-background p-2 text-sm"
+                      value={cidadeMlId} disabled={!estadoMlId || carregandoCidadesMl || !cidadesMl.length}
+                      onChange={(e) => setCidadeMlId(e.target.value)}>
+                      <option value="">{carregandoCidadesMl ? 'Carregando cidades…' : 'Selecione a cidade'}</option>
+                      {cidadesMl.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </label>
+                  {erroLocalidadeMl && (
+                    <div className="sm:col-span-2 flex items-center justify-between gap-2 text-xs text-destructive" role="alert">
+                      <span>{erroLocalidadeMl}</span>
+                      <button type="button" className="shrink-0 rounded border px-2 py-1"
+                        onClick={() => setRecarregarMl((v) => v + 1)}>Tentar novamente</button>
+                    </div>
+                  )}
+                </>
+              )}
               <p className="sm:col-span-2 text-xs text-muted-foreground">
-                Para veículos, a loja deve ter pacote Prata (silver), ao menos uma foto real,
-                marca fabricante e modelo corretos. Localize o ID da cidade na API
-                classified_locations do Mercado Livre. Ouro/Diamante são destaques posteriores.
+                {usarMl ? 'Aurox identifica o código oficial da cidade automaticamente. ' : ''}
+                Veículos precisam de marca/modelo reais, foto do carro e pacote Prata (silver)
+                na conta da concessionária.
               </p>
             </div>
             <div className="text-sm font-medium">Plataformas (mín. 1)</div>
