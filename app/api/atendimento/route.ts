@@ -15,6 +15,24 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
   const role = String(user.tipo || '').toLowerCase();
   if (!ROLES.has(role)) return NextResponse.json({ error: 'Sem permissao' }, { status: 403 });
+  // Filtros e paginação são validados no servidor; nenhum deles altera o escopo da empresa.
+  type Filtro = 'todos' | 'triagem' | 'sem_resposta' | 'atrasados';
+  const rawFiltro = req.nextUrl.searchParams.get('filtro') || 'todos';
+  const validos = new Set<Filtro>(['todos', 'triagem', 'sem_resposta', 'atrasados']);
+  if (!validos.has(rawFiltro as Filtro)) {
+    return NextResponse.json({error:'Filtro de atendimento inválido'}, {status:400});
+  }
+  const filtro = rawFiltro as Filtro;
+  const parsePage = (key: string) => {
+    const n = Number(req.nextUrl.searchParams.get(key) || '1');
+    return Number.isSafeInteger(n) && n > 0 && n <= 100000 ? n : null;
+  };
+  const paginaLeads = parsePage('pagina_leads');
+  const paginaTriagem = parsePage('pagina_triagem');
+  if (paginaLeads === null || paginaTriagem === null) {
+    return NextResponse.json({error:'Página inválida'}, {status:400});
+  }
+  const porPagina = 40;
   const requested = Number(req.nextUrl.searchParams.get('empresa_id'));
   const empresaId = role === 'superadmin' ? requested : Number(user.empresa_id);
   if (!Number.isSafeInteger(empresaId) || empresaId <= 0) {
@@ -59,21 +77,26 @@ export async function GET(req: NextRequest) {
         return [];
       }
     }
+    const leadWhere = `v.empresa_id=$1 AND ${answered}=FALSE AND ${sold}=FALSE`;
+    const lateCondition = `${dateExpr} < now() - interval '10 minutes'`;
+    const leadBase = `FROM public.leads l JOIN public.vendedores v ON v.id=l.vendedor_id WHERE ${leadWhere}`;
+    const listaFiltro = filtro === 'atrasados' ? `AND ${lateCondition}` : '';
     const leadQuery = `
       SELECT l.id, ${name} AS nome, ${phone} AS telefone, ${email} AS email,
              ${vehicle} AS veiculo, ${notes} AS mensagem,
              v.id AS vendedor_id, v.nome AS vendedor, v.loja,
              ${dateExpr} AS desde,
              GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (now()-${dateExpr}))/60))::int AS minutos_aguardando
-      FROM public.leads l JOIN public.vendedores v ON v.id=l.vendedor_id
-      WHERE v.empresa_id=$1 AND ${answered}=FALSE AND ${sold}=FALSE
-      ORDER BY desde ASC NULLS LAST LIMIT 150`;
-    const triagemQuery = hasTable('triagem') && has('triagem','empresa_id')
+      ${leadBase} ${listaFiltro}
+      ORDER BY desde ASC NULLS LAST, l.id ASC LIMIT $2 OFFSET $3`;
+    const possuiTriagem = hasTable('triagem') && has('triagem','empresa_id');
+    const triagemWhere = `empresa_id=$1 AND status='aguardando'`;
+    const triagemQuery = possuiTriagem
       ? `SELECT id, nome, telefone, email, interesse AS veiculo, mensagem,
                 origem, created_at AS desde,
                 GREATEST(0,FLOOR(EXTRACT(EPOCH FROM(now()-created_at))/60))::int AS minutos_aguardando
-           FROM public.triagem WHERE empresa_id=$1 AND status='aguardando'
-           ORDER BY created_at ASC LIMIT 150`
+           FROM public.triagem WHERE ${triagemWhere}
+           ORDER BY created_at ASC, id ASC LIMIT $2 OFFSET $3`
       : null;
     if (!triagemQuery) warns.push('Triagem ainda nao tem empresa_id. Execute a migration de integracoes antes de importar leads.');
     const auditCount = hasTable('manu_atendimento_transferencias')
@@ -87,20 +110,53 @@ export async function GET(req: NextRequest) {
     const sellersQuery = `SELECT v.id, v.nome, v.loja,
         COUNT(l.id) FILTER (WHERE ${dateExpr} >= ${today})::int AS recebidos_hoje,
         COUNT(l.id) FILTER (WHERE ${answered}=FALSE AND ${sold}=FALSE
-          AND ${dateExpr}<now()-interval '10 minutes')::int AS pendentes_atrasados,
+          AND ${lateCondition})::int AS pendentes_atrasados,
         COUNT(l.id) FILTER (WHERE ${answered}=TRUE)::int AS atendidos_registrados,
         ${auditCount} AS perdidos_hoje
         FROM public.vendedores v LEFT JOIN public.leads l ON l.vendedor_id=v.id
         WHERE v.empresa_id=$1 AND ${active}
         GROUP BY v.id,v.nome,v.loja ORDER BY v.loja,v.nome`;
-    const [leads, triagem, sellers] = await Promise.all([
-      section('leads sem resposta',leadQuery,[empresaId]),
-      triagemQuery ? section('fila de triagem',triagemQuery,[empresaId]) : Promise.resolve([]),
+
+    // Não usar .length para os KPIs: as listas são paginadas, as contagens não.
+    // O filtro +10 minutos usa a MESMA expressão das linhas e do quadro de vendedores.
+    async function countSection(key: string, sql: string): Promise<number|null> {
+      try {
+        const result = await query<{total:number}>(sql,[empresaId]);
+        return Number(result.rows[0]?.total ?? 0);
+      } catch (e) {
+        console.error(`[atendimento:${key}]`,e instanceof Error ? e.message : 'erro');
+        warns.push(`Nao foi possivel contar ${key}. Confira os logs do servidor.`);
+        return null;
+      }
+    }
+    async function contarLeads() {
+      try {
+        const res = await query<{total_sem_resposta:number;total_atrasados:number}>(
+          `SELECT COUNT(*)::int AS total_sem_resposta,
+             COUNT(*) FILTER (WHERE ${lateCondition})::int AS total_atrasados ${leadBase}`,
+          [empresaId],
+        );
+        return {semResposta:Number(res.rows[0]?.total_sem_resposta ?? 0),atrasados:Number(res.rows[0]?.total_atrasados ?? 0)};
+      } catch(e) {
+        console.error('[atendimento:totais]',e instanceof Error ? e.message : 'erro');
+        warns.push('Nao foi possivel contar os leads. Confira os logs do servidor.');
+        return {semResposta:null,atrasados:null};
+      }
+    }
+    const [resumoLeads,totalFila,leads,triagem,sellers] = await Promise.all([
+      contarLeads(),
+      possuiTriagem ? countSection('fila da triagem',`SELECT COUNT(*)::int AS total FROM public.triagem WHERE ${triagemWhere}`) : Promise.resolve(null),
+      filtro === 'triagem' ? Promise.resolve([]) : section('leads sem resposta',leadQuery,[empresaId,porPagina,(paginaLeads-1)*porPagina]),
+      (filtro !== 'todos' && filtro !== 'triagem') || !triagemQuery ? Promise.resolve([]) : section('fila de triagem',triagemQuery,[empresaId,porPagina,(paginaTriagem-1)*porPagina]),
       section('indicadores de vendedores',sellersQuery,[empresaId]),
     ]);
+    const totalSemResposta = resumoLeads.semResposta;
+    const totalAtrasados = resumoLeads.atrasados;
     return NextResponse.json({
       empresa_id: empresaId, limite_minutos: 10,
-      total_pendentes: leads.length+triagem.length,
+      total_pendentes: totalSemResposta !== null && totalFila !== null ? totalSemResposta+totalFila : null,
+      total_fila: totalFila, total_sem_resposta: totalSemResposta, total_atrasados: totalAtrasados,
+      filtro, paginacao: { pagina_leads: paginaLeads, pagina_triagem: paginaTriagem, por_pagina: porPagina },
       sem_resposta: leads, fila: triagem, vendedores: sellers,
       avisos: warns, incompleto: warns.length>0,
       atualizado_em: new Date().toISOString(),

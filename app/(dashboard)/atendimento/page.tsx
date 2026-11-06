@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -17,11 +17,19 @@ interface Seller {
   recebidos_hoje: number; pendentes_atrasados: number; atendidos_registrados: number; perdidos_hoje: number;
 }
 interface Snapshot {
-  empresa_id: number; limite_minutos: number; total_pendentes: number;
+  empresa_id: number; limite_minutos: number; total_pendentes: number | null;
+  total_fila: number | null; total_sem_resposta: number | null; total_atrasados: number | null;
+  paginacao: { pagina_leads: number; pagina_triagem: number; por_pagina: number };
   fila: Lead[]; sem_resposta: Lead[]; vendedores: Seller[]; atualizado_em: string; incompleto?: boolean; avisos?: string[];
 }
 interface Empresa { id: number; nome: string }
 const permitted = new Set(['superadmin', 'admin', 'gerente', 'marketing']);
+type Filtro = 'todos' | 'triagem' | 'sem_resposta' | 'atrasados';
+const nomesFiltro: Record<Exclude<Filtro,'todos'>,string> = {
+  triagem: 'Aguardando triagem',
+  sem_resposta: 'Com vendedor, sem resposta',
+  atrasados: 'Sem resposta há mais de 10 minutos',
+};
 const mins = (n: number) => n < 60 ? `${n} min` : `${Math.floor(n / 60)}h ${n % 60}min`;
 
 export default function AtendimentoPage() {
@@ -34,6 +42,26 @@ export default function AtendimentoPage() {
   const [busy, setBusy] = useState(false);
   const [transferring, setTransferring] = useState<number | null>(null);
   const [chosen, setChosen] = useState<Record<number,string>>({});
+  const [filtro, setFiltro] = useState<Filtro>('todos');
+  const [paginaLeads, setPaginaLeads] = useState(1);
+  const [paginaTriagem, setPaginaTriagem] = useState(1);
+  const requisicaoAtual = useRef(0);
+  const listaLeadsRef = useRef<HTMLElement>(null);
+  const listaTriagemRef = useRef<HTMLElement>(null);
+
+  function aplicarFiltro(novo: Exclude<Filtro,'todos'>) {
+    const proximo: Filtro = filtro === novo ? 'todos' : novo;
+    setFiltro(proximo);
+    setPaginaLeads(1);
+    setPaginaTriagem(1);
+    // A área filtrada será carregada novamente; o título permanece visível.
+  }
+
+  useEffect(() => {
+    if(filtro === 'todos') return;
+    const alvo = filtro === 'triagem' ? listaTriagemRef : listaLeadsRef;
+    alvo.current?.scrollIntoView({behavior:'smooth',block:'start'});
+  },[filtro]);
 
   useEffect(() => {
     if (!isLoading && authorized && role === 'superadmin') {
@@ -46,15 +74,23 @@ export default function AtendimentoPage() {
 
   const reload = useCallback(async () => {
     if (!authorized || !empresaId) return;
+    const requisicao = ++requisicaoAtual.current;
     setBusy(true);
     try {
-      const res = await api.get('/atendimento', { params: { empresa_id: Number(empresaId) } });
-      setSnapshot(res.data);
+      const res = await api.get('/atendimento', {
+        params: {
+          empresa_id: Number(empresaId), filtro,
+          pagina_leads: paginaLeads, pagina_triagem: paginaTriagem,
+        },
+      });
+      if (requisicao === requisicaoAtual.current) setSnapshot(res.data);
     } catch (e: any) {
-      setSnapshot(null);
-      toast.error(e?.response?.data?.error || 'Falha ao carregar o atendimento');
-    } finally { setBusy(false); }
-  }, [authorized, empresaId]);
+      if (requisicao === requisicaoAtual.current) {
+        setSnapshot(null);
+        toast.error(e?.response?.data?.error || 'Falha ao carregar o atendimento');
+      }
+    } finally { if (requisicao === requisicaoAtual.current) setBusy(false); }
+  }, [authorized, empresaId, filtro, paginaLeads, paginaTriagem]);
 
   useEffect(() => {
     reload();
@@ -80,7 +116,13 @@ export default function AtendimentoPage() {
   if (!authorized) return <p className="p-6 text-muted-foreground">Acesso restrito a marketing, gerente, admin e superadmin.</p>;
 
   const sellers = snapshot?.vendedores || [];
-  const missed = sellers.reduce((acc, v) => acc + Number(v.pendentes_atrasados || 0), 0);
+  const mostrarLeads = filtro === 'todos' || filtro === 'sem_resposta' || filtro === 'atrasados';
+  const mostrarTriagem = filtro === 'todos' || filtro === 'triagem';
+  const totalListaLeads = filtro === 'atrasados' ? snapshot?.total_atrasados : snapshot?.total_sem_resposta;
+  const paginaCarregada = !!snapshot && snapshot.filtro === filtro &&
+    snapshot.paginacao.pagina_leads === paginaLeads && snapshot.paginacao.pagina_triagem === paginaTriagem;
+  const leadsNaPagina = paginaCarregada ? snapshot!.sem_resposta : [];
+  const triagemNaPagina = paginaCarregada ? snapshot!.fila : [];
   return <main className="mx-auto max-w-7xl space-y-6 pb-20">
     <header className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -88,7 +130,7 @@ export default function AtendimentoPage() {
         <p className="text-sm text-muted-foreground">Todos os vendedores da empresa · atualizado a cada 15 segundos</p>
       </div>
       <div className="flex items-center gap-2">
-        {role === 'superadmin' && <select aria-label="Empresa" className="rounded-md border bg-background px-3 py-2 text-sm" value={empresaId} onChange={e => setEmpresaId(e.target.value)}>
+        {role === 'superadmin' && <select aria-label="Empresa" className="rounded-md border bg-background px-3 py-2 text-sm" value={empresaId} onChange={e => { setEmpresaId(e.target.value); setFiltro('todos'); setPaginaLeads(1); setPaginaTriagem(1); setSnapshot(null); }}>
           {empresas.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
         </select>}
         <Button variant="outline" onClick={reload} disabled={busy}><RefreshCw className="mr-2 h-4 w-4" />Atualizar</Button>
@@ -102,17 +144,35 @@ export default function AtendimentoPage() {
       <strong>O painel esta parcialmente atualizado:</strong>
       {snapshot.avisos.map((aviso,idx) => <p key={idx}>{aviso}</p>)}
     </div>}
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Summary icon={<Activity className="h-5 w-5" />} title="Aguardando triagem" value={snapshot?.fila.length ?? null} />
-      <Summary icon={<Clock3 className="h-5 w-5" />} title="Com vendedor, sem resposta" value={snapshot?.sem_resposta.length ?? null} />
-      <Summary icon={<AlertCircle className="h-5 w-5" />} title="Sem resposta +10 min" value={snapshot ? missed : null} />
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-label="Filtros rápidos do atendimento">
+      <Summary icon={<Activity className="h-5 w-5" />} title="Aguardando triagem"
+        value={snapshot?.total_fila ?? null} active={filtro==='triagem'} disabled={!snapshot}
+        controls="atendimento-lista-triagem" onClick={()=>aplicarFiltro('triagem')} />
+      <Summary icon={<Clock3 className="h-5 w-5" />} title="Com vendedor, sem resposta"
+        value={snapshot?.total_sem_resposta ?? null} active={filtro==='sem_resposta'} disabled={!snapshot}
+        controls="atendimento-lista-leads" onClick={()=>aplicarFiltro('sem_resposta')} />
+      <Summary icon={<AlertCircle className="h-5 w-5" />} title="Sem resposta +10 min"
+        value={snapshot?.total_atrasados ?? null} active={filtro==='atrasados'} disabled={!snapshot}
+        controls="atendimento-lista-leads" onClick={()=>aplicarFiltro('atrasados')} />
     </div>
 
-    <section className="space-y-3">
-      <h2 className="text-xl font-semibold">Leads aguardando atendimento</h2>
-      {!snapshot?.sem_resposta.length && <p className="rounded-lg border p-5 text-muted-foreground">Nenhum lead pendente de resposta.</p>}
+    {filtro !== 'todos' && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3" role="status">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-semibold">Exibindo: {nomesFiltro[filtro]}</span>
+        <span className="text-muted-foreground">· {filtro==='triagem' ? snapshot?.total_fila ?? '—' : filtro==='atrasados' ? snapshot?.total_atrasados ?? '—' : snapshot?.total_sem_resposta ?? '—'} lead(s)</span>
+      </div>
+      <Button variant="outline" size="sm" onClick={()=>{setFiltro('todos');setPaginaLeads(1);setPaginaTriagem(1);}}>Limpar filtro</Button>
+    </div>}
+
+    {mostrarLeads && <section id="atendimento-lista-leads" ref={listaLeadsRef} className="space-y-3 scroll-mt-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-xl font-semibold">{filtro==='atrasados' ? 'Leads sem resposta há mais de 10 minutos' : 'Leads aguardando atendimento'}</h2>
+        <span className="text-sm text-muted-foreground">{totalListaLeads ?? '—'} no total</span>
+      </div>
+      {!paginaCarregada && <p className="rounded-lg border p-5 text-muted-foreground">Carregando leads deste filtro…</p>}
+      {paginaCarregada && !leadsNaPagina.length && <p className="rounded-lg border p-5 text-muted-foreground">Nenhum lead encontrado nesta situação.</p>}
       <div className="grid gap-3 lg:grid-cols-2">
-        {snapshot?.sem_resposta.map(l => {
+        {leadsNaPagina.map(l => {
           const eligible = sellers.filter(v => v.id !== l.vendedor_id && String(v.loja || '').toUpperCase() === String(l.loja || '').toUpperCase());
           const late = l.minutos_aguardando >= (snapshot?.limite_minutos ?? 10);
           return <article key={l.id} className="rounded-xl border bg-card p-4 space-y-3">
@@ -135,21 +195,29 @@ export default function AtendimentoPage() {
           </article>;
         })}
       </div>
-    </section>
+      <Paginacao atual={paginaLeads} porPagina={snapshot?.paginacao.por_pagina ?? 40}
+        total={totalListaLeads ?? null} aoMudar={setPaginaLeads} />
+    </section>}
 
-    <section className="space-y-3">
-      <h2 className="text-xl font-semibold">Novos leads na triagem</h2>
+    {mostrarTriagem && <section id="atendimento-lista-triagem" ref={listaTriagemRef} className="space-y-3 scroll-mt-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-xl font-semibold">Novos leads na triagem</h2>
+        <span className="text-sm text-muted-foreground">{snapshot?.total_fila ?? '—'} no total</span>
+      </div>
       <div className="overflow-x-auto rounded-xl border bg-card">
         <table className="w-full text-left text-sm"><thead className="border-b bg-muted/50"><tr>
           <th className="p-3">Contato</th><th className="p-3">Origem</th><th className="p-3">Veiculo</th><th className="p-3">Espera</th><th className="p-3">Acao</th>
-        </tr></thead><tbody>{snapshot?.fila.map(l => <tr key={l.id} className="border-b last:border-0">
+        </tr></thead><tbody>{triagemNaPagina.map(l => <tr key={l.id} className="border-b last:border-0">
           <td className="p-3"><div className="font-medium">{l.nome}</div><div className="text-xs text-muted-foreground">{l.telefone || l.email || 'Sem contato'}</div></td>
           <td className="p-3">{l.origem || '—'}</td><td className="p-3">{l.veiculo || '—'}</td>
           <td className="p-3">{mins(l.minutos_aguardando)}</td><td className="p-3"><a className="text-primary underline" href="/triagem">Distribuir</a></td>
         </tr>)}</tbody></table>
-        {!snapshot?.fila.length && <p className="p-4 text-muted-foreground">Fila vazia.</p>}
+        {!paginaCarregada && <p className="p-4 text-muted-foreground">Carregando triagem…</p>}
+        {paginaCarregada && !triagemNaPagina.length && <p className="p-4 text-muted-foreground">Fila vazia.</p>}
       </div>
-    </section>
+      <Paginacao atual={paginaTriagem} porPagina={snapshot?.paginacao.por_pagina ?? 40}
+        total={snapshot?.total_fila ?? null} aoMudar={setPaginaTriagem} />
+    </section>}
 
     <section className="space-y-3">
       <h2 className="flex items-center gap-2 text-xl font-semibold"><Users className="h-5 w-5" />Vendedores de todas as lojas da empresa</h2>
@@ -166,9 +234,31 @@ export default function AtendimentoPage() {
     </section>
   </main>;
 }
-function Summary({ icon, title, value }: { icon: ReactNode; title: string; value: number | null }) {
-  return <div className="flex items-center gap-3 rounded-xl border bg-card p-4">
+function Summary({ icon, title, value, active, disabled, controls, onClick }: {
+  icon: ReactNode; title: string; value: number | null; active: boolean;
+  disabled: boolean; controls: string; onClick: () => void;
+}) {
+  return <button type="button" onClick={onClick} disabled={disabled} aria-pressed={active}
+    aria-controls={active ? controls : undefined} aria-label={`Filtrar: ${title}`}
+    className={`group flex w-full items-center gap-3 rounded-xl border bg-card p-4 text-left transition-colors
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
+      disabled:cursor-not-allowed disabled:opacity-60
+      ${active ? 'border-primary bg-primary/10 ring-1 ring-primary/40' : 'hover:border-primary/60 hover:bg-primary/5'}`}>
     <div className="rounded-lg bg-primary/10 p-3 text-primary">{icon}</div>
-    <div><p className="text-sm text-muted-foreground">{title}</p><p className="text-2xl font-bold">{value === null ? '—' : value}</p></div>
-  </div>;
+    <div className="min-w-0 flex-1"><p className="text-sm text-muted-foreground">{title}</p>
+      <p className="text-2xl font-bold tabular-nums">{value === null ? '—' : value.toLocaleString('pt-BR')}</p>
+    </div>
+    <span aria-hidden="true" className="text-lg text-primary/70 group-hover:text-primary">{active?'✓':'›'}</span>
+  </button>;
+}
+function Paginacao({atual,porPagina,total,aoMudar}: {
+  atual:number;porPagina:number;total:number|null;aoMudar:(pagina:number)=>void;
+}){
+  if(total === null || total <= porPagina) return null;
+  const paginas = Math.max(1,Math.ceil(total/porPagina));
+  return <nav aria-label="Páginas de leads" className="flex flex-wrap items-center justify-center gap-3 py-3">
+    <Button variant="outline" size="sm" disabled={atual <= 1} onClick={()=>aoMudar(Math.max(1,atual-1))}>Anterior</Button>
+    <span className="text-sm text-muted-foreground" aria-live="polite">Página {atual} de {paginas} · {total.toLocaleString('pt-BR')} leads</span>
+    <Button variant="outline" size="sm" disabled={atual >= paginas} onClick={()=>aoMudar(Math.min(paginas,atual+1))}>Próxima</Button>
+  </nav>;
 }
