@@ -1,154 +1,93 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { query, queryOne } from '@/lib/db';
-import { requireUser, can } from '@/lib/session';
-import { isSuperAdmin, isGerenteLoja } from '@/lib/tenant';
-
-export const runtime = 'nodejs';
-
-export async function GET(req: NextRequest) {
-  const u = await requireUser(req);
-  if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
-  try {
-    const scopeParams: unknown[] = [];
-    let scopeSql = '';
-    if (!isSuperAdmin(u) && u.empresa_id) {
-      scopeParams.push(u.empresa_id);
-      scopeSql += ` AND (
-        f.vendedor_id IS NULL
-        OR f.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = $${scopeParams.length})
-        OR fat.criado_por_id IN (SELECT id FROM public.usuarios WHERE empresa_id = $${scopeParams.length})
-      )`;
-    }
-    if (isGerenteLoja(u) && u.loja) {
-      scopeParams.push(String(u.loja).toUpperCase());
-      scopeSql += ` AND (
-        f.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${scopeParams.length}))
-        OR UPPER(COALESCE(fat.loja,'381')) = UPPER($${scopeParams.length})
-      )`;
-    }
-
-    // Garante processos a partir de faturamentos liberados/emitidos sem processo
-    try {
-      await query(`
-        INSERT INTO public.processos_transferencia (ficha_id, lead_id, placa, nome_lead, marca, modelo, ano, cor, status, observacao)
-        SELECT
-          fat.ficha_id,
-          fat.lead_id,
-          fat.placa,
-          fat.nome,
-          fat.marca,
-          COALESCE(fat.modelo, fat.carro),
-          COALESCE(fat.ano_modelo, fat.ano),
-          fat.cor,
-          'em_andamento',
-          'auto: liberado no faturamento'
-        FROM public.faturamentos fat
-        WHERE (COALESCE(fat.liberado, FALSE) = TRUE
-          OR LOWER(COALESCE(fat.status,'')) IN ('emitido','liberado'))
-        AND NOT EXISTS (
-          SELECT 1 FROM public.processos_transferencia p
-          WHERE (fat.ficha_id IS NOT NULL AND p.ficha_id = fat.ficha_id)
-             OR (fat.placa IS NOT NULL AND UPPER(REPLACE(REPLACE(COALESCE(p.placa,''),'-',''),' ',''))
-                 = UPPER(REPLACE(REPLACE(COALESCE(fat.placa,''),'-',''),' ','')))
-        )
-        LIMIT 50
-      `);
-    } catch { /* schema parcial */ }
-
-    const { rows } = await query(
-      `SELECT
-         p.id,
-         p.ficha_id,
-         p.status,
-         p.observacao,
-         COALESCE(p.gravame, FALSE) AS gravame,
-         COALESCE(p.reconheceu_firma, FALSE) AS reconheceu_firma,
-         COALESCE(p.documento_pronto, FALSE) AS documento_pronto,
-         p.updated_at,
-         COALESCE(f.lead_id, fat.lead_id, p.lead_id) AS lead_id,
-         f.vendedor_id,
-         COALESCE(NULLIF(TRIM(p.nome_lead),''), fat.nome, l.nome_lead, l.nome_completo, '—') AS nome_lead,
-         COALESCE(NULLIF(TRIM(p.placa),''), fat.placa, l.placa_carro, '') AS placa,
-         COALESCE(NULLIF(TRIM(p.marca),''), fat.marca, est.marca, l.marca_carro, '') AS marca,
-         COALESCE(NULLIF(TRIM(p.modelo),''), fat.modelo, fat.carro, est.modelo, est.carro, l.modelo, l.produto_interesse, '') AS modelo,
-         COALESCE(NULLIF(TRIM(p.ano),''), fat.ano_modelo, fat.ano, est.ano, est.ano_modelo, l.ano_carro, '') AS ano,
-         COALESCE(NULLIF(TRIM(p.cor),''), fat.cor, est.cor, l.cor_carro, '') AS cor,
-         fat.created_at AS compra_em,
-         fat.status AS fat_status,
-         COALESCE(fat.liberado, FALSE) AS liberado,
-         v.nome AS vendedor_nome,
-         COALESCE(fat.vendedor_nome, v.nome) AS vendedor_display
-       FROM public.processos_transferencia p
-       LEFT JOIN public.fichas_credito f ON f.id = p.ficha_id
-       LEFT JOIN public.leads l ON l.id = COALESCE(f.lead_id, p.lead_id)
-       LEFT JOIN public.vendedores v ON v.id = COALESCE(f.vendedor_id, l.vendedor_id)
-       LEFT JOIN LATERAL (
-         SELECT marca, modelo, carro, ano, ano_modelo, cor, placa
-         FROM public.estoque_carros e
-         WHERE COALESCE(p.placa,'') <> ''
-           AND REPLACE(REPLACE(UPPER(COALESCE(e.placa,'')),'-',''),' ','')
-             = REPLACE(REPLACE(UPPER(p.placa),'-',''),' ','')
-         LIMIT 1
-       ) est ON TRUE
-       LEFT JOIN LATERAL (
-         SELECT *
-         FROM public.faturamentos fat2
-         WHERE (p.ficha_id IS NOT NULL AND fat2.ficha_id = p.ficha_id)
-            OR (p.lead_id IS NOT NULL AND fat2.lead_id = p.lead_id)
-            OR (COALESCE(p.placa,'') <> '' AND UPPER(REPLACE(REPLACE(fat2.placa,'-',''),' ',''))
-                = UPPER(REPLACE(REPLACE(p.placa,'-',''),' ','')))
-         ORDER BY fat2.id DESC
-         LIMIT 1
-       ) fat ON TRUE
-       WHERE 1=1 ${scopeSql}
-       ORDER BY p.updated_at DESC NULLS LAST, p.id DESC
-       LIMIT 150`,
-      scopeParams,
-    );
-    return NextResponse.json(rows);
-  } catch (e: any) {
-    try {
-      const { rows } = await query(
-        `SELECT p.*, f.lead_id, l.nome_lead, l.placa_carro AS placa
-         FROM public.processos_transferencia p
-         LEFT JOIN public.fichas_credito f ON f.id = p.ficha_id
-         LEFT JOIN public.leads l ON l.id = f.lead_id
-         ORDER BY p.id DESC LIMIT 150`,
-      );
-      return NextResponse.json(rows);
-    } catch (e2: any) {
-      return NextResponse.json({ error: e2?.message || e?.message }, { status: 500 });
-    }
-  }
+import {NextRequest,NextResponse} from 'next/server';import {query,queryOne} from '@/lib/db';
+import {requireUser,can} from '@/lib/session';
+export const runtime='nodejs';export const dynamic='force-dynamic';
+export async function GET(req:NextRequest){
+ const u=await requireUser(req);if(!u)return NextResponse.json({error:'Não autenticado'},{status:401});
+ if(u.tipo!=='superadmin'&&!u.empresa_id)return NextResponse.json({error:'Empresa não vinculada'},{status:403});
+ const empresaQuery=Number(req.nextUrl.searchParams.get('empresa_id'));
+ if(u.tipo!=='superadmin'&&empresaQuery>0&&empresaQuery!==Number(u.empresa_id))return NextResponse.json({error:'Empresa não autorizada'},{status:403});
+ const empresaId=u.tipo==='superadmin'?(Number.isSafeInteger(empresaQuery)&&empresaQuery>0?empresaQuery:null):Number(u.empresa_id);
+ const params:unknown[]=[];let scope=`p.empresa_id IS NOT NULL`;
+ if(empresaId){params.push(empresaId);scope+=` AND p.empresa_id=$${params.length}`;}
+ const seller=u.tipo==='vendedor'?Number(u.vendedor_id||0):0;
+ if(u.tipo==='vendedor'&&!seller)return NextResponse.json([]);
+ if(seller){params.push(seller);scope+=` AND l.vendedor_id=$${params.length}`;}
+ const loja=u.tipo==='gerente'?String(u.loja||''):'';
+ if(u.tipo==='gerente'&&!loja)return NextResponse.json({error:'Gerente sem loja atribuída'},{status:403});
+ if(loja){params.push(loja);scope+=` AND UPPER(COALESCE(v.loja,fat.loja,''))=UPPER($${params.length})`;}
+ try{
+  // Criação de processos idempotente por empresa, nunca cruza placa de outro locatário.
+  if(empresaId)await query(`INSERT INTO public.processos_transferencia
+   (empresa_id,ficha_id,lead_id,placa,nome_lead,marca,modelo,ano,cor,status,observacao)
+   SELECT fat.empresa_id,fat.ficha_id,fat.lead_id,fat.placa,fat.nome,fat.marca,
+     COALESCE(fat.modelo,fat.carro),COALESCE(fat.ano_modelo,fat.ano),fat.cor,
+     'em_andamento','auto: liberado no faturamento'
+   FROM public.faturamentos fat WHERE fat.empresa_id=$1
+     AND (COALESCE(fat.liberado,FALSE)=TRUE OR LOWER(COALESCE(fat.status,'')) IN ('emitido','liberado'))
+     AND NOT EXISTS (SELECT 1 FROM public.processos_transferencia p WHERE p.empresa_id=fat.empresa_id
+        AND ((fat.ficha_id IS NOT NULL AND p.ficha_id=fat.ficha_id)
+          OR (fat.placa IS NOT NULL AND UPPER(REGEXP_REPLACE(COALESCE(p.placa,''),'[^A-Z0-9]','','g'))=
+              UPPER(REGEXP_REPLACE(COALESCE(fat.placa,''),'[^A-Z0-9]','','g')))))
+   LIMIT 50`,[empresaId]);
+  const {rows}=await query(`SELECT p.id,p.ficha_id,p.status,p.observacao,p.empresa_id,
+    COALESCE(p.gravame,FALSE) AS gravame,COALESCE(p.reconheceu_firma,FALSE) AS reconheceu_firma,
+    COALESCE(p.documento_pronto,FALSE) AS documento_pronto,p.updated_at,
+    COALESCE(f.lead_id,fat.lead_id,p.lead_id) AS lead_id,f.vendedor_id,
+    COALESCE(NULLIF(TRIM(p.nome_lead),''),fat.nome,l.nome_lead,'—') AS nome_lead,
+    COALESCE(NULLIF(TRIM(p.placa),''),fat.placa,l.placa_carro,'') AS placa,
+    COALESCE(NULLIF(TRIM(p.marca),''),fat.marca,est.marca,l.marca_carro,'') AS marca,
+    COALESCE(NULLIF(TRIM(p.modelo),''),fat.modelo,fat.carro,est.modelo,l.produto_interesse,'') AS modelo,
+    COALESCE(NULLIF(TRIM(p.ano::text),''),fat.ano_modelo::text,est.ano::text,l.ano_carro::text,'') AS ano,
+    COALESCE(NULLIF(TRIM(p.cor),''),fat.cor,est.cor,l.cor_carro,'') AS cor,
+    fat.created_at AS compra_em,fat.status AS fat_status,COALESCE(fat.liberado,FALSE) AS liberado,
+    v.nome AS vendedor_nome,COALESCE(fat.vendedor_nome,v.nome) AS vendedor_display
+   FROM public.processos_transferencia p
+   LEFT JOIN public.fichas_credito f ON f.id=p.ficha_id AND EXISTS
+     (SELECT 1 FROM public.leads lx WHERE lx.id=f.lead_id AND lx.empresa_id=p.empresa_id)
+   LEFT JOIN public.leads l ON l.id=COALESCE(f.lead_id,p.lead_id) AND l.empresa_id=p.empresa_id
+   LEFT JOIN public.vendedores v ON v.id=COALESCE(f.vendedor_id,l.vendedor_id) AND v.empresa_id=p.empresa_id
+   LEFT JOIN LATERAL (SELECT e.marca,e.modelo,e.ano,e.cor FROM public.estoque_carros e
+      WHERE e.empresa_id=p.empresa_id AND COALESCE(p.placa,'')<>''
+       AND UPPER(REGEXP_REPLACE(COALESCE(e.placa,''),'[^A-Z0-9]','','g'))=
+           UPPER(REGEXP_REPLACE(COALESCE(p.placa,''),'[^A-Z0-9]','','g'))
+      ORDER BY e.id DESC LIMIT 1) est ON TRUE
+   LEFT JOIN LATERAL (SELECT fat2.* FROM public.faturamentos fat2
+     WHERE fat2.empresa_id=p.empresa_id AND
+     ((p.ficha_id IS NOT NULL AND fat2.ficha_id=p.ficha_id)
+       OR (p.lead_id IS NOT NULL AND fat2.lead_id=p.lead_id)
+       OR (COALESCE(p.placa,'')<>'' AND UPPER(REGEXP_REPLACE(COALESCE(fat2.placa,''),'[^A-Z0-9]','','g'))=
+        UPPER(REGEXP_REPLACE(COALESCE(p.placa,''),'[^A-Z0-9]','','g'))))
+      ORDER BY fat2.id DESC LIMIT 1) fat ON TRUE
+   WHERE ${scope} ORDER BY p.updated_at DESC NULLS LAST,p.id DESC LIMIT 150`,params);
+  return NextResponse.json(rows,{headers:{'Cache-Control':'private, no-store'}});
+ }catch(e){console.error('[processos GET]',e instanceof Error?e.message:'erro');
+  return NextResponse.json({error:'Falha ao consultar Transferências. Confira a migration de isolamento.'},{status:503});}
 }
-
-export async function PATCH(req: NextRequest) {
-  const u = await requireUser(req);
-  if (!u) return NextResponse.json({ error: 'não autenticado' }, { status: 401 });
-  if (!can.editarDocumental(u) && !['superadmin', 'admin', 'gerente', 'documentista'].includes(String(u.tipo))) {
-    return NextResponse.json({ error: 'sem permissão' }, { status: 403 });
-  }
-  try {
-    const b = await req.json();
-    const id = Number(b.id);
-    if (!id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
-    const fields: string[] = [];
-    const vals: unknown[] = [];
-    for (const k of ['status', 'observacao', 'gravame', 'reconheceu_firma', 'documento_pronto']) {
-      if (k in b) {
-        vals.push(b[k]);
-        fields.push(`${k} = $${vals.length}`);
-      }
-    }
-    if (!fields.length) return NextResponse.json({ error: 'nada para atualizar' }, { status: 400 });
-    fields.push('updated_at = now()');
-    vals.push(id);
-    const row = await queryOne(
-      `UPDATE public.processos_transferencia SET ${fields.join(', ')} WHERE id = $${vals.length} RETURNING *`,
-      vals,
-    );
-    return NextResponse.json(row);
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message }, { status: 500 });
-  }
+export async function PATCH(req:NextRequest){
+ const u=await requireUser(req);if(!u)return NextResponse.json({error:'Não autenticado'},{status:401});
+ if(!can.editarDocumental(u)&&!['superadmin','admin','gerente','documentista'].includes(u.tipo))return NextResponse.json({error:'Sem permissão'},{status:403});
+ const b=await req.json().catch(()=>null),id=Number(b?.id);
+ if(!Number.isSafeInteger(id)||id<=0)return NextResponse.json({error:'ID inválido'},{status:400});
+ const fields:string[]=[],vals:unknown[]=[];
+ for(const k of ['status','observacao','gravame','reconheceu_firma','documento_pronto'])if(b&&k in b){
+  vals.push(k==='observacao'?String(b[k]||'').slice(0,2000):b[k]);fields.push(`${k}=$${vals.length}`);
+ }
+ if(!fields.length)return NextResponse.json({error:'Nada para atualizar'},{status:400});
+ const empresaId=u.tipo==='superadmin'?Number(b?.empresa_id||0):Number(u.empresa_id||0);
+ // O superadmin pode corrigir processos de qualquer empresa; os demais somente os seus.
+ if(u.tipo!=='superadmin'&&!empresaId)return NextResponse.json({error:'Empresa não vinculada'},{status:403});
+ vals.push(id);const idParam=vals.length;fields.push('updated_at=now()');
+ vals.push(empresaId);const companyParam=vals.length;
+ let where=`id=$${idParam} AND empresa_id IS NOT NULL AND ($${companyParam}::integer=0 OR empresa_id=$${companyParam})`;
+ if(u.tipo==='gerente'){
+  if(!u.loja)return NextResponse.json({error:'Gerente sem loja'},{status:403});
+  vals.push(u.loja);const lojaParam=vals.length;
+  where+=` AND EXISTS (SELECT 1 FROM public.faturamentos f WHERE f.empresa_id=processos_transferencia.empresa_id
+    AND (f.ficha_id=processos_transferencia.ficha_id OR f.lead_id=processos_transferencia.lead_id)
+    AND UPPER(COALESCE(f.loja,''))=UPPER($${lojaParam}))`;
+ }
+ try{const row=await queryOne(`UPDATE public.processos_transferencia SET ${fields.join(', ')} WHERE ${where} RETURNING id`,vals);
+  if(!row)return NextResponse.json({error:'Processo de outra empresa, loja ou sem vínculo'},{status:403});
+  return NextResponse.json({ok:true});
+ }catch(e){console.error('[processos PATCH]',e instanceof Error?e.message:'erro');return NextResponse.json({error:'Falha ao atualizar Transferências'},{status:503});}
 }
