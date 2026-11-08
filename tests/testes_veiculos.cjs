@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');const path=require('node:path');const ts=require('typescript');const vm=require('node:vm');
+const file=path.join(__dirname,'..','payload','lib','aurox-veiculo-cadastro.ts');
+const out=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const moduleObj={exports:{}};vm.runInNewContext(out,{exports:moduleObj.exports,module:moduleObj,require});
+const {prepararVeiculo}=moduleObj.exports;
+const basic={marca:'Volkswagen',modelo:'Polo',ano:'2024',preco:75000,placa:'',km:'',cor:'',caracteristicas:[],opcionais:[]};
+const a=prepararVeiculo(basic);assert.equal(a.placa,null);assert.equal(a.preco,75000);assert.equal(a.detalhes.km,undefined);
+const b=prepararVeiculo({...basic,km:'12000',preco_classificados:78000,nao_exibir_km:true,opcionais:['Bluetooth','Android Auto'],youtube:'https://youtube.com/example'});
+assert.equal(b.detalhes.km,12000);assert.equal(b.detalhes.nao_exibir_km,true);assert.equal(b.detalhes.preco_classificados,78000);
+assert.equal(b.detalhes.youtube,undefined);assert.deepEqual(Array.from(b.detalhes.opcionais),['Bluetooth','Android Auto']);
+assert.throws(()=>prepararVeiculo({...basic,placa:'XYZ'}),/placa/i);
+assert.throws(()=>prepararVeiculo({...basic,preco:0}),/preço/i);
+assert.throws(()=>prepararVeiculo({...basic,km:'42km'}),/km inválido/i);
+console.log('OK: placa opcional, KM numérico sem texto, opcionais, preço/classificados, vídeo ignorado e validações.');

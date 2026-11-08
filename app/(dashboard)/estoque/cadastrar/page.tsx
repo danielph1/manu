@@ -1,160 +1,89 @@
 'use client';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import {useEffect,useMemo,useState,type DragEvent,type FormEvent} from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { useAuth } from '@/contexts/auth-context';
-import { compressGallery } from '@/lib/compress-image';
-import { toast } from 'sonner';
-import { ArrowLeft, Camera, CarFront, ChevronDown, ChevronUp, CheckCircle2, CircleHelp, Save, Trash2, Images } from 'lucide-react';
+import {useRouter} from 'next/navigation';
+import {useQuery} from '@tanstack/react-query';
+import {api} from '@/lib/api';
+import {useAuth} from '@/contexts/auth-context';
+import {compressGallery} from '@/lib/compress-image';
+import {toast} from 'sonner';
+import {ArrowLeft,Camera,CarFront,Check,ChevronDown,ClipboardList,FileText,GripVertical,Images,Info,Plus,Search,Tag,Trash2,Wallet} from 'lucide-react';
 
-type Empresa = { id: number; nome: string };
-type Loja = { codigo: string; nome: string };
-const INICIAL: Record<string,string> = {
-  placa:'', tipo_veiculo:'carro', condicao:'usado', marca:'', modelo:'', ano:'', ano_modelo:'',
-  versao:'', preco:'', cor:'', combustivel:'', cambio:'', portas:'', km:'', carroceria:'',
-  chassi:'', renavam:'', numero_motor:'', consignado:'', patio:'', observacoes:'',
-};
-const CARACTERISTICAS = [
-  '7 lugares','Adaptado para pessoa com deficiência','Blindado','Chave reserva',
-  'Garantia de fábrica','IPVA pago','Licenciado','Manual do proprietário',
-  'Passagem por leilão','Revisado em concessionária','Único dono','Ar-condicionado',
-  'Direção elétrica','Multimídia','Câmera de ré','Sensor de estacionamento','Airbags',
-  'Freios ABS','Bancos em couro','Controle de estabilidade',
-];
-const selectCls='mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm';
-const inputCls='mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary';
-function Grupo({titulo,sub,children}:{titulo:string;sub?:string;children:React.ReactNode}){
-  return <section className="rounded-2xl border bg-card p-4 sm:p-6">
-    <h2 className="text-base font-semibold">{titulo}</h2>{sub&&<p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
-    <div className="mt-5">{children}</div>
-  </section>;
+type Empresa={id:number;nome:string};type Loja={codigo:string;nome:string};
+type Portal='olx'|'facebook'|'webmotors'|'icarros'|'mercadolivre'|'napista';
+type Override={preco:string;observacao:string};
+const INICIAL:Record<string,string>={marca:'',modelo:'',ano:'',ano_modelo:'',placa:'',tipo_veiculo:'carro',condicao:'usado',combustivel:'',cor:'',cambio:'',km:'',portas:'',carroceria:'',versao:'',chassi:'',renavam:'',preco:'',preco_classificados:'',observacoes:'',observacao_classificados:'',patio:'',numero_motor:'',consignado:''};
+const CARACTERISTICAS=['7 lugares','Adaptado para deficiência física','Blindado','Chave reserva','Garantia de fábrica','IPVA pago','Licenciado','Manual do proprietário','Passagem por leilão','Revisado em concessionária','Único dono'];
+const OPCIONAIS=['Acendimento automático dos faróis','Airbag de cortina','Airbag lateral','Airbag motorista','Airbag passageiro','Alarme','Alerta de ponto cego','Android Auto','Apple CarPlay','Ar-condicionado','Ar-condicionado digital','Ar-condicionado dual zone','Ar quente','Assistente de partida em rampa','Assistente de permanência em faixa','Auto Hold','Bancos de couro','Bancos elétricos','Banco traseiro bipartido','Bluetooth','Câmera 360°','Câmera de ré','Carregador por indução','Computador de bordo','Controle de descida','Controle de estabilidade','Controle de som no volante','Controle de tração','Controle de velocidade','Desembaçador traseiro','Direção elétrica','Direção hidráulica','DVD player','Encosto de cabeça traseiro','Engate','Entrada USB','Faróis de xenon','Farol de LED','Farol de milha','Farol de neblina','Freio de mão elétrico','Freios ABS','GPS','Insulfilm','ISOFIX','Limitador de velocidade','Limpador traseiro','Luz de condução diurna (DRL)','Multimídia','Park Assist','Piloto automático','Porta-copos','Porta-malas elétrico','Protetor de caçamba','Rack de teto','Retrovisor fotocrômico','Retrovisores elétricos','Rodas de liga leve','Sensor de chuva','Sensor de estacionamento','Start Stop','Teto panorâmico','Teto solar','Tração 4x4','Travas elétricas','Vidros elétricos','Vidros elétricos traseiros','Volante com regulagem de altura'];
+const PORTAIS:[Portal,string][]=[['olx','OLX'],['facebook','Facebook Marketplace'],['webmotors','Webmotors'],['icarros','iCarros'],['mercadolivre','Mercado Livre'],['napista','NaPista']];
+const cls='mt-1 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus-visible:border-primary';
+const btn='rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50';
+const moeda=(v:string)=>v?Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}):'—';
+function Bloco({titulo,icone:Icon,sub,children}:{titulo:string;icone:any;sub?:string;children:React.ReactNode}){return <section className="rounded-2xl border bg-card p-4 sm:p-6"><div className="flex gap-2"><Icon size={20} className="mt-0.5 text-primary"/><div><h2 className="font-semibold">{titulo}</h2>{sub&&<p className="mt-1 text-xs text-muted-foreground">{sub}</p>}</div></div><div className="mt-5">{children}</div></section>}
+export default function CadastrarVeiculo(){
+ const router=useRouter(),{user,isLoading}=useAuth(),role=String(user?.tipo||'').toLowerCase();const superadmin=role==='superadmin',allowed=['superadmin','admin','gerente','marketing'].includes(role);
+ const [dados,setDados]=useState<Record<string,string>>(INICIAL),[empresa,setEmpresa]=useState(''),[fotos,setFotos]=useState<File[]>([]),[drag,setDrag]=useState<number|null>(null);
+ const [caracteristicas,setCaracteristicas]=useState<string[]>([]),[opcionais,setOpcionais]=useState<string[]>([]),[buscaOpcional,setBuscaOpcional]=useState(''),[somenteMarcados,setSomenteMarcados]=useState(false);
+ const [naoMostrarKm,setNaoMostrarKm]=useState(false),[precoIgual,setPrecoIgual]=useState(true),[obsIgual,setObsIgual]=useState(true),[precosPortal,setPrecosPortal]=useState<Partial<Record<Portal,Override>>>({}),[showPortal,setShowPortal]=useState(false);
+ const [salvando,setSalvando]=useState(false),[continuar,setContinuar]=useState(false);
+ const empresas=useQuery({queryKey:['estoque-v4-empresas'],enabled:superadmin,queryFn:async()=>((await api.get('/integracoes/empresas')).data||[]) as Empresa[]});
+ const lojas=useQuery({queryKey:['estoque-v4-lojas',empresa,user?.empresa_id],enabled:allowed&&(!superadmin||!!empresa),queryFn:async()=>((await api.get('/lojas-opcoes',{params:superadmin?{empresa_id:empresa}:{}})).data as Loja[])});
+ useEffect(()=>{if(!superadmin&&user?.loja)setDados(v=>({...v,patio:v.patio||String(user.loja)}));},[superadmin,user?.loja]);
+ useEffect(()=>{if(superadmin)setDados(v=>({...v,patio:''}));},[empresa,superadmin]);
+ const previews=useMemo(()=>fotos.map(f=>URL.createObjectURL(f)),[fotos]);
+ useEffect(()=>()=>previews.forEach(url=>URL.revokeObjectURL(url)),[previews]);
+ const atualizar=(k:string,v:string)=>setDados(old=>({...old,[k]:v}));
+ const addFotos=(files:FileList|null)=>{if(!files)return;const list=Array.from(files);if(list.some(f=>!['image/jpeg','image/png','image/webp'].includes(f.type))){toast.error('Apenas JPG, PNG e WebP.');return;}if(fotos.length+list.length>20){toast.error('Máximo de 20 fotos.');return;}setFotos(v=>[...v,...list]);};
+ const reordenar=(from:number,to:number)=>{if(from<0||to<0||from===to)return;setFotos(old=>{const n=[...old],f=n.splice(from,1);n.splice(to,0,...f);return n;});};
+ const alternar=(arr:string[],set:(v:string[])=>void,s:string)=>set(arr.includes(s)?arr.filter(x=>x!==s):[...arr,s]);
+ const usados=useMemo(()=>OPCIONAIS.filter(v=>(!somenteMarcados||opcionais.includes(v))&&v.toLocaleLowerCase('pt-BR').includes(buscaOpcional.toLocaleLowerCase('pt-BR'))),[opcionais,somenteMarcados,buscaOpcional]);
+ const qualidade=useMemo(()=>{const keys=['marca','modelo','ano','preco','tipo_veiculo','condicao','cor','combustivel','cambio','carroceria','portas','km','versao','observacoes'];const ok=keys.filter(k=>!!dados[k]?.trim()).length+(fotos.length?1:0)+(caracteristicas.length||opcionais.length?1:0);return Math.round(ok/(keys.length+2)*100);},[dados,fotos,caracteristicas,opcionais]);
+ async function salvar(e:FormEvent){e.preventDefault();if(salvando)return;
+  const preco=Number(String(dados.preco).replace(',','.'));
+  if(!dados.patio||!dados.marca.trim()||!dados.modelo.trim()||!Number.isInteger(Number(dados.ano))||!Number.isFinite(preco)||preco<=0){toast.error('Empresa/loja, marca, modelo, ano e preço válido são necessários para salvar.');return;}
+  if(superadmin&&!empresa){toast.error('Selecione uma empresa.');return;}
+  setSalvando(true);
+  try{
+   const portais_detalhes=Object.fromEntries(Object.entries(precosPortal).map(([k,v])=>[k,v]));
+   const payload={...dados,preco,preco_classificados:precoIgual?preco:dados.preco_classificados||null,usar_preco_site:precoIgual,observacao_classificados:obsIgual?dados.observacoes:dados.observacao_classificados,usar_observacao_classificados:obsIgual,nao_exibir_km:naoMostrarKm,caracteristicas,opcionais,portais_detalhes,empresa_id:superadmin?Number(empresa):undefined};
+   const {data}=await api.post('/estoque',payload);const id=Number(data?.id);if(!id){toast.error('Registro criado, mas sem ID para anexar as fotos.');return;}
+   const falhas:string[]=[];
+   for(const file of fotos){try{const small=await compressGallery(file);const fd=new FormData();fd.append('carro_id',String(id));fd.append('foto',small);await api.post('/estoque/fotos',fd);}catch{falhas.push(file.name);}}
+   if(falhas.length)toast.error(`${falhas.length} foto(s) não foram anexadas. O veículo foi salvo; reenvie as fotos pelo estoque.`);
+   else toast.success('Veículo cadastrado no estoque. Não foi publicado automaticamente em nenhum portal.');
+   if(continuar){setDados({...INICIAL,patio:superadmin?'':String(user?.loja||'')});setFotos([]);setOpcionais([]);setCaracteristicas([]);setPrecosPortal({});setNaoMostrarKm(false);setPrecoIgual(true);setObsIgual(true);setContinuar(false);window.scrollTo({top:0,behavior:'smooth'});}
+   else router.push('/estoque');
+  }catch(err:any){toast.error(err?.response?.data?.error||'Não foi possível salvar o veículo.');}
+  finally{setSalvando(false);}
+ }
+ const campo=(k:string,label:string,req=false,type='text',placeholder='')=><label className="block text-sm"><span className="text-muted-foreground">{label} {req&&<span className="text-rose-500">*</span>}</span><input className={cls} type={type} min={type==='number'?0:undefined} step={type==='number'?(k.includes('preco')?'0.01':'1'):undefined} placeholder={placeholder} required={req} value={dados[k]||''} onChange={e=>atualizar(k,e.target.value)} maxLength={160}/></label>;
+ const escolha=(k:string,label:string,vals:string[])=><label className="block text-sm"><span className="text-muted-foreground">{label}</span><select className={cls} value={dados[k]||''} onChange={e=>atualizar(k,e.target.value)}><option value="">Não informado</option>{vals.map(v=><option key={v} value={v}>{v}</option>)}</select></label>;
+ if(isLoading)return <main className="p-8">Carregando…</main>;
+ if(!allowed)return <main className="p-8">Sem permissão para cadastrar veículos.</main>;
+ return <main className="mx-auto max-w-7xl space-y-5 pb-40"><header className="flex items-start justify-between gap-4"><div><Link href="/estoque" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft size={16}/>Voltar ao estoque</Link><h1 className="mt-3 flex items-center gap-2 text-3xl font-semibold"><CarFront className="text-primary"/>Cadastrar veículo</h1><p className="mt-1 text-sm text-muted-foreground">Cadastro completo em seções. Informações complementares são opcionais; publicação será validada individualmente por portal.</p></div><span className="hidden rounded-lg border px-3 py-2 text-xs text-muted-foreground sm:block">* obrigatório</span></header>
+  <form onSubmit={salvar} className="space-y-5">
+   {superadmin&&<Bloco titulo="Empresa proprietária" icone={UsersIcon} sub="A empresa define quem poderá visualizar e anunciar este veículo."><select required className={cls} value={empresa} onChange={e=>setEmpresa(e.target.value)}><option value="">Selecione a empresa</option>{(empresas.data||[]).map(v=><option key={v.id} value={v.id}>{v.nome}</option>)}</select></Bloco>}
+   <Bloco titulo="Fotos do veículo" icone={Camera} sub="Até 20 imagens. Arraste as fotos ou use as setas; a primeira será a capa. Fotos são opcionais para salvar o cadastro."><label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground"><Plus size={17}/>Adicionar fotos<input type="file" className="hidden" accept="image/jpeg,image/png,image/webp" multiple onChange={e=>{addFotos(e.target.files);e.target.value='';}}/></label>
+    {fotos.length?<div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">{fotos.map((f,i)=><div key={`${f.name}:${i}`} className="overflow-hidden rounded-xl border" draggable onDragStart={()=>setDrag(i)} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(drag!==null)reordenar(drag,i);setDrag(null);}} onDragEnd={()=>setDrag(null)}><div className="relative aspect-[4/3]"><img src={previews[i]} alt={`Foto ${i+1}`} className="h-full w-full object-cover"/>{i===0&&<span className="absolute left-1.5 top-1.5 rounded bg-primary px-2 py-1 text-[10px] font-medium text-primary-foreground">Capa</span>}</div><div className="flex items-center justify-between gap-1 p-1.5"><GripVertical className="h-4 w-4 text-muted-foreground"/><button type="button" className={btn} disabled={i===0} onClick={()=>reordenar(i,i-1)} aria-label="Mover foto para esquerda">←</button><button type="button" className={btn} disabled={i===fotos.length-1} onClick={()=>reordenar(i,i+1)} aria-label="Mover foto para direita">→</button><button type="button" aria-label="Excluir foto" onClick={()=>setFotos(v=>v.filter((_,j)=>j!==i))}><Trash2 size={16}/></button></div></div>)}</div>:<div className="mt-4 flex min-h-24 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground"><Images className="mr-2" size={19}/>Nenhuma foto adicionada</div>}
+   </Bloco>
+   <Bloco titulo="Dados do veículo" icone={CarFront} sub="Placa, KM, chassi e Renavam são opcionais para cadastro interno."><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <label className="block text-sm"><span className="text-muted-foreground">Loja responsável *</span><select required className={cls} value={dados.patio} onChange={e=>atualizar('patio',e.target.value)}><option value="">Selecione a loja</option>{(lojas.data||[]).map(v=><option value={v.codigo} key={v.codigo}>{v.nome||v.codigo} ({v.codigo})</option>)}</select></label>
+    {campo('placa','Placa (opcional)',false,'text','ABC1D23')}{escolha('tipo_veiculo','Tipo',['carro','moto','caminhao','utilitario'])}{escolha('condicao','Condição',['novo','seminovo','usado'])}
+    {campo('marca','Marca',true,'text','Ex.: Volkswagen')}{campo('modelo','Modelo',true,'text','Ex.: Polo')}{campo('ano','Ano de fabricação',true,'number','2023')}{campo('ano_modelo','Ano do modelo',false,'number','2024')}
+    {campo('versao','Versão')}{escolha('combustivel','Combustível',['Flex','Gasolina','Etanol','Diesel','Elétrico','Híbrido','GNV'])}{campo('cor','Cor')}{escolha('cambio','Câmbio',['Manual','Automático','CVT','Automatizado'])}
+    {campo('km','Quilometragem (somente número)',false,'number','Ex.: 42000')}{escolha('portas','Número de portas',['2','3','4','5'])}{escolha('carroceria','Carroceria',['Hatch','Sedan','SUV','Picape','Perua','Cupê','Conversível','Van','Outro'])}
+    {campo('chassi','Chassi (opcional)')}{campo('renavam','Renavam (opcional)')}
+    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={naoMostrarKm} onChange={e=>setNaoMostrarKm(e.target.checked)}/>Não exibir quilometragem no anúncio</label>
+   </div></Bloco>
+   <Bloco titulo="Preço" icone={Wallet} sub="O preço para classificados pode ser diferente do preço exibido no site. FIPE só será exibida quando uma fonte confiável estiver integrada."><div className="grid gap-4 sm:grid-cols-2">{campo('preco','Preço no site (R$)',true,'number','65000')}<div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={precoIgual} onChange={e=>setPrecoIgual(e.target.checked)}/>Usar o mesmo preço nos classificados</label>{!precoIgual&&<div className="mt-2">{campo('preco_classificados','Preço dos classificados (R$)',false,'number')}</div>}</div></div>
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground"><span>Preço FIPE: não disponível sem integração de dados autorizada.</span><button type="button" className={btn} onClick={()=>setShowPortal(x=>!x)}>{showPortal?'Ocultar':'Definir'} diferenças por portal</button></div>
+    {showPortal&&<div className="mt-4 space-y-3"><p className="text-xs text-muted-foreground">As opções abaixo são apenas configurações internas. Não publicam anúncios.</p>{PORTAIS.map(([id,label])=><div className="grid gap-2 rounded-xl border p-3 sm:grid-cols-3" key={id}><p className="text-sm font-medium">{label}</p><label className="text-xs text-muted-foreground">Preço específico (R$)<input type="number" step="0.01" min="0" className={cls} value={precosPortal[id]?.preco||''} onChange={e=>setPrecosPortal(v=>({...v,[id]:{preco:e.target.value,observacao:v[id]?.observacao||''}}))}/></label><label className="text-xs text-muted-foreground">Descrição específica<input className={cls} value={precosPortal[id]?.observacao||''} maxLength={3000} onChange={e=>setPrecosPortal(v=>({...v,[id]:{preco:v[id]?.preco||'',observacao:e.target.value}}))}/></label></div>)}</div>}
+   </Bloco>
+   <Bloco titulo="Observação" icone={FileText} sub="A descrição pública pode ser reutilizada nos classificados ou personalizada. Não coloque informações privadas do cliente."><label className="block text-sm">Descrição do veículo no site<textarea className={`${cls} min-h-28`} maxLength={3000} placeholder="Estado de conservação, revisões, acessórios, diferenciais…" value={dados.observacoes} onChange={e=>atualizar('observacoes',e.target.value)}/></label><label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={obsIgual} onChange={e=>setObsIgual(e.target.checked)}/>Usar esta mesma observação nos classificados</label>{!obsIgual&&<label className="mt-3 block text-sm">Observação para classificados<textarea className={`${cls} min-h-24`} maxLength={3000} value={dados.observacao_classificados} onChange={e=>atualizar('observacao_classificados',e.target.value)}/></label>}</Bloco>
+   <Bloco titulo="Características" icone={Tag} sub="Marque apenas características verdadeiras. Nenhuma delas é obrigatória."><button type="button" onClick={()=>setCaracteristicas(v=>v.length===CARACTERISTICAS.length?[]:[...CARACTERISTICAS])} className={`${btn} mb-3`}>{caracteristicas.length===CARACTERISTICAS.length?'Desmarcar todas':'Marcar todas'}</button><div className="flex flex-wrap gap-2">{CARACTERISTICAS.map(s=><label key={s} className={`flex cursor-pointer items-center gap-2 rounded-full border px-3 py-2 text-xs ${caracteristicas.includes(s)?'border-primary bg-primary/10':''}`}><input type="checkbox" checked={caracteristicas.includes(s)} onChange={()=>alternar(caracteristicas,setCaracteristicas,s)}/>{s}</label>)}</div></Bloco>
+   <Bloco titulo="Opcionais" icone={ClipboardList} sub="Catálogo pesquisável. Use “Marcados” para conferir sua seleção antes de salvar."><div className="flex flex-wrap items-center gap-2"><label className="relative min-w-[230px] flex-1"><Search size={17} className="pointer-events-none absolute left-3 top-3 text-muted-foreground"/><input className={`${cls} mt-0 pl-9`} placeholder="Buscar opcional…" value={buscaOpcional} onChange={e=>setBuscaOpcional(e.target.value)}/></label><button type="button" className={btn} onClick={()=>setSomenteMarcados(false)} aria-pressed={!somenteMarcados}>Todos</button><button type="button" className={btn} onClick={()=>setSomenteMarcados(true)} aria-pressed={somenteMarcados}>Marcados ({opcionais.length})</button><button type="button" className={btn} onClick={()=>setOpcionais(v=>v.length===OPCIONAIS.length?[]:[...OPCIONAIS])}>{opcionais.length===OPCIONAIS.length?'Desmarcar':'Marcar'} todos</button></div><div className="mt-4 grid gap-x-5 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">{usados.map(s=><label key={s} className="flex cursor-pointer items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={opcionais.includes(s)} onChange={()=>alternar(opcionais,setOpcionais,s)}/>{s}</label>)}</div>{!usados.length&&<p className="mt-3 text-sm text-muted-foreground">Nenhum opcional corresponde à busca.</p>}</Bloco>
+   <div className="sticky bottom-2 z-30 flex flex-wrap items-center gap-2 rounded-2xl border bg-card/95 p-3 shadow-lg backdrop-blur"><button type="submit" onClick={()=>setContinuar(false)} disabled={salvando} className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"><Check size={17} className="mr-1 inline"/>{salvando?'Salvando…':'Cadastrar veículo'}</button><button type="submit" onClick={()=>setContinuar(true)} disabled={salvando} className={btn}>Cadastrar e começar outro</button><Link href="/estoque" className={`${btn} inline-block`}>Voltar ao estoque</Link><div className="ml-auto min-w-[165px]"><div className="flex justify-between text-xs text-muted-foreground"><span>Completude do cadastro</span><span>{qualidade}%</span></div><div className="mt-1 h-1.5 w-full rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{width:`${qualidade}%`}}/></div><p className="mt-1 text-[10px] text-muted-foreground">Não é validação de portal.</p></div></div>
+  </form>
+ </main>;
 }
-function Campo({label,obrigatorio=false,children}:{label:string;obrigatorio?:boolean;children:React.ReactNode}){
-  return <label className="block text-sm"><span className="text-muted-foreground">{label} {obrigatorio&&<span className="text-rose-500">*</span>}</span>{children}</label>;
-}
-export default function CadastroVeiculoPage(){
-  const router=useRouter();const {user,isLoading}=useAuth();
-  const papel=String(user?.tipo||'').toLowerCase();const superadmin=papel==='superadmin';
-  const autorizado=['superadmin','admin','gerente','marketing'].includes(papel);
-  const [dados,setDados]=useState<Record<string,string>>(INICIAL);
-  const [empresa,setEmpresa]=useState('');const [fotos,setFotos]=useState<File[]>([]);
-  const [caracteristicas,setCaracteristicas]=useState<string[]>([]);
-  const [salvando,setSalvando]=useState(false);const [aberto,setAberto]=useState({fotos:true,dados:true,caracteristicas:true});
-  const empresas=useQuery({queryKey:['cadastro-estoque-empresas'],enabled:superadmin,
-    queryFn:async()=>((await api.get('/integracoes/empresas')).data||[]) as Empresa[]});
-  const lojas=useQuery({queryKey:['cadastro-estoque-lojas',empresa,user?.empresa_id],enabled:autorizado && (!!empresa||!superadmin),
-    queryFn:async()=>((await api.get('/lojas-opcoes',{params:superadmin?{empresa_id:empresa}:{}})).data||[]) as Loja[]});
-  useEffect(()=>{if(user?.loja&&!superadmin)setDados(d=>({...d,patio:d.patio||String(user.loja)}));},[user?.loja,superadmin]);
-  useEffect(()=>{if(superadmin){setDados(d=>({...d,patio:''}));}},[empresa,superadmin]);
-  const visualizacoes=useMemo(()=>fotos.map(f=>URL.createObjectURL(f)),[fotos]);
-  useEffect(()=>()=>{visualizacoes.forEach(url=>URL.revokeObjectURL(url));},[visualizacoes]);
-  function atualizar(campo:string,valor:string){setDados(v=>({...v,[campo]:valor}));}
-  function juntarFotos(list:FileList|null){if(!list)return;
-    const escolhidas=Array.from(list).filter(f=>['image/jpeg','image/png','image/webp'].includes(f.type));
-    if(escolhidas.length!==list.length)toast.error('Apenas fotos JPG, PNG e WebP são aceitas.');
-    if(fotos.length+escolhidas.length>20){toast.error('Máximo de 20 fotos.');return;}
-    setFotos(p=>[...p,...escolhidas]);
-  }
-  function moverFoto(i:number,dir:-1|1){const j=i+dir;if(j<0||j>=fotos.length)return;
-    setFotos(p=>{const n=[...p];[n[i],n[j]]=[n[j],n[i]];return n;});}
-  function alternarCaracteristica(c:string){setCaracteristicas(p=>p.includes(c)?p.filter(x=>x!==c):[...p,c]);}
-  async function cadastrar(e:FormEvent){e.preventDefault();if(salvando)return;
-    if(superadmin&&!empresa){toast.error('Escolha uma empresa.');return;}
-    if(!dados.patio){toast.error('Escolha a loja responsável.');return;}
-    const preco=Number(dados.preco.replace(',','.'));
-    if(!dados.marca.trim()||!dados.modelo.trim()||!Number.isInteger(Number(dados.ano))||!Number.isFinite(preco)||preco<=0){
-      toast.error('Preencha marca, modelo, ano e preço de venda válido.');return;
-    }
-    setSalvando(true);
-    try{
-      const {data}=await api.post('/estoque',{
-        ...dados,preco,empresa_id:superadmin?Number(empresa):undefined,
-        caracteristicas, // Guardadas nos detalhes opcionais, sem exigir preenchimento.
-      });
-      const id=Number(data?.id);if(!id){toast.error('Cadastro salvo, mas não foi possível identificar o veículo para anexar fotos.');router.push('/estoque');return;}
-      let carregadas=0;const falhas:string[]=[];
-      for(const f of fotos){try{
-        const compactada=await compressGallery(f);const fd=new FormData();fd.append('carro_id',String(id));fd.append('foto',compactada);
-        await api.post('/estoque/fotos',fd);carregadas++;
-      }catch{falhas.push(f.name);}}
-      if(falhas.length)toast.error(`Veículo salvo. ${falhas.length} foto(s) falharam. Abra-o no estoque para reenviar.`);
-      else toast.success(`Veículo cadastrado${carregadas?` com ${carregadas} foto(s)`:''}.`);
-      router.push('/estoque');
-    }catch(err:any){toast.error(err?.response?.data?.error||'Não foi possível cadastrar o veículo.');}
-    finally{setSalvando(false);}
-  }
-  if(isLoading)return <p className="p-8">Carregando...</p>;
-  if(!autorizado)return <p className="rounded-xl border p-6">Sem permissão para cadastrar veículos.</p>;
-  const field=(key:string,label:string,opts?:{required?:boolean;type?:string;placeholder?:string})=><Campo label={label} obrigatorio={opts?.required}>
-    <input className={inputCls} type={opts?.type||'text'} step={opts?.type==='number'?(key==='preco'?'0.01':'1'):undefined} placeholder={opts?.placeholder||''} required={opts?.required}
-      value={dados[key]||''} onChange={e=>atualizar(key,e.target.value)} maxLength={key==='observacoes'?2000:160}/>
-  </Campo>;
-  const choice=(key:string,label:string,opcoes:string[])=><Campo label={label}>
-    <select className={selectCls} value={dados[key]||''} onChange={e=>atualizar(key,e.target.value)}>
-      <option value="">Não informado</option>{opcoes.map(o=><option value={o} key={o}>{o}</option>)}
-    </select>
-  </Campo>;
-  return <div className="mx-auto max-w-6xl space-y-5 pb-28">
-    <header className="flex flex-wrap items-center justify-between gap-3"><div>
-      <Link href="/estoque" className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"><ArrowLeft size={15}/>Voltar ao estoque</Link>
-      <h1 className="mt-2 flex items-center gap-2 text-2xl font-bold"><CarFront className="text-primary"/>Cadastrar veículo</h1>
-      <p className="text-sm text-muted-foreground">Como no cadastro de estoque: fotos, dados e características. Só o essencial é obrigatório.</p>
-    </div><span className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">* campo obrigatório</span></header>
-    <form onSubmit={cadastrar} className="space-y-5">
-      {superadmin&&<Grupo titulo="Empresa proprietária"><Campo label="Empresa" obrigatorio>
-        <select required className={selectCls} value={empresa} onChange={e=>setEmpresa(e.target.value)}><option value="">Selecione a empresa</option>
-          {(empresas.data||[]).map(x=><option value={x.id} key={x.id}>{x.nome}</option>)}
-        </select></Campo></Grupo>}
-      <Grupo titulo="Fotos do veículo" sub="Fotos não são obrigatórias para salvar o cadastro. Cada portal pode exigir quantidade e formatos específicos para publicar.">
-        <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">
-          <Camera size={18}/>Adicionar fotos<input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={e=>{juntarFotos(e.target.files);e.target.value='';}}/>
-        </label>
-        {fotos.length>0?<div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
-          {fotos.map((f,i)=><div className="overflow-hidden rounded-xl border" key={`${f.name}-${i}`}>
-            <div className="relative aspect-[4/3]"><img src={visualizacoes[i]} alt={`Foto ${i+1}`} className="h-full w-full object-cover"/>
-              {i===0&&<span className="absolute left-1 top-1 rounded bg-primary px-2 py-0.5 text-[10px] text-primary-foreground">Capa</span>}</div>
-            <div className="flex items-center justify-between p-1.5"><button type="button" aria-label="Mover foto para esquerda" disabled={i===0} onClick={()=>moverFoto(i,-1)} className="rounded px-2 disabled:opacity-30">←</button>
-              <span className="text-xs tabular-nums">{i+1}</span><button type="button" aria-label="Mover foto para direita" disabled={i===fotos.length-1} onClick={()=>moverFoto(i,1)} className="rounded px-2 disabled:opacity-30">→</button>
-              <button type="button" aria-label="Remover foto" onClick={()=>setFotos(p=>p.filter((_,j)=>j!==i))}><Trash2 size={14}/></button></div>
-          </div>)}</div>:<div className="mt-4 flex h-24 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground"><Images className="mr-2"/>Fotos opcionais · até 20 arquivos</div>}
-      </Grupo>
-      <Grupo titulo="Dados do veículo" sub="Cadastro com campos equivalentes aos da referência, sem exigir placa, KM, documentos ou acessórios.">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Campo label="Loja / pátio" obrigatorio><select className={selectCls} value={dados.patio} required onChange={e=>atualizar('patio',e.target.value)}>
-            <option value="">Selecione a loja</option>{(lojas.data||[]).map(l=><option key={l.codigo} value={l.codigo}>{l.nome} ({l.codigo})</option>)}
-          </select></Campo>
-          {field('marca','Marca',{required:true,placeholder:'Ex.: Volkswagen'})}
-          {field('modelo','Modelo',{required:true,placeholder:'Ex.: Polo'})}
-          {field('ano','Ano de fabricação',{type:'number',required:true,placeholder:'2022'})}
-          {field('preco','Valor de venda (R$)',{required:true,type:'number',placeholder:'65000'})}
-          {field('placa','Placa (opcional)',{placeholder:'ABC1D23'})}
-          {choice('tipo_veiculo','Tipo de veículo',['carro','moto','caminhao','utilitario'])}
-          {choice('condicao','Condição',['novo','usado','seminovo'])}
-          {field('ano_modelo','Ano do modelo',{type:'number'})}
-          {field('versao','Versão')}
-          {choice('combustivel','Combustível',['Flex','Gasolina','Etanol','Diesel','Elétrico','Híbrido','GNV'])}
-          {choice('cambio','Câmbio',['Manual','Automático','CVT','Automatizado'])}
-          {field('cor','Cor')}
-          {field('km','Quilometragem',{type:'number',placeholder:'Não informado'})}
-          {choice('portas','Portas',['2','3','4','5'])}
-          {choice('carroceria','Carroceria',['Hatch','Sedan','SUV','Picape','Perua','Cupê','Conversível','Van','Outro'])}
-          {choice('consignado','Consignado',['Sim','Não'])}
-          {field('chassi','Chassi')}
-          {field('renavam','Renavam')}
-          {field('numero_motor','Número do motor')}
-        </div>
-        <label className="mt-4 block text-sm text-muted-foreground">Observações opcionais<textarea className={`${inputCls} min-h-24 py-3`} rows={3} maxLength={2000} value={dados.observacoes} onChange={e=>atualizar('observacoes',e.target.value)} placeholder="Detalhes adicionais e observações comerciais"/></label>
-      </Grupo>
-      <Grupo titulo="Características e opcionais" sub="Selecione somente o que o veículo realmente possui.">
-        <label className="mb-3 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={caracteristicas.length===CARACTERISTICAS.length} onChange={e=>setCaracteristicas(e.target.checked?[...CARACTERISTICAS]:[])}/>Selecionar todos</label>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{CARACTERISTICAS.map(c=><label key={c} className="flex items-start gap-2 rounded-lg border p-2 text-xs sm:text-sm"><input type="checkbox" className="mt-0.5" checked={caracteristicas.includes(c)} onChange={()=>alternarCaracteristica(c)}/>{c}</label>)}</div>
-      </Grupo>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4">
-        <p className="max-w-lg text-xs text-muted-foreground"><CircleHelp className="mr-1 inline" size={14}/>Salvar no estoque não publica automaticamente em OLX, Meta ou outros portais. A Central de Integrações validará requisitos particulares de cada canal.</p>
-        <button disabled={salvando} type="submit" className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"><Save size={17}/>{salvando?'Salvando e enviando fotos…':'Salvar veículo no estoque'}</button>
-      </div>
-    </form>
-  </div>;
-}
+function UsersIcon(props:any){return <CarFront {...props}/>}
