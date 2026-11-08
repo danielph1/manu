@@ -32,7 +32,6 @@ export async function GET(req:NextRequest){
   if(vendedor&&MANAGE.has(u.tipo)){params.push(vendedor);filtro+=` AND l.vendedor_id=$${params.length}`;}
   const {rows}=await query(`SELECT l.id,l.nome_lead,l.telefone,l.produto_interesse,l.followup_status,l.followup_motivo,
     l.followup_em,l.followup_optin,l.followup_optin_origem,l.followup_optout_em,
-    EXISTS(SELECT 1 FROM public.aurox_followup_permissoes cp WHERE cp.empresa_id=$1 AND cp.lead_id=l.id AND cp.revogado_em IS NULL) AS followup_consentimento_verificado,
     v.id AS vendedor_id,v.nome AS vendedor_nome,v.loja,
     (SELECT f.status_geral FROM public.fichas_credito f WHERE f.lead_id=l.id ORDER BY f.id DESC LIMIT 1) AS status_ficha
     FROM public.leads l JOIN public.vendedores v ON v.id=l.vendedor_id
@@ -49,15 +48,6 @@ export async function PATCH(req:NextRequest){
  if(action==='consentimento'&&b?.aceito===true&&(!MANAGE.has(u.tipo)||String(b?.origem||'').trim().length<8))
   return NextResponse.json({error:'Somente gestor pode registrar consentimento, indicando a origem verificável'},{status:403});
  if(action==='consentimento'&&typeof b?.aceito!=='boolean')return NextResponse.json({error:'Informe se o cliente autorizou'},{status:400});
- const registro=action==='consentimento'&&b?.aceito===true?{
-  canal:String(b?.canal||''),finalidade:String(b?.finalidade||''),consentidoEm:new Date(String(b?.consentido_em||'')),evidencia:String(b?.evidencia||'').trim(),
- }:null;
- if(registro&&(!['whatsapp','presencial','ligacao','formulario','outro'].includes(registro.canal)||
-  !['promocoes','novidades','retorno_comercial'].includes(registro.finalidade)||
-  registro.evidencia.length<15||registro.evidencia.length>1000||
-  !Number.isFinite(registro.consentidoEm.getTime())||registro.consentidoEm.getTime()>Date.now()||
-  registro.consentidoEm.getTime()<new Date('2000-01-01').getTime()))
-  return NextResponse.json({error:'Informe canal, finalidade, data/hora e evidência verificável do consentimento'},{status:400});
  const db=await getPool().connect();
  try{
   await db.query('BEGIN');
@@ -80,14 +70,6 @@ export async function PATCH(req:NextRequest){
      followup_optin_em=CASE WHEN $1 THEN now() ELSE NULL END,
      followup_optout_em=CASE WHEN $1 THEN NULL ELSE now() END WHERE id=$3`,
     [b.aceito===true,b.aceito===true?String(b.origem).trim().slice(0,250):null,id]);
-   // Registro estruturado e transacional do consentimento; revogação impede campanhas futuras.
-   // A mesma transação atualiza status, evidência, auditoria e cancela os pendentes.
-   await db.query(`UPDATE public.aurox_followup_permissoes SET revogado_em=now(),revogado_por=$1
-     WHERE empresa_id=$2 AND lead_id=$3 AND revogado_em IS NULL`,[u.id,empresaId,id]);
-   if(registro){await db.query(`INSERT INTO public.aurox_followup_permissoes
-      (empresa_id,lead_id,finalidade,canal,consentido_em,evidencia,registrado_por)
-      VALUES($1,$2,$3,$4,$5,$6,$7)`,
-      [empresaId,id,registro.finalidade,registro.canal,registro.consentidoEm.toISOString(),registro.evidencia,u.id]);}
    campos=['followup_optin'];antes={followup_optin:old.followup_optin};depois={followup_optin:b.aceito===true};
   }else{
    const status=action==='restaurar'?'na_fila':action==='recusar'?'recusado':'followup';

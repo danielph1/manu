@@ -73,7 +73,6 @@ export async function POST(req:NextRequest){
      WHERE (l.empresa_id=$1 OR l.empresa_id IS NULL)
        AND l.followup_optin=TRUE AND l.followup_optout_em IS NULL
        AND l.followup_optin_em IS NOT NULL AND LENGTH(TRIM(COALESCE(l.followup_optin_origem,'')))>=8
-       AND EXISTS(SELECT 1 FROM public.aurox_followup_permissoes cp WHERE cp.empresa_id=$1 AND cp.lead_id=l.id AND cp.revogado_em IS NULL)
        AND EXISTS (SELECT 1 FROM public.aurox_wa_contatos c JOIN public.aurox_wa_mensagens m
            ON m.contato_id=c.id AND m.empresa_id=c.empresa_id
          WHERE c.empresa_id=$1 AND c.lead_id=l.id AND m.direcao='recebida' AND m.recebida_em>=now()-interval '24 hours')
