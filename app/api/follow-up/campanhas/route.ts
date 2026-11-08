@@ -1,6 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {getPool,query} from '@/lib/db';
 import {requireUser} from '@/lib/session';
+import {auditarAlteracao} from '@/lib/auditoria';
 export const runtime='nodejs';export const dynamic='force-dynamic';
 const MANAGER=new Set(['gerente','admin','superadmin']);
 const idNum=(v:unknown)=>{const n=Number(v);return Number.isSafeInteger(n)&&n>0?n:0};
@@ -39,6 +40,7 @@ export async function PATCH(req:NextRequest){
   const r=await db.query(`UPDATE public.aurox_followup_campanhas SET estado='pausada' WHERE id=$1 AND empresa_id=$2 AND estado='ativa' RETURNING id`,[id,s.empresaId]);
   if(!r.rowCount){await db.query('ROLLBACK');return NextResponse.json({error:'Campanha não encontrada'},{status:404});}
   await db.query(`UPDATE public.aurox_followup_envios SET estado='cancelado' WHERE campanha_id=$1 AND empresa_id=$2 AND estado='pendente'`,[id,s.empresaId]);
+  await auditarAlteracao(db,{usuario:s.u,empresaId:s.empresaId,recurso:'campanhas',recursoId:id,acao:'pausar',resumo:'Campanha de Follow Up pausada'});
   await db.query('COMMIT');return NextResponse.json({ok:true});
  }catch{await db.query('ROLLBACK').catch(()=>{});return NextResponse.json({error:'Falha ao pausar'},{status:503});}finally{db.release();}
 }
@@ -75,9 +77,9 @@ export async function POST(req:NextRequest){
            ON m.contato_id=c.id AND m.empresa_id=c.empresa_id
          WHERE c.empresa_id=$1 AND c.lead_id=l.id AND m.direcao='recebida' AND m.recebida_em>=now()-interval '24 hours')
        AND (l.followup_status IN ('followup','recusado') OR
-         (l.followup_status IS NULL AND EXISTS (SELECT 1 FROM public.fichas_credito f
+         EXISTS (SELECT 1 FROM public.fichas_credito f
           WHERE f.id=(SELECT MAX(f2.id) FROM public.fichas_credito f2 WHERE f2.lead_id=l.id)
-          AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)')))
+          AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)'))
        AND NOT EXISTS (SELECT 1 FROM public.aurox_followup_envios e WHERE e.empresa_id=$1 AND e.lead_id=l.id AND
          e.estado IN ('pendente','processando','enviado') AND e.agendado_em>now()-interval '7 days')
        ${selected}
@@ -94,6 +96,8 @@ export async function POST(req:NextRequest){
    await db.query(`INSERT INTO public.aurox_followup_envios(empresa_id,campanha_id,lead_id,texto,agendado_em)
      VALUES($1,$2,$3,$4,now()+($5::integer * interval '2 minutes'))`,[empresaId,camp.rows[0].id,target.id,full,i]);
   }
+  await auditarAlteracao(db,{usuario:u,empresaId,recurso:'campanhas',recursoId:camp.rows[0].id,acao:'enviar',
+   resumo:'Campanha de Follow Up agendada',campos:[]});
   await db.query('COMMIT');
   return NextResponse.json({ok:true,agendados:targets.length,ignorados:all?null:ids.length-targets.length,
    observacao:'Envios agendados com consentimento e limites; não há garantia de entrega nem de ausência de bloqueio.'},{status:201});

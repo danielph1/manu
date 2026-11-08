@@ -1,5 +1,6 @@
 import { NextRequest,NextResponse } from 'next/server';
-import { query } from '@/lib/db';
+import { query, getPool } from '@/lib/db';
+import {auditarAlteracao} from '@/lib/auditoria';
 import { requireUser } from '@/lib/session';
 
 export const runtime='nodejs';
@@ -26,7 +27,7 @@ export async function GET(req:NextRequest){
   const vendedor=positive(req.nextUrl.searchParams.get('vendedor_id'));
   const params:unknown[]=[empresaId];
   let filtro=`(l.empresa_id=$1 OR (l.empresa_id IS NULL AND v.empresa_id=$1)) AND v.empresa_id=$1
-    AND (l.followup_status IN ('followup','recusado') OR (l.followup_status IS NULL AND ${rejected}))`;
+    AND (l.followup_status IN ('followup','recusado') OR ${rejected})`;
   if(u.tipo==='vendedor'){params.push(u.vendedor_id);filtro+=` AND l.vendedor_id=$${params.length}`;}
   if(vendedor&&MANAGE.has(u.tipo)){params.push(vendedor);filtro+=` AND l.vendedor_id=$${params.length}`;}
   const {rows}=await query(`SELECT l.id,l.nome_lead,l.telefone,l.produto_interesse,l.followup_status,l.followup_motivo,
@@ -41,36 +42,50 @@ export async function GET(req:NextRequest){
 export async function PATCH(req:NextRequest){
  const b=await req.json().catch(()=>null);const s=await scope(req,b?.empresa_id);if('error'in s)return s.error;
  const {u,empresaId}=s;
- const id=positive(b?.lead_id);const action=String(b?.acao||'');
+ const id=positive(b?.lead_id),action=String(b?.acao||'');
  if(!id||!['mover','recusar','restaurar','consentimento'].includes(action))return NextResponse.json({error:'Ação inválida'},{status:400});
  const motivo=String(b?.motivo||'').trim().slice(0,400);
- if(action==='consentimento' && b?.aceito===true && (!MANAGE.has(u.tipo)||String(b?.origem||'').trim().length<8))
-  return NextResponse.json({error:'Consentimento exige gestor e origem verificável'},{status:403});
+ if(action==='consentimento'&&b?.aceito===true&&(!MANAGE.has(u.tipo)||String(b?.origem||'').trim().length<8))
+  return NextResponse.json({error:'Somente gestor pode registrar consentimento, indicando a origem verificável'},{status:403});
+ if(action==='consentimento'&&typeof b?.aceito!=='boolean')return NextResponse.json({error:'Informe se o cliente autorizou'},{status:400});
+ const db=await getPool().connect();
  try{
-  const params:unknown[]=[id,empresaId];let vendedorScope='';
-  if(u.tipo==='vendedor'){params.push(u.vendedor_id);vendedorScope=` AND l.vendedor_id=$3`;}
-  const {rows}=await query<{id:number}>(`SELECT l.id FROM public.leads l JOIN public.vendedores v ON v.id=l.vendedor_id
-    WHERE l.id=$1 AND (l.empresa_id=$2 OR (l.empresa_id IS NULL AND v.empresa_id=$2)) AND v.empresa_id=$2 ${vendedorScope}`,params);
-  if(!rows.length)return NextResponse.json({error:'Lead fora da empresa ou da carteira'},{status:403});
+  await db.query('BEGIN');
+  const params:unknown[]=[id,empresaId];let seller='';
+  if(u.tipo==='vendedor'){params.push(u.vendedor_id);seller=' AND l.vendedor_id=$3';}
+  const found=await db.query<{id:number;followup_status:string|null;followup_optin:boolean}>(`SELECT l.id,l.followup_status,l.followup_optin
+    FROM public.leads l JOIN public.vendedores v ON v.id=l.vendedor_id
+    WHERE l.id=$1 AND v.empresa_id=$2 AND (l.empresa_id=$2 OR l.empresa_id IS NULL) ${seller}
+    FOR UPDATE OF l`,params);
+  const old=found.rows[0];if(!old){await db.query('ROLLBACK');return NextResponse.json({error:'Lead fora da sua empresa ou carteira'},{status:403});}
+  if(action==='restaurar'){
+   const r=await db.query<{status_geral:string|null}>(`SELECT status_geral FROM public.fichas_credito WHERE lead_id=$1 ORDER BY id DESC LIMIT 1`,[id]);
+   if(/^(negad|recus|reprov)/i.test(String(r.rows[0]?.status_geral||''))){
+    await db.query('ROLLBACK');return NextResponse.json({error:'Crédito recusado: mantenha no Follow Up até atualizar a situação da ficha.'},{status:409});
+   }
+  }
+  let campos:string[]=[],antes:Record<string,unknown>={},depois:Record<string,unknown>={},acaoAudit=action;
   if(action==='consentimento'){
-   if(b?.aceito!==true && b?.aceito!==false)return NextResponse.json({error:'Informe o consentimento'},{status:400});
-   await query(`UPDATE public.leads l SET followup_optin=$${params.length+1},followup_optin_origem=$${params.length+2},
-     followup_optin_em=CASE WHEN $${params.length+1} THEN now() ELSE NULL END,
-     followup_optout_em=CASE WHEN $${params.length+1} THEN NULL ELSE now() END
-     FROM public.vendedores v WHERE l.id=$1 AND l.vendedor_id=v.id AND v.empresa_id=$2
-       AND (l.empresa_id=$2 OR l.empresa_id IS NULL) ${vendedorScope}`,
-     [...params,b.aceito===true,b.aceito===true?String(b.origem).trim().slice(0,250):null]);
+   await db.query(`UPDATE public.leads SET followup_optin=$1,followup_optin_origem=$2,
+     followup_optin_em=CASE WHEN $1 THEN now() ELSE NULL END,
+     followup_optout_em=CASE WHEN $1 THEN NULL ELSE now() END WHERE id=$3`,
+    [b.aceito===true,b.aceito===true?String(b.origem).trim().slice(0,250):null,id]);
+   campos=['followup_optin'];antes={followup_optin:old.followup_optin};depois={followup_optin:b.aceito===true};
   }else{
    const status=action==='restaurar'?'na_fila':action==='recusar'?'recusado':'followup';
-   await query(`UPDATE public.leads l SET followup_status=$${params.length+1},followup_motivo=$${params.length+2},
-     followup_por=$${params.length+3},followup_em=now() FROM public.vendedores v
-     WHERE l.id=$1 AND l.vendedor_id=v.id AND v.empresa_id=$2 AND (l.empresa_id=$2 OR l.empresa_id IS NULL)
-       ${vendedorScope}`,[...params,status,motivo||null,u.id]);
+   await db.query(`UPDATE public.leads SET followup_status=$1,followup_motivo=$2,followup_por=$3,followup_em=now() WHERE id=$4`,
+    [status,motivo||null,u.id,id]);
+   campos=['followup_status'];antes={followup_status:old.followup_status};depois={followup_status:status};
   }
-  // Tirar o consentimento ou devolver o lead ao painel cancela qualquer comunicação ainda não enviada.
-  if(action==='restaurar'||(action==='consentimento'&&b?.aceito===false))
-   await query(`UPDATE public.aurox_followup_envios SET estado='cancelado'
-     WHERE empresa_id=$1 AND lead_id=$2 AND estado='pendente'`,[empresaId,id]);
-  return NextResponse.json({ok:true},{headers:{'Cache-Control':'no-store'}});
- }catch(e){console.error('[followup PATCH]',e instanceof Error?e.message:'erro');return NextResponse.json({error:'Não foi possível atualizar Follow Up'},{status:503});}
+  if(action==='restaurar'||(action==='consentimento'&&b.aceito===false))
+   await db.query(`UPDATE public.aurox_followup_envios SET estado='cancelado'
+    WHERE empresa_id=$1 AND lead_id=$2 AND estado='pendente'`,[empresaId,id]);
+  await auditarAlteracao(db,{usuario:u,empresaId,recurso:'leads',recursoId:id,acao:acaoAudit,
+    resumo:action==='consentimento'?'Autorização de contato atualizada':action==='restaurar'?'Lead restaurado ao painel':action==='recusar'?'Lead recusado':'Lead enviado ao Follow Up',
+    campos,antes,depois});
+  await db.query('COMMIT');
+  return NextResponse.json({ok:true},{headers:{'Cache-Control':'private, no-store'}});
+ }catch(e){await db.query('ROLLBACK').catch(()=>{});console.error('[followup PATCH]',e instanceof Error?e.message:'erro');
+  return NextResponse.json({error:'Não foi possível salvar e auditar a alteração. Verifique a migration.'},{status:503});}
+ finally{db.release();}
 }

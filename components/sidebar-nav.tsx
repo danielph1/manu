@@ -5,7 +5,7 @@ import {useState} from 'react';
 import {cn} from '@/lib/utils';
 import {LayoutDashboard,Inbox,Clock3,MessageCircle,FileText,Target,CheckSquare,BarChart3,
   Users,UserRoundPlus,ArrowRightLeft,Wrench,Car,Receipt,Settings,PlugZap,Megaphone,
-  LogOut,Building2,ChevronDown,PlusCircle,FolderHeart,ChartNoAxesCombined,Star,PanelsTopLeft} from 'lucide-react';
+  LogOut,History,Building2,ChevronDown,PlusCircle,FolderHeart,ChartNoAxesCombined,Star,PanelsTopLeft} from 'lucide-react';
 import type {LucideIcon} from 'lucide-react';
 type LinkDef={href:string;label:string;icon:LucideIcon;roles?:string[]};
 const ALL=['vendedor','gerente','admin','superadmin','marketing','documentista','documento','elfenai','mecanico','guariba'];
@@ -39,6 +39,7 @@ const sections:{id:string;title:string;links:LinkDef[]}[]=[
  {id:'admin',title:'Administração',links:[
   {href:'/equipe',label:'Equipe',icon:Users,roles:MGR},
   {href:'/gestao-usuarios',label:'Usuários e cadastros',icon:UserRoundPlus,roles:ADMIN},
+  {href:'/historico',label:'Histórico e Auditoria',icon:History,roles:METRIC},
   {href:'/integracoes',label:'Integrações',icon:PlugZap,roles:ADMIN},
   {href:'/aurox',label:'Gestão Aurox',icon:Building2,roles:['superadmin']},
   {href:'/configuracoes',label:'Configurações',icon:Settings,roles:ALL},

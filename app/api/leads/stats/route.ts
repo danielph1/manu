@@ -36,9 +36,9 @@ export async function GET(req:NextRequest){
   where+=` AND l.data_lead::date<$${args.length}::date`;
  }
  // Excluir a fila Follow Up também dos totais do painel inicial.
- where+=` AND (l.followup_status='na_fila' OR (l.followup_status IS NULL AND NOT EXISTS(
+ where+=` AND (COALESCE(l.followup_status,'na_fila')='na_fila' AND NOT EXISTS(
   SELECT 1 FROM public.fichas_credito f WHERE f.id=(SELECT MAX(f2.id) FROM public.fichas_credito f2 WHERE f2.lead_id=l.id)
-  AND LOWER(COALESCE(f.status_geral,'')) ~ '^(negad|recus|reprov)')))`;
+  AND LOWER(COALESCE(f.status_geral,'')) ~ '^(negad|recus|reprov)'))`;
  try{
   const r=await queryOne<any>(`SELECT COUNT(l.id)::int AS total_leads,
    COUNT(l.id) FILTER(WHERE l.respondeu IS TRUE)::int AS total_responderam,

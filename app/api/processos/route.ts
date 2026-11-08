@@ -65,29 +65,39 @@ export async function GET(req:NextRequest){
 }
 export async function PATCH(req:NextRequest){
  const u=await requireUser(req);if(!u)return NextResponse.json({error:'Não autenticado'},{status:401});
- if(!can.editarDocumental(u)&&!['superadmin','admin','gerente','documentista'].includes(u.tipo))return NextResponse.json({error:'Sem permissão'},{status:403});
+ if(!can.editarDocumental(u)&&!['superadmin','admin','gerente','documentista'].includes(u.tipo))
+  return NextResponse.json({error:'Sem permissão'},{status:403});
  const b=await req.json().catch(()=>null),id=Number(b?.id);
  if(!Number.isSafeInteger(id)||id<=0)return NextResponse.json({error:'ID inválido'},{status:400});
- const fields:string[]=[],vals:unknown[]=[];
- for(const k of ['status','observacao','gravame','reconheceu_firma','documento_pronto'])if(b&&k in b){
-  vals.push(k==='observacao'?String(b[k]||'').slice(0,2000):b[k]);fields.push(`${k}=$${vals.length}`);
- }
- if(!fields.length)return NextResponse.json({error:'Nada para atualizar'},{status:400});
  const empresaId=u.tipo==='superadmin'?Number(b?.empresa_id||0):Number(u.empresa_id||0);
- // O superadmin pode corrigir processos de qualquer empresa; os demais somente os seus.
- if(u.tipo!=='superadmin'&&!empresaId)return NextResponse.json({error:'Empresa não vinculada'},{status:403});
- vals.push(id);const idParam=vals.length;fields.push('updated_at=now()');
- vals.push(empresaId);const companyParam=vals.length;
- let where=`id=$${idParam} AND empresa_id IS NOT NULL AND ($${companyParam}::integer=0 OR empresa_id=$${companyParam})`;
- if(u.tipo==='gerente'){
-  if(!u.loja)return NextResponse.json({error:'Gerente sem loja'},{status:403});
-  vals.push(u.loja);const lojaParam=vals.length;
-  where+=` AND EXISTS (SELECT 1 FROM public.faturamentos f WHERE f.empresa_id=processos_transferencia.empresa_id
-    AND (f.ficha_id=processos_transferencia.ficha_id OR f.lead_id=processos_transferencia.lead_id)
-    AND UPPER(COALESCE(f.loja,''))=UPPER($${lojaParam}))`;
- }
- try{const row=await queryOne(`UPDATE public.processos_transferencia SET ${fields.join(', ')} WHERE ${where} RETURNING id`,vals);
-  if(!row)return NextResponse.json({error:'Processo de outra empresa, loja ou sem vínculo'},{status:403});
-  return NextResponse.json({ok:true});
- }catch(e){console.error('[processos PATCH]',e instanceof Error?e.message:'erro');return NextResponse.json({error:'Falha ao atualizar Transferências'},{status:503});}
+ if(!Number.isSafeInteger(empresaId)||empresaId<=0)return NextResponse.json({error:'Empresa obrigatória para atualizar Transferências'},{status:403});
+ const permitidos=['status','observacao','gravame','reconheceu_firma','documento_pronto'];
+ const values=permitidos.filter(k=>b&&Object.prototype.hasOwnProperty.call(b,k));
+ if(!values.length)return NextResponse.json({error:'Nada para atualizar'},{status:400});
+ const db=await getPool().connect();
+ try{
+  await db.query('BEGIN');
+  const args:unknown[]=[id,empresaId];let loja='';
+  if(u.tipo==='gerente'){
+   if(!u.loja){await db.query('ROLLBACK');return NextResponse.json({error:'Gerente sem loja'},{status:403});}
+   args.push(u.loja);
+   loja=` AND EXISTS(SELECT 1 FROM public.faturamentos f WHERE f.empresa_id=p.empresa_id
+     AND (f.ficha_id=p.ficha_id OR f.lead_id=p.lead_id)
+     AND UPPER(COALESCE(f.loja,''))=UPPER($3))`;
+  }
+  const {rows}=await db.query<Record<string,unknown>>(`SELECT p.* FROM public.processos_transferencia p
+   WHERE p.id=$1 AND p.empresa_id=$2 ${loja} FOR UPDATE OF p`,args);
+  const old=rows[0];if(!old){await db.query('ROLLBACK');return NextResponse.json({error:'Processo fora da empresa ou loja'},{status:403});}
+  const change=values.map((k,i)=>`${k}=$${i+1}`);
+  const params=values.map(k=>k==='observacao'?String(b[k]||'').slice(0,2000):b[k]);
+  params.push(id,empresaId);
+  await db.query(`UPDATE public.processos_transferencia SET ${change.join(', ')},updated_at=now()
+   WHERE id=$${params.length-1} AND empresa_id=$${params.length}`,params);
+  await auditarAlteracao(db,{usuario:u,empresaId,recurso:'transferencias',recursoId:id,acao:'alterar',
+   resumo:'Processo de transferência atualizado',campos:values,
+   antes:old,depois:Object.fromEntries(values.map(k=>[k,k==='observacao'?String(b[k]||'').slice(0,2000):b[k]]))});
+  await db.query('COMMIT');return NextResponse.json({ok:true},{headers:{'Cache-Control':'no-store'}});
+ }catch(e){await db.query('ROLLBACK').catch(()=>{});console.error('[processos PATCH]',e instanceof Error?e.message:'erro');
+  return NextResponse.json({error:'Não foi possível atualizar e auditar a transferência'},{status:503});}
+ finally{db.release();}
 }

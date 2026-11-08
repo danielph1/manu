@@ -51,7 +51,7 @@ export default function FollowUp(){
  return <main className="mx-auto max-w-7xl space-y-6 pb-32">
   <header className="space-y-2"><div className="flex items-start justify-between gap-2"><div>
    <p className="text-xs uppercase tracking-widest text-primary">Gestão de oportunidades</p><h1 className="text-3xl font-semibold">Follow Up</h1>
-   <p className="mt-2 text-sm text-muted-foreground">Clientes recusados ou retirados do painel inicial, sem excluir seu histórico.</p>
+   <p className="mt-2 text-sm text-muted-foreground">Clientes recusados ou enviados pelas ações do Painel. Envie pelo botão do cartão ou pela seleção múltipla.</p>
   </div><button onClick={()=>list.refetch()} className="rounded-lg border p-2" aria-label="Atualizar"><RefreshCw size={18}/></button></div>
    {superAdmin&&<label className="block max-w-xs text-sm">Empresa<select className="mt-1 w-full rounded-lg border bg-card p-2" value={empresa} onChange={e=>setEmpresa(e.target.value)}>
     <option value="">Selecione</option>{(empresas.data||[]).map(e=><option key={e.id} value={e.id}>{e.nome}</option>)}
@@ -68,16 +68,17 @@ export default function FollowUp(){
     <div className="min-w-[200px] flex-1"><div className="font-medium">{l.nome_lead}</div>
      <p className="text-xs text-muted-foreground">{l.vendedor_nome} · Loja {l.loja||'—'} · {l.produto_interesse||'Sem veículo informado'}</p>
      <p className="mt-1 text-xs text-muted-foreground">{l.followup_status==='recusado'||/^(negad|recus|reprov)/i.test(l.status_ficha||'')?'Crédito recusado / reprovado':'Retirado da fila principal'}{l.followup_motivo?` · ${l.followup_motivo}`:''}</p>
-     <p className="mt-1 text-xs">{l.followup_optin&&!l.followup_optout_em?'Consentimento de contato registrado':'Sem consentimento para campanha'}</p>
+     <p className="mt-1 text-xs">{l.followup_optin&&!l.followup_optout_em?'Autorização para campanha registrada':'Sem autorização para mensagens em campanha (o lead continua no Follow Up)'}</p>
     </div><div className="flex flex-wrap gap-2">
      <Link className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted" href={`/chat?lead=${l.id}`}><MessageCircle size={14} className="mr-1 inline"/>Conversar</Link>
      <button className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted" onClick={()=>update(l.id,'restaurar')}><ArchiveRestore size={14} className="mr-1 inline"/>Restaurar</button>
-     {manager&&<button className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted" onClick={()=>optin(l)}>{l.followup_optin?'Revogar opt-in':'Registrar opt-in'}</button>}
+     <button className="rounded-lg border border-amber-500/30 px-3 py-1.5 text-xs hover:bg-amber-500/10" onClick={()=>update(l.id,'recusar',{motivo:'Recusado pelo responsável'})}>Marcar recusado</button>
+     {manager&&<button title="Consentimento comprovado para campanhas; NÃO é necessário para armazenar o lead no Follow Up" className="rounded-lg border px-3 py-1.5 text-xs hover:bg-muted" onClick={()=>optin(l)}>{l.followup_optin?'Revogar autorização':'Registrar autorização para campanha'}</button>}
     </div>
    </div>)}</div>
   </section>
   {manager&&<section className="space-y-4 rounded-2xl border bg-card p-4 sm:p-5">
-   <div className="flex gap-2"><ShieldAlert size={20} className="text-amber-500"/><div><h2 className="font-semibold">Comunicação de Follow Up</h2>
+   <div className="flex gap-2"><ShieldAlert size={20} className="text-amber-500"/><div><h2 className="font-semibold">Comunicação de Follow Up</h2><p className="text-xs text-muted-foreground">“Registrar autorização para campanha” (opt-in) significa que o cliente concordou expressamente em receber contato promocional. É separado de mover um lead para esta aba. Nunca marque sem prova do consentimento.</p>
     <p className="text-xs text-muted-foreground">Somente contatos com consentimento registrado, sem desistência, até 30 agendamentos/24h por empresa, 2 minutos entre disparos e sem repetição para o mesmo lead por 7 dias, apenas com mensagem recebida nas últimas 24 horas. Lista e enquete são apresentadas como texto, não interações nativas.</p></div></div>
    <div className="flex flex-wrap gap-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={all} onChange={e=>{setAll(e.target.checked);setChosen([])}}/>Selecionar todos os elegíveis (limite 100)</label>
     {!all&&<button onClick={()=>setChosen(eligible.map(x=>x.id).slice(0,100))} className="rounded-lg border px-3 py-1.5 text-sm">Selecionar aptos</button>}</div>
