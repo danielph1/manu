@@ -23,26 +23,84 @@ async function scope(req:NextRequest,empresa:unknown){
 }
 export async function GET(req:NextRequest){
  const s=await scope(req,req.nextUrl.searchParams.get('empresa_id'));if('error'in s)return s.error;
- try{const {rows}=await query(`SELECT c.id,c.formato,c.titulo,c.estado,c.criado_em,
-   COUNT(e.id)::int AS total,COUNT(e.id) FILTER (WHERE e.estado='enviado')::int AS enviados,
-   COUNT(e.id) FILTER (WHERE e.estado='pendente')::int AS pendentes,
-   COUNT(e.id) FILTER (WHERE e.estado IN ('erro','ignorado'))::int AS falhas
-   FROM public.aurox_followup_campanhas c LEFT JOIN public.aurox_followup_envios e ON e.campanha_id=c.id AND e.empresa_id=c.empresa_id
+ try{
+  const campanhaId=idNum(req.nextUrl.searchParams.get('campanha_id'));
+  if(campanhaId){
+   const {rows}=await query(`SELECT e.id,e.estado,e.erro,e.agendado_em,e.processado_em,
+     e.confirmado_manual_em,e.confirmacao_observacao,l.nome_lead
+     FROM public.aurox_followup_envios e
+     JOIN public.aurox_followup_campanhas c ON c.id=e.campanha_id AND c.empresa_id=$1
+     JOIN public.leads l ON l.id=e.lead_id
+     JOIN public.vendedores v ON v.id=l.vendedor_id AND v.empresa_id=$1
+     WHERE e.empresa_id=$1 AND e.campanha_id=$2
+       AND (l.empresa_id=$1 OR l.empresa_id IS NULL)
+     ORDER BY e.id LIMIT 100`,[s.empresaId,campanhaId]);
+   return NextResponse.json({envios:rows},{headers:{'Cache-Control':'private, no-store'}});
+  }
+  const {rows}=await query(`SELECT c.id,c.formato,c.titulo,c.criado_em,
+    CASE WHEN c.estado='ativa' AND COUNT(e.id)>0
+         AND COUNT(e.id) FILTER (WHERE e.estado IN ('pendente','processando'))=0
+         THEN 'concluida' ELSE c.estado END AS estado,
+    COUNT(e.id)::int AS total,
+    COUNT(e.id) FILTER (WHERE e.estado='enviado')::int AS enviados,
+    COUNT(e.id) FILTER (WHERE e.estado='confirmado_manual')::int AS confirmados_manual,
+    COUNT(e.id) FILTER (WHERE e.estado='pendente')::int AS pendentes,
+    COUNT(e.id) FILTER (WHERE e.estado='processando')::int AS processando,
+    COUNT(e.id) FILTER (WHERE e.estado='incerto')::int AS incertos,
+    COUNT(e.id) FILTER (WHERE e.estado IN ('erro','ignorado'))::int AS falhas,
+    COUNT(e.id) FILTER (WHERE e.estado='cancelado')::int AS cancelados
+   FROM public.aurox_followup_campanhas c
+   LEFT JOIN public.aurox_followup_envios e ON e.campanha_id=c.id AND e.empresa_id=c.empresa_id
    WHERE c.empresa_id=$1 GROUP BY c.id ORDER BY c.id DESC LIMIT 30`,[s.empresaId]);
   return NextResponse.json(rows,{headers:{'Cache-Control':'private, no-store'}});
- }catch{return NextResponse.json({error:'Execute a migration do Follow Up'},{status:503});}
+ }catch(e){console.error('[followup GET]',e instanceof Error?e.message:'erro');
+  return NextResponse.json({error:'Não foi possível carregar o histórico. Confira as migrations.'},{status:503});}
 }
 export async function PATCH(req:NextRequest){
  const body=await req.json().catch(()=>null),s=await scope(req,body?.empresa_id);if('error'in s)return s.error;
- const id=idNum(body?.id);if(!id||body?.acao!=='pausar')return NextResponse.json({error:'Ação inválida'},{status:400});
+ const id=idNum(body?.id),acao=String(body?.acao||'');
+ if(!['pausar','confirmar_recebimento'].includes(acao))return NextResponse.json({error:'Ação inválida'},{status:400});
  const db=await getPool().connect();try{
   await db.query('BEGIN');
-  const r=await db.query(`UPDATE public.aurox_followup_campanhas SET estado='pausada' WHERE id=$1 AND empresa_id=$2 AND estado='ativa' RETURNING id`,[id,s.empresaId]);
-  if(!r.rowCount){await db.query('ROLLBACK');return NextResponse.json({error:'Campanha não encontrada'},{status:404});}
+  if(acao==='confirmar_recebimento'){
+   const envioId=idNum(body?.envio_id);
+   if(!envioId){await db.query('ROLLBACK');return NextResponse.json({error:'Selecione o envio'},{status:400});}
+   const r=await db.query<{id:number;estado:string;campanha_id:number}>(`
+     SELECT e.id,e.estado,e.campanha_id FROM public.aurox_followup_envios e
+     JOIN public.aurox_followup_campanhas c ON c.id=e.campanha_id AND c.empresa_id=$2
+     WHERE e.id=$1 AND e.empresa_id=$2 FOR UPDATE OF e`,[envioId,s.empresaId]);
+   const envio=r.rows[0];
+   if(!envio){await db.query('ROLLBACK');return NextResponse.json({error:'Envio fora da empresa'},{status:404});}
+   if(!['erro','incerto'].includes(envio.estado)){
+    await db.query('ROLLBACK');return NextResponse.json({error:'Somente falhas ou resultados incertos podem ser confirmados manualmente'},{status:409});
+   }
+   const observacao=cut(body?.observacao,280);
+   if(observacao.length<12){await db.query('ROLLBACK');return NextResponse.json({error:'Descreva brevemente como verificou o recebimento'},{status:400});}
+   await db.query(`UPDATE public.aurox_followup_envios
+      SET estado='confirmado_manual',confirmado_manual_em=now(),confirmado_manual_por=$2,
+      confirmacao_observacao=$3 WHERE id=$1`,[envioId,s.u.id,observacao]);
+   await auditarAlteracao(db,{usuario:s.u,empresaId:s.empresaId,recurso:'followup_envios',
+     recursoId:envioId,acao:'alterar',resumo:'Recebimento informado manualmente pelo responsável; não é confirmação técnica do provedor'});
+   await db.query(`UPDATE public.aurox_followup_campanhas c SET estado='concluida'
+     WHERE c.id=$1 AND c.empresa_id=$2 AND c.estado='ativa'
+       AND NOT EXISTS(SELECT 1 FROM public.aurox_followup_envios e
+         WHERE e.campanha_id=c.id AND e.empresa_id=c.empresa_id AND e.estado IN ('pendente','processando'))`,
+     [envio.campanha_id,s.empresaId]);
+   await db.query('COMMIT');return NextResponse.json({ok:true,confirmacao:'manual'});
+  }
+  if(!id){await db.query('ROLLBACK');return NextResponse.json({error:'Campanha inválida'},{status:400});}
+  const r=await db.query(`UPDATE public.aurox_followup_campanhas SET estado='pausada'
+     WHERE id=$1 AND empresa_id=$2 AND estado='ativa'
+       AND EXISTS(SELECT 1 FROM public.aurox_followup_envios e
+         WHERE e.campanha_id=$1 AND e.empresa_id=$2 AND e.estado='pendente') RETURNING id`,[id,s.empresaId]);
+  if(!r.rowCount){await db.query('ROLLBACK');return NextResponse.json({error:'Não há envios pendentes para pausar'},{status:409});}
   await db.query(`UPDATE public.aurox_followup_envios SET estado='cancelado' WHERE campanha_id=$1 AND empresa_id=$2 AND estado='pendente'`,[id,s.empresaId]);
   await auditarAlteracao(db,{usuario:s.u,empresaId:s.empresaId,recurso:'campanhas',recursoId:id,acao:'pausar',resumo:'Campanha de Follow Up pausada'});
   await db.query('COMMIT');return NextResponse.json({ok:true});
- }catch{await db.query('ROLLBACK').catch(()=>{});return NextResponse.json({error:'Falha ao pausar'},{status:503});}finally{db.release();}
+ }catch(e){await db.query('ROLLBACK').catch(()=>{});
+  console.error('[followup PATCH]',e instanceof Error?e.message:'erro');
+  return NextResponse.json({error:'Falha ao atualizar envio; confira os logs'},{status:503});
+ }finally{db.release();}
 }
 export async function POST(req:NextRequest){
  const body=await req.json().catch(()=>null),s=await scope(req,body?.empresa_id);if('error'in s)return s.error;
@@ -64,7 +122,7 @@ export async function POST(req:NextRequest){
   // Uma reserva de capacidade por empresa, evitando que campanhas paralelas excedam o teto.
   await db.query(`SELECT pg_advisory_xact_lock($1)`,[700000000+empresaId]);
   const sent=await db.query<{total:number}>(`SELECT COUNT(*)::int AS total FROM public.aurox_followup_envios
-   WHERE empresa_id=$1 AND estado IN ('pendente','processando','enviado') AND agendado_em >= now()-interval '24 hours'`,[empresaId]);
+   WHERE empresa_id=$1 AND estado IN ('pendente','processando','enviado','incerto','confirmado_manual') AND agendado_em >= now()-interval '24 hours'`,[empresaId]);
   const rest=Math.max(0,30-Number(sent.rows[0]?.total||0));
   if(!rest){await db.query('ROLLBACK');return NextResponse.json({error:'Limite de segurança: até 30 agendamentos por empresa em 24 horas'},{status:429});}
   const params:unknown[]=[empresaId,finalidade];let selected='';

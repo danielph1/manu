@@ -8,7 +8,8 @@ import {toast} from 'sonner';
 import {ArrowLeft,ArchiveRestore,Ban,BellRing,CheckCircle2,ChevronRight,Clock3,Filter,History,MessageCircle,RefreshCw,Search,Send,ShieldCheck,ShieldX,Users,X} from 'lucide-react';
 
 type Lead={consentimento_finalidades:string[];id:number;nome_lead:string;telefone:string|null;produto_interesse:string|null;followup_status:string|null;followup_motivo:string|null;followup_em:string|null;followup_optin:boolean;followup_optin_origem:string|null;followup_optout_em:string|null;followup_consentimento_verificado:boolean;consentimento_finalidade:string|null;vendedor_id:number;vendedor_nome:string;loja:string|null;status_ficha:string|null};
-type Camp={id:number;titulo:string;formato:string;estado:string;total:number;enviados:number;pendentes:number;falhas:number;criado_em:string};
+type Camp={id:number;titulo:string;formato:string;estado:string;total:number;enviados:number;confirmados_manual:number;pendentes:number;processando:number;incertos:number;falhas:number;cancelados:number;criado_em:string};
+type CampEnvio={id:number;nome_lead:string;estado:string;erro:string|null;agendado_em:string;processado_em:string|null;confirmado_manual_em:string|null;confirmacao_observacao:string|null};
 type View='carteira'|'permissoes'|'campanhas'|'historico';
 type Consent={canal:string;finalidade:string;data:string;evidencia:string};
 const invalidCredit=(l:Lead)=>/^(negad|recus|reprov)/i.test(l.status_ficha||'');
@@ -36,6 +37,7 @@ export default function FollowUp(){
  const [loja,setLoja]=useState(''),[responsavel,setResponsavel]=useState(''),[selecionados,setSelecionados]=useState<number[]>([]);
  const [consentLead,setConsentLead]=useState<Lead|null>(null),[consent,setConsent]=useState<Consent>({canal:'whatsapp',finalidade:'promocoes',data:localDate(),evidencia:''});
  const [declarou,setDeclarou]=useState(false),[finalidadesConsentidas,setFinalidadesConsentidas]=useState<string[]>([]),[finalidadeCampanha,setFinalidadeCampanha]=useState('pesquisa_satisfacao');
+ const [detalhesCampanha,setDetalhesCampanha]=useState<number|null>(null);
  const [busy,setBusy]=useState(false),[titulo,setTitulo]=useState('Avalie nossa empresa'),[mensagem,setMensagem]=useState('Olá, {{nome}}! Você poderia avaliar sua experiência com nossa empresa?');
  const [formato,setFormato]=useState<'mensagem'|'lista_texto'|'enquete_texto'>('mensagem'),[opcoes,setOpcoes]=useState('Tenho interesse\nQuero conhecer opções'),[revisado,setRevisado]=useState(false);
  const empresas=useQuery({queryKey:['followup-empresas'],enabled:superadmin,queryFn:async()=>((await api.get('/integracoes/empresas')).data||[]) as {id:number;nome:string}[]});
@@ -43,6 +45,13 @@ export default function FollowUp(){
  const ready=acesso&&(!superadmin||!!empresa),params=superadmin?{empresa_id:empresa}:{};
  const lista=useQuery({queryKey:['followup-leads',empresa,user?.empresa_id],enabled:ready,queryFn:async()=>((await api.get('/follow-up',{params})).data||{leads:[]}) as {leads:Lead[];pode_enviar:boolean},refetchInterval:20000});
  const campanhas=useQuery({queryKey:['followup-campanhas',empresa,user?.empresa_id],enabled:ready&&gestor,queryFn:async()=>((await api.get('/follow-up/campanhas',{params})).data||[]) as Camp[],refetchInterval:30000});
+ const detalhesEnvios=useQuery({
+   queryKey:['followup-envios-detalhes',empresa,user?.empresa_id,detalhesCampanha],
+   enabled:ready&&gestor&&!!detalhesCampanha,
+   queryFn:async()=>((await api.get('/follow-up/campanhas',{
+     params:{...params,campanha_id:detalhesCampanha}
+   })).data||{envios:[]}) as {envios:CampEnvio[]},
+ });
  const leads=lista.data?.leads||[],aptos=leads.filter(autorizado),naoAutorizados=leads.filter(l=>!autorizado(l)),recusados=leads.filter(l=>l.followup_status==='recusado'||invalidCredit(l));
  const aptosParaFinalidade=aptos.filter(l=>permite(l,finalidadeCampanha));
  const lojas=useMemo(()=>[...new Set(leads.map(l=>String(l.loja||'').toUpperCase()).filter(Boolean))].sort(),[leads]);
@@ -97,6 +106,18 @@ export default function FollowUp(){
  async function pausar(c:Camp){if(!window.confirm(`Pausar ${c.titulo} e cancelar envios ainda pendentes?`))return;
   try{await api.patch('/follow-up/campanhas',{id:c.id,acao:'pausar',empresa_id:superadmin?Number(empresa):undefined});await campanhas.refetch();toast.success('Campanha pausada.');}
   catch(e:any){toast.error(e?.response?.data?.error||'Não foi possível pausar.');}}
+ async function confirmarRecebimento(e:CampEnvio){
+  if(!window.confirm(`Você conferiu no WhatsApp que a mensagem destinada a ${e.nome_lead} foi recebida? Essa confirmação será auditada e identificada como MANUAL, não como confirmação técnica do provedor.`))return;
+  setBusy(true);
+  try{
+   await api.patch('/follow-up/campanhas',{acao:'confirmar_recebimento',envio_id:e.id,
+     empresa_id:superadmin?Number(empresa):undefined,
+     observacao:'Responsável confirmou recebimento ao conferir a conversa do WhatsApp.'});
+   await Promise.all([qc.invalidateQueries({queryKey:['followup-campanhas']}),qc.invalidateQueries({queryKey:['followup-envios-detalhes']})]);
+   toast.success('Recebimento confirmado manualmente e registrado na auditoria.');
+  }catch(err:any){toast.error(err?.response?.data?.error||'Falha ao registrar confirmação.');}
+  finally{setBusy(false);}
+ }
  const abrirPermissao=(l:Lead)=>{
   setConsentLead(l);setDeclarou(false);
   setFinalidadesConsentidas(permitidas(l));
@@ -175,7 +196,31 @@ export default function FollowUp(){
    <label className="mt-4 flex items-start gap-2 text-xs"><input type="checkbox" className="mt-0.5" checked={revisado} onChange={e=>setRevisado(e.target.checked)}/>Confirmo que revisei a mensagem, os destinatários e as evidências de autorização. Entendo que uma fila lenta não elimina o risco de restrições pelo WhatsApp.</label>
    <button disabled={busy||!revisado||!selecionados.length} onClick={criarCampanha} className="mt-4 rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground disabled:opacity-50"><Send className="mr-2 inline h-4 w-4"/>Agendar {selecionados.length} contato(s)</button>
   </section></div>}
-  {gestor&&(aba==='campanhas'||aba==='historico')&&<section className="rounded-xl border bg-card p-5"><h2 className="font-semibold">Campanhas e entregas</h2><p className="mt-1 text-xs text-muted-foreground">Estado da fila. “Aceito pelo provedor” não é confirmação de leitura pelo cliente.</p><div className="mt-4 divide-y">{(campanhas.data||[]).map(c=><div key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"><div><strong>{c.titulo}</strong><p className="mt-1 text-xs text-muted-foreground">{c.estado} · {new Date(c.criado_em).toLocaleString('pt-BR')} · {c.enviados} aceitos · {c.pendentes} pendentes · {c.falhas} falhas</p></div>{c.estado==='ativa'&&<button className={btn} onClick={()=>pausar(c)}>Pausar pendentes</button>}</div>)}{!campanhas.data?.length&&<p className="py-4 text-sm text-muted-foreground">Nenhuma campanha nesta empresa.</p>}</div>{aba==='historico'&&<Link href="/historico" className="mt-3 inline-flex items-center gap-2 text-sm text-primary"><History size={15}/>Abrir histórico administrativo</Link>}</section>}
+  {gestor&&(aba==='campanhas'||aba==='historico')&&<section className="rounded-xl border bg-card p-5">
+    <h2 className="font-semibold">Campanhas e entregas</h2>
+    <p className="mt-1 text-xs text-muted-foreground">Aceito pelo WhatsApp não comprova leitura. Em falhas de comunicação o resultado pode ser incerto: confira antes de tentar outro envio.</p>
+    <div className="mt-4 divide-y">{(campanhas.data||[]).map(c=><div key={c.id} className="space-y-3 py-3 text-sm">
+     <div className="flex flex-wrap items-center justify-between gap-3"><div>
+      <strong>{c.titulo}</strong>
+      <p className="mt-1 text-xs text-muted-foreground">{c.estado==='concluida'?'Concluída':c.estado==='pausada'?'Pausada':'Ativa'} · {new Date(c.criado_em).toLocaleString('pt-BR')}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{c.enviados} aceitos pelo WhatsApp · {c.confirmados_manual||0} confirmados manualmente · {c.pendentes} pendentes · {c.processando||0} processando · {c.incertos||0} incertos · {c.falhas} falhas{c.cancelados?` · ${c.cancelados} cancelados`:''}</p>
+     </div><div className="flex gap-2"><button className={btn} aria-expanded={detalhesCampanha===c.id} onClick={()=>setDetalhesCampanha(v=>v===c.id?null:c.id)}>{detalhesCampanha===c.id?'Fechar detalhes':'Ver destinatários'}</button>
+      {c.estado==='ativa'&&c.pendentes>0&&<button className={btn} onClick={()=>pausar(c)}>Pausar pendentes</button>}</div></div>
+     {detalhesCampanha===c.id&&<div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+      <h3 className="font-medium">Resultado individual dos envios</h3>
+      {detalhesEnvios.isLoading&&<p className="text-xs">Carregando…</p>}
+      {detalhesEnvios.isError&&<p className="text-xs text-red-500">Erro ao carregar detalhes.</p>}
+      {(detalhesEnvios.data?.envios||[]).map(e=><div key={e.id} className="flex flex-wrap items-center justify-between gap-2 border-t py-2">
+       <div><p className="font-medium">{e.nome_lead} · {e.estado==='enviado'?'Aceito pelo WhatsApp':e.estado==='confirmado_manual'?'Recebimento confirmado manualmente':e.estado==='incerto'?'Resultado incerto':e.estado==='erro'?'Falha':e.estado==='ignorado'?'Não enviado (ignorado)':e.estado==='cancelado'?'Cancelado':e.estado==='pendente'?'Pendente':e.estado==='processando'?'Processando':e.estado}</p>
+       {e.erro&&e.estado!=='enviado'&&<p className="max-w-xl text-xs text-muted-foreground">Informação técnica: {e.erro}</p>}
+       {e.confirmado_manual_em&&<p className="text-xs text-muted-foreground">Confirmado manualmente em {new Date(e.confirmado_manual_em).toLocaleString('pt-BR')}</p>}</div>
+       {['erro','incerto'].includes(e.estado)&&<button disabled={busy} className={btn} onClick={()=>confirmarRecebimento(e)}>Confirmar recebimento</button>}
+      </div>)}
+      {!detalhesEnvios.isLoading&&!(detalhesEnvios.data?.envios||[]).length&&<p className="text-xs text-muted-foreground">Nenhum envio encontrado.</p>}
+     </div>}
+    </div>)}{!campanhas.data?.length&&<p className="py-4 text-sm text-muted-foreground">Nenhuma campanha nesta empresa.</p>}</div>
+    {aba==='historico'&&<Link href="/historico" className="mt-3 inline-flex items-center gap-2 text-sm text-primary"><History size={15}/>Abrir histórico administrativo</Link>}
+   </section>}
   {consentLead&&<div role="presentation" className="fixed inset-0 z-[90] flex items-center justify-center bg-black/65 p-3" onMouseDown={e=>{if(e.target===e.currentTarget)setConsentLead(null);}}><div role="dialog" aria-modal="true" aria-label="Registrar permissão de campanha" className="max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-2xl border bg-card p-5 shadow-2xl"><div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold">Registrar permissão para campanha</h2><p className="mt-1 text-xs text-muted-foreground">Lead: {consentLead.nome_lead} · Empresa selecionada</p></div><button aria-label="Fechar" onClick={()=>setConsentLead(null)}><X size={19}/></button></div>
    <p className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm">Você pode registrar uma <strong>autorização concedida agora, inclusive presencialmente</strong>. A declaração será vinculada ao responsável, à empresa, à data/hora e à finalidade. O registro não envia nada sozinho. Não declare autorização que não tenha sido dada pelo cliente.</p>
    <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-sm">Canal da autorização<select className={input} value={consent.canal} onChange={e=>setConsent(v=>({...v,canal:e.target.value}))}><option value="whatsapp">WhatsApp</option><option value="presencial">Presencial</option><option value="ligacao">Ligação</option><option value="formulario">Formulário</option><option value="email">E-mail</option><option value="outro">Outro</option></select></label><label className="text-sm">Data e hora do consentimento<input className={input} type="datetime-local" required value={consent.data} max={localDate()} onChange={e=>setConsent(v=>({...v,data:e.target.value}))}/></label></div>
