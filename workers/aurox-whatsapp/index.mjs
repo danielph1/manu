@@ -277,7 +277,7 @@ const server=http.createServer(async(req,res)=>{
       sendJSON(res,200,await logoutSession(id));return;
     }
     if(action==='send'&&req.method==='POST'){
-      const b=await readBody(req,5_600_000),s=sessions.get(id);
+      const b=await readBody(req,12_500_000),s=sessions.get(id);
       if(!s||s.status!=='conectado'||s.halted)throw new Error('WhatsApp da empresa desconectado');
       const message=String(b.message||'').trim();
       const attachment=b.media && typeof b.media==='object'?b.media:null;
@@ -297,21 +297,22 @@ const server=http.createServer(async(req,res)=>{
       if(attachment) {
         const mimeFull=String(attachment.mime||'').toLowerCase().trim();
         const mime=mimeFull.split(';')[0].trim();
-        if(!/^(image\/(jpeg|png|webp)|audio\/(ogg|mpeg|mp4|aac|webm))$/.test(mime))
-          throw new Error('Só fotos e áudios são aceitos; vídeos não são permitidos');
+        if(!/^(image\/(jpeg|png|webp)|video\/mp4|audio\/(ogg|mpeg|mp4|aac|webm))$/.test(mime))
+          throw new Error('Mídia não suportada: envie JPG/PNG ou vídeo MP4 (H.264/AAC)');
         const base64=String(attachment.base64||'');
-        if(!base64||base64.length>5_400_000||!/^[A-Za-z0-9+/]+={0,2}$/.test(base64))
-          throw new Error('Mídia inválida ou maior que 4 MB');
+        if(!base64||base64.length>11_200_000||!/^[A-Za-z0-9+/]+={0,2}$/.test(base64))
+          throw new Error('Mídia inválida ou acima do limite permitido');
         const bytes=Buffer.from(base64,'base64');
-        if(bytes.length<1||bytes.length>4_000_000)throw new Error('Mídia maior que 4 MB');
+        if(bytes.length<1||bytes.length>(mime==='video/mp4'?8_000_000:4_000_000))throw new Error('Mídia acima do limite');
+        if(mime==='video/mp4'&&bytes.toString('ascii',4,8)!=='ftyp')throw new Error('Arquivo MP4 inválido');
         if(mime.startsWith('audio/') && message)throw new Error('Envie o áudio separado do texto');
-        const fallback=mime.startsWith('audio/')?'audio.webm':'foto.jpg';
+        const fallback=mime.startsWith('video/')?'video.mp4':mime.startsWith('audio/')?'audio.webm':'foto.jpg';
         const fileName=String(attachment.filename||fallback).replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,100);
         const media=new MessageMedia(mime,base64,fileName,bytes.length);
         // WebM não é voz OGG/Opus: enviar como arquivo de áudio para evitar
         // afirmar que um codec não suportado será reproduzido como voz nativa.
         const options={
-          ...(mime.startsWith('image/') && message ? {caption:message}:{}),
+          ...((mime.startsWith('image/')||mime.startsWith('video/')) && message ? {caption:message}:{}),
           ...(mime==='audio/webm'?{sendMediaAsDocument:true}:{}),
           ...(mime==='audio/ogg' && /opus/.test(mimeFull)?{sendAudioAsVoice:true}:{}),
         };

@@ -32,7 +32,7 @@ export async function GET(req:NextRequest){
      JOIN public.aurox_followup_campanhas c ON c.id=e.campanha_id AND c.empresa_id=$1
      JOIN public.leads l ON l.id=e.lead_id
      JOIN public.vendedores v ON v.id=l.vendedor_id AND v.empresa_id=$1
-     WHERE e.empresa_id=$1 AND e.campanha_id=$2
+     WHERE e.empresa_id=$1 AND e.campanha_id=$2 AND c.origem='followup'
        AND (l.empresa_id=$1 OR l.empresa_id IS NULL)
      ORDER BY e.id LIMIT 100`,[s.empresaId,campanhaId]);
    return NextResponse.json({envios:rows},{headers:{'Cache-Control':'private, no-store'}});
@@ -51,7 +51,7 @@ export async function GET(req:NextRequest){
     COUNT(e.id) FILTER (WHERE e.estado='cancelado')::int AS cancelados
    FROM public.aurox_followup_campanhas c
    LEFT JOIN public.aurox_followup_envios e ON e.campanha_id=c.id AND e.empresa_id=c.empresa_id
-   WHERE c.empresa_id=$1 GROUP BY c.id ORDER BY c.id DESC LIMIT 30`,[s.empresaId]);
+   WHERE c.empresa_id=$1 AND c.origem='followup' GROUP BY c.id ORDER BY c.id DESC LIMIT 30`,[s.empresaId]);
   return NextResponse.json(rows,{headers:{'Cache-Control':'private, no-store'}});
  }catch(e){console.error('[followup GET]',e instanceof Error?e.message:'erro');
   return NextResponse.json({error:'Não foi possível carregar o histórico. Confira as migrations.'},{status:503});}
@@ -68,7 +68,7 @@ export async function PATCH(req:NextRequest){
    const r=await db.query<{id:number;estado:string;campanha_id:number}>(`
      SELECT e.id,e.estado,e.campanha_id FROM public.aurox_followup_envios e
      JOIN public.aurox_followup_campanhas c ON c.id=e.campanha_id AND c.empresa_id=$2
-     WHERE e.id=$1 AND e.empresa_id=$2 FOR UPDATE OF e`,[envioId,s.empresaId]);
+     WHERE e.id=$1 AND e.empresa_id=$2 AND c.origem='followup' FOR UPDATE OF e`,[envioId,s.empresaId]);
    const envio=r.rows[0];
    if(!envio){await db.query('ROLLBACK');return NextResponse.json({error:'Envio fora da empresa'},{status:404});}
    if(!['erro','incerto'].includes(envio.estado)){
@@ -90,7 +90,7 @@ export async function PATCH(req:NextRequest){
   }
   if(!id){await db.query('ROLLBACK');return NextResponse.json({error:'Campanha inválida'},{status:400});}
   const r=await db.query(`UPDATE public.aurox_followup_campanhas SET estado='pausada'
-     WHERE id=$1 AND empresa_id=$2 AND estado='ativa'
+     WHERE id=$1 AND empresa_id=$2 AND origem='followup' AND estado='ativa'
        AND EXISTS(SELECT 1 FROM public.aurox_followup_envios e
          WHERE e.campanha_id=$1 AND e.empresa_id=$2 AND e.estado='pendente') RETURNING id`,[id,s.empresaId]);
   if(!r.rowCount){await db.query('ROLLBACK');return NextResponse.json({error:'Não há envios pendentes para pausar'},{status:409});}

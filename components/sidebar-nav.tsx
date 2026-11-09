@@ -32,6 +32,7 @@ const sections:{id:string;title:string;links:LinkDef[]}[]=[
  {id:'operacao',title:'Operação',links:[
   {href:'/estoque',label:'Estoque',icon:Car,roles:ALL},
   {href:'/anuncios',label:'Anúncios',icon:Megaphone,roles:METRIC},
+  {href:'/anuncio-coletivo',label:'Anúncio coletivo',icon:Megaphone,roles:METRIC},
   {href:'/processos',label:'Transferências',icon:ArrowRightLeft,roles:ALL},
   {href:'/oficina',label:'Oficina',icon:Wrench,roles:ALL},
   {href:'/faturamento',label:'Faturamento',icon:Receipt,roles:ALL},

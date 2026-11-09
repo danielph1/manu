@@ -1,7 +1,9 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {timingSafeEqual} from 'node:crypto';
 import {getPool,query} from '@/lib/db';
-import {sendAuroxMessage} from '@/lib/aurox-whatsapp/send';
+import {sendAuroxMessage,type AuroxAttachment} from '@/lib/aurox-whatsapp/send';
+import {supabaseAdmin} from '@/lib/supabase';
+import {BUCKET_COLETIVO,MIDIAS,validaMidia,type MimeColetivo} from '@/lib/anuncio-coletivo';
 export const runtime='nodejs';export const dynamic='force-dynamic';
 const equal=(a:string,b:string)=>!!a&&!!b&&Buffer.byteLength(a)===Buffer.byteLength(b)&&timingSafeEqual(Buffer.from(a),Buffer.from(b));
 function businessTime(){
@@ -24,16 +26,17 @@ export async function GET(req:NextRequest){
  if(expected.length<32||!equal(supplied,expected))return NextResponse.json({error:'Não autorizado'},{status:401});
  if(process.env.FOLLOWUP_BUSINESS_HOURS_ONLY==='1'&&!businessTime())return NextResponse.json({ok:true,pausado:'fora do horário comercial'});
  const pool=getPool(),db=await pool.connect();let id=0,leadId=0,empresaId=0,campanhaId=0,conteudo='';
+ let mediaPath:string|null=null,mediaMime:MimeColetivo|null=null,mediaNome:string|null=null,iniciouEnvio=false;
  try{
   await db.query('BEGIN');
-  const {rows}=await db.query<{id:number;empresa_id:number;lead_id:number;campanha_id:number;texto:string}>(`
-    SELECT e.id,e.empresa_id,e.lead_id,e.campanha_id,e.texto
+  const {rows}=await db.query<{id:number;empresa_id:number;lead_id:number;campanha_id:number;texto:string;media_path:string|null;media_mime:MimeColetivo|null;media_nome:string|null}>(`
+    SELECT e.id,e.empresa_id,e.lead_id,e.campanha_id,e.texto,c.media_path,c.media_mime,c.media_nome
     FROM public.aurox_followup_envios e
     JOIN public.aurox_followup_campanhas c ON c.id=e.campanha_id AND c.empresa_id=e.empresa_id AND c.estado='ativa'
     JOIN public.leads l ON l.id=e.lead_id AND l.followup_optin=TRUE AND l.followup_optout_em IS NULL
     JOIN public.vendedores v ON v.id=l.vendedor_id AND v.empresa_id=e.empresa_id
     JOIN public.aurox_followup_permissoes cp ON cp.empresa_id=e.empresa_id AND cp.lead_id=l.id AND cp.finalidade=c.finalidade AND cp.revogado_em IS NULL
-      AND (l.followup_status IN ('followup','recusado') OR
+      AND (c.origem='coletivo' OR l.followup_status IN ('followup','recusado') OR
         (l.followup_status IS NULL AND EXISTS (SELECT 1 FROM public.fichas_credito f
           WHERE f.id=(SELECT MAX(f2.id) FROM public.fichas_credito f2 WHERE f2.lead_id=l.id)
           AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)')))
@@ -56,6 +59,7 @@ export async function GET(req:NextRequest){
   }
   if(!picked){await db.query('COMMIT');return NextResponse.json({ok:true,processados:0});}
   id=picked.id;leadId=picked.lead_id;empresaId=picked.empresa_id;campanhaId=picked.campanha_id;conteudo=picked.texto;
+  mediaPath=picked.media_path;mediaMime=picked.media_mime;mediaNome=picked.media_nome;
   await db.query(`UPDATE public.aurox_followup_envios SET estado='processando' WHERE id=$1`,[id]);
   await db.query(`UPDATE public.aurox_followup_cadencia SET ultima_reserva_em=now() WHERE empresa_id=$1`,[empresaId]);
   await db.query('COMMIT');
@@ -70,7 +74,7 @@ export async function GET(req:NextRequest){
        JOIN public.aurox_followup_permissoes cp ON cp.empresa_id=e.empresa_id AND cp.lead_id=l.id
          AND cp.finalidade=c.finalidade AND cp.revogado_em IS NULL
        WHERE e.id=$3 AND e.empresa_id=$2 AND e.lead_id=l.id AND e.estado='processando')
-     AND (l.followup_status IN ('followup','recusado') OR (l.followup_status IS NULL AND EXISTS (
+     AND (c.origem='coletivo' OR l.followup_status IN ('followup','recusado') OR (l.followup_status IS NULL AND EXISTS (
       SELECT 1 FROM public.fichas_credito f WHERE f.id=(SELECT MAX(f2.id) FROM public.fichas_credito f2 WHERE f2.lead_id=l.id)
       AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)')))`,[leadId,empresaId,id]);
   if(!chk.rows.length){
@@ -78,7 +82,20 @@ export async function GET(req:NextRequest){
    await concluirCampanhas(empresaId,campanhaId);
    return NextResponse.json({ok:true,processados:1,ignorados:1});
   }
-  const result=await sendAuroxMessage(empresaId,leadId,conteudo,chk.rows[0].telefone);
+  let attachment:AuroxAttachment|undefined;
+  if(mediaPath){
+   if(!mediaMime||!(mediaMime in MIDIAS)||
+      !new RegExp(`^coletivo/${empresaId}/[0-9a-f-]{36}\\.(jpg|png|mp4)$`,'i').test(mediaPath))
+     throw new Error('Midia da campanha invalida antes de transmitir');
+   const {data,error}=await supabaseAdmin.storage.from(BUCKET_COLETIVO).download(mediaPath);
+   if(error||!data)throw new Error('Midia da campanha indisponivel no Storage');
+   const bytes=Buffer.from(await data.arrayBuffer());
+   if(bytes.length<100||bytes.length>MIDIAS[mediaMime].max||!validaMidia(bytes,mediaMime))
+     throw new Error('Midia nao passou pela validacao de tamanho e formato');
+   attachment={mime:mediaMime,base64:bytes.toString('base64'),filename:mediaNome||'campanha'};
+  }
+  iniciouEnvio=true;
+  const result=await sendAuroxMessage(empresaId,leadId,conteudo,chk.rows[0].telefone,attachment);
   // A resposta HTTP do worker é a única confirmação técnica. Se ela não chegou,
   // o WhatsApp pode ter aceitado a mensagem: estado 'incerto', NUNCA reenviar automaticamente.
   const estado=result.ok?'enviado':result.status==='provider_error'?'incerto':'erro';
@@ -89,9 +106,9 @@ export async function GET(req:NextRequest){
   return NextResponse.json({ok:true,processados:1,enviados:Number(result.ok),
     incertos:Number(estado==='incerto'),erros:Number(estado==='erro')});
  }catch(e){console.error('[followup envio]',e instanceof Error?e.message:'erro');
-  await query(`UPDATE public.aurox_followup_envios SET estado='incerto',processado_em=now(),
-    erro='Confirmação não recebida: confira WhatsApp antes de qualquer novo envio'
-    WHERE id=$1 AND estado='processando'`,[id]).catch(()=>{});
+  await query(`UPDATE public.aurox_followup_envios SET estado=$2,processado_em=now(),
+    erro=$3 WHERE id=$1 AND estado='processando'`,
+    [id,iniciouEnvio?'incerto':'erro',iniciouEnvio?'Confirmação não recebida: confira WhatsApp':'Arquivo de mídia indisponível; envio não iniciado']).catch(()=>{});
   await concluirCampanhas(empresaId,campanhaId).catch(()=>{});
-  return NextResponse.json({error:'Envio incerto, sem nova tentativa automática'},{status:503});}
+  return NextResponse.json({error:iniciouEnvio?'Envio incerto, sem nova tentativa automática':'Falha antes do envio; verifique a mídia'},{status:503});}
 }

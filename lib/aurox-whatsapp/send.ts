@@ -108,7 +108,7 @@ export async function sendAuroxMessage(
             (empresa_id,contato_id,mensagem_id,direcao,tipo,corpo)
             VALUES($1,$2,$3,'enviada',$5,$4)
             ON CONFLICT(empresa_id,mensagem_id) DO NOTHING`,
-          [empresaId, contact.id, String(result.message_id), (message || (media?.mime.startsWith('audio/')?'[Áudio]':'[Foto]')).slice(0,4000), media?.mime.startsWith('audio/')?'audio':media?'image':'chat']);
+          [empresaId, contact.id, String(result.message_id), (message || (media?.mime.startsWith('audio/')?'[Áudio]':'[Foto]')).slice(0,4000), media?.mime.startsWith('audio/')?'audio':media?.mime.startsWith('video/')?'video':media?'image':'chat']);
         }
       } catch (error) {
         // O WhatsApp já aceitou o envio; falha de auditoria não deve ser
