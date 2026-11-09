@@ -48,6 +48,8 @@ export async function POST(req:NextRequest){
  const body=await req.json().catch(()=>null),s=await scope(req,body?.empresa_id);if('error'in s)return s.error;
  const {u,empresaId}=s;
  const tipo=cut(body?.formato,24),titulo=cut(body?.titulo,100),message=cut(body?.mensagem,550);
+ const finalidade=cut(body?.finalidade||'promocoes',40);
+ if(!['promocoes','novidades','retorno_comercial','pesquisa_satisfacao'].includes(finalidade))return NextResponse.json({error:'Finalidade da campanha inválida'},{status:400});
  const options=Array.isArray(body?.opcoes)?body.opcoes.map((v:unknown)=>cut(v,85)).filter(Boolean):[];
  const isList=['lista_texto','enquete_texto'].includes(tipo);
  if(!['mensagem','lista_texto','enquete_texto'].includes(tipo)||titulo.length<3||message.length<10||
@@ -65,7 +67,7 @@ export async function POST(req:NextRequest){
    WHERE empresa_id=$1 AND estado IN ('pendente','processando','enviado') AND agendado_em >= now()-interval '24 hours'`,[empresaId]);
   const rest=Math.max(0,30-Number(sent.rows[0]?.total||0));
   if(!rest){await db.query('ROLLBACK');return NextResponse.json({error:'Limite de segurança: até 30 agendamentos por empresa em 24 horas'},{status:429});}
-  const params:unknown[]=[empresaId];let selected='';
+  const params:unknown[]=[empresaId,finalidade];let selected='';
   if(!all){params.push(ids);selected=` AND l.id=ANY($${params.length}::bigint[])`;}
   const r=await db.query<{id:number;nome_lead:string;produto_interesse:string|null;telefone:string|null;vendedor_nome:string;loja:string|null}>(
    `SELECT l.id,l.nome_lead,l.produto_interesse,l.telefone,v.nome AS vendedor_nome,v.loja
@@ -73,24 +75,19 @@ export async function POST(req:NextRequest){
      WHERE (l.empresa_id=$1 OR l.empresa_id IS NULL)
        AND l.followup_optin=TRUE AND l.followup_optout_em IS NULL
        AND l.followup_optin_em IS NOT NULL AND LENGTH(TRIM(COALESCE(l.followup_optin_origem,'')))>=8
-       AND EXISTS(SELECT 1 FROM public.aurox_followup_permissoes cp WHERE cp.empresa_id=$1 AND cp.lead_id=l.id AND cp.revogado_em IS NULL)
-       AND EXISTS (SELECT 1 FROM public.aurox_wa_contatos c JOIN public.aurox_wa_mensagens m
-           ON m.contato_id=c.id AND m.empresa_id=c.empresa_id
-         WHERE c.empresa_id=$1 AND c.lead_id=l.id AND m.direcao='recebida' AND m.recebida_em>=now()-interval '24 hours')
+       AND EXISTS(SELECT 1 FROM public.aurox_followup_permissoes cp WHERE cp.empresa_id=$1 AND cp.lead_id=l.id AND cp.revogado_em IS NULL AND cp.finalidade=$2)
        AND (l.followup_status IN ('followup','recusado') OR
          EXISTS (SELECT 1 FROM public.fichas_credito f
           WHERE f.id=(SELECT MAX(f2.id) FROM public.fichas_credito f2 WHERE f2.lead_id=l.id)
           AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)'))
-       AND NOT EXISTS (SELECT 1 FROM public.aurox_followup_envios e WHERE e.empresa_id=$1 AND e.lead_id=l.id AND
-         e.estado IN ('pendente','processando','enviado') AND e.agendado_em>now()-interval '7 days')
        ${selected}
      ORDER BY l.id LIMIT 101`,params);
   if(r.rows.length>100){await db.query('ROLLBACK');return NextResponse.json({error:'Há mais de 100 leads elegíveis. Refine a seleção.'},{status:400});}
   const targets=r.rows.filter(l=>/^\d{10,15}$/.test(String(l.telefone||'').replace(/\D/g,''))).slice(0,rest);
-  if(!targets.length){await db.query('ROLLBACK');return NextResponse.json({error:'Nenhum contato elegível: verifique consentimento, telefone, intervalo de 7 dias e mensagem recebida nas últimas 24 horas.'},{status:422});}
+  if(!targets.length){await db.query('ROLLBACK');return NextResponse.json({error:'Nenhum contato elegível: confira a finalidade autorizada, empresa, telefone e situação do Follow Up.'},{status:422});}
   const template=compose(tipo,message,options);
-  const camp=await db.query<{id:number}>(`INSERT INTO public.aurox_followup_campanhas(empresa_id,criado_por,formato,titulo,conteudo)
-    VALUES($1,$2,$3,$4,$5) RETURNING id`,[empresaId,u.id,tipo,titulo,template]);
+  const camp=await db.query<{id:number}>(`INSERT INTO public.aurox_followup_campanhas(empresa_id,criado_por,formato,titulo,conteudo,finalidade)
+    VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,[empresaId,u.id,tipo,titulo,template,finalidade]);
   for(let i=0;i<targets.length;i++){
    const target=targets[i];const full=personalize(template,target);
    if(full.length>1800)throw new Error('Mensagem final excede o limite');
@@ -101,7 +98,7 @@ export async function POST(req:NextRequest){
    resumo:'Campanha de Follow Up agendada',campos:[]});
   await db.query('COMMIT');
   return NextResponse.json({ok:true,agendados:targets.length,ignorados:all?null:ids.length-targets.length,
-   observacao:'Envios agendados com consentimento e limites; não há garantia de entrega nem de ausência de bloqueio.'},{status:201});
+   observacao:'Sem prazo mínimo após autorização; envios passam pela fila, limites e verificação de consentimento. WhatsApp QR não é canal oficial de campanhas.'},{status:201});
  }catch(e){await db.query('ROLLBACK').catch(()=>{});console.error('[followup campanha]',e instanceof Error?e.message:'erro');return NextResponse.json({error:'Não foi possível agendar campanha. Verifique limites e migrations.'},{status:503});}
  finally{db.release();}
 }

@@ -13,7 +13,7 @@ export async function GET(req:NextRequest){
  const supplied=req.headers.get('authorization')?.replace(/^Bearer\s+/i,'')||'';
  const expected=process.env.FOLLOWUP_DISPATCH_SECRET||process.env.PUSH_DISPATCH_SECRET||'';
  if(expected.length<32||!equal(supplied,expected))return NextResponse.json({error:'Não autorizado'},{status:401});
- if(!businessTime())return NextResponse.json({ok:true,pausado:'fora do horário comercial'});
+ if(process.env.FOLLOWUP_BUSINESS_HOURS_ONLY==='1'&&!businessTime())return NextResponse.json({ok:true,pausado:'fora do horário comercial'});
  const pool=getPool(),db=await pool.connect();let id=0,leadId=0,empresaId=0,conteudo='';
  try{
   await db.query('BEGIN');
@@ -21,17 +21,17 @@ export async function GET(req:NextRequest){
     SELECT e.id,e.empresa_id,e.lead_id,e.texto
     FROM public.aurox_followup_envios e
     JOIN public.aurox_followup_campanhas c ON c.id=e.campanha_id AND c.empresa_id=e.empresa_id AND c.estado='ativa'
-    JOIN public.leads l ON l.id=e.lead_id AND l.empresa_id=e.empresa_id AND l.followup_optin=TRUE AND l.followup_optout_em IS NULL
+    JOIN public.leads l ON l.id=e.lead_id AND l.followup_optin=TRUE AND l.followup_optout_em IS NULL
+    JOIN public.vendedores v ON v.id=l.vendedor_id AND v.empresa_id=e.empresa_id
+    JOIN public.aurox_followup_permissoes cp ON cp.empresa_id=e.empresa_id AND cp.lead_id=l.id AND cp.finalidade=c.finalidade AND cp.revogado_em IS NULL
       AND (l.followup_status IN ('followup','recusado') OR
         (l.followup_status IS NULL AND EXISTS (SELECT 1 FROM public.fichas_credito f
           WHERE f.id=(SELECT MAX(f2.id) FROM public.fichas_credito f2 WHERE f2.lead_id=l.id)
           AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)')))
     JOIN public.empresas emp ON emp.id=e.empresa_id AND emp.ativo=TRUE
-    -- Envio de resposta apenas enquanto há conversa recente; novos contatos exigem modelo aprovado na API oficial.
-    WHERE e.estado='pendente' AND e.agendado_em<=now()
-      AND EXISTS (SELECT 1 FROM public.aurox_wa_contatos cont JOIN public.aurox_wa_mensagens msg
-        ON msg.contato_id=cont.id AND msg.empresa_id=cont.empresa_id
-        WHERE cont.empresa_id=e.empresa_id AND cont.lead_id=e.lead_id AND msg.direcao='recebida' AND msg.recebida_em>=now()-interval '24 hours')
+    -- Autorizacao declarada tem validade imediata; envio pelo WhatsApp QR pode estar sujeito
+    -- a restricoes do provedor. Nao confundir consentimento com janela de atendimento (24h).
+    WHERE e.estado='pendente' AND e.agendado_em<=now() AND (l.empresa_id=e.empresa_id OR l.empresa_id IS NULL)
       AND NOT EXISTS(SELECT 1 FROM public.aurox_followup_envios recent
         WHERE recent.empresa_id=e.empresa_id AND recent.estado='enviado' AND recent.processado_em>now()-interval '2 minutes')
     ORDER BY e.agendado_em,e.id LIMIT 12 FOR UPDATE OF e SKIP LOCKED`);
@@ -55,13 +55,15 @@ export async function GET(req:NextRequest){
  // Revalidar consentimento imediatamente antes de iniciar qualquer contato.
  try{
   const chk=await query<{telefone:string|null}>(`SELECT l.telefone FROM public.leads l JOIN public.vendedores v ON v.id=l.vendedor_id
-   WHERE l.id=$1 AND l.empresa_id=$2 AND v.empresa_id=$2 AND l.followup_optin=TRUE AND l.followup_optout_em IS NULL
-     AND EXISTS (SELECT 1 FROM public.aurox_wa_contatos c JOIN public.aurox_wa_mensagens m
-       ON m.contato_id=c.id AND m.empresa_id=c.empresa_id WHERE c.empresa_id=$2 AND c.lead_id=l.id
-       AND m.direcao='recebida' AND m.recebida_em>=now()-interval '24 hours')
+   WHERE l.id=$1 AND (l.empresa_id=$2 OR l.empresa_id IS NULL) AND v.empresa_id=$2 AND l.followup_optin=TRUE AND l.followup_optout_em IS NULL
+     AND EXISTS (SELECT 1 FROM public.aurox_followup_envios e
+       JOIN public.aurox_followup_campanhas c ON c.id=e.campanha_id AND c.empresa_id=e.empresa_id AND c.estado='ativa'
+       JOIN public.aurox_followup_permissoes cp ON cp.empresa_id=e.empresa_id AND cp.lead_id=l.id
+         AND cp.finalidade=c.finalidade AND cp.revogado_em IS NULL
+       WHERE e.id=$3 AND e.empresa_id=$2 AND e.lead_id=l.id AND e.estado='processando')
      AND (l.followup_status IN ('followup','recusado') OR (l.followup_status IS NULL AND EXISTS (
       SELECT 1 FROM public.fichas_credito f WHERE f.id=(SELECT MAX(f2.id) FROM public.fichas_credito f2 WHERE f2.lead_id=l.id)
-      AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)')))`,[leadId,empresaId]);
+      AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)')))`,[leadId,empresaId,id]);
   if(!chk.rows.length){await query(`UPDATE public.aurox_followup_envios SET estado='ignorado',processado_em=now(),erro='Consentimento ou vínculo removido' WHERE id=$1`,[id]);return NextResponse.json({ok:true,processados:1,ignorados:1});}
   const result=await sendAuroxMessage(empresaId,leadId,conteudo,chk.rows[0].telefone);
   // Qualquer falha fica para revisão MANUAL. Não retentar automaticamente mensagens cujo envio possa ter sido aceito.
