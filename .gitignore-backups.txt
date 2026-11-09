@@ -1,0 +1,3 @@
+# Acrescente estas linhas ao .gitignore do MANU:
+.manu-backups/
+.aurox-backups/
