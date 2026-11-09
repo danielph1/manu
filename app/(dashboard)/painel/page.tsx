@@ -15,7 +15,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import {
   PlusCircle, Search, Phone, MessageSquare, UserCircle2, Loader2, Store,
-  Info, Heart, ListPlus, Trash2, Calendar, X, Plus, Pin,
+  Info, Heart, ListPlus, Trash2, Calendar, X, Plus, Pin, FolderHeart,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { leadsService } from '@/lib/services';
@@ -69,6 +69,9 @@ export default function PainelPage() {
   const [listaAtiva, setListaAtiva] = useState<string>('todos');
   const [listas, setListas] = useState<Lista[]>([]);
   const [menuLead, setMenuLead] = useState<Lead | null>(null); // menu de ações (swipe/⋯)
+  const [leadParaFollowUp, setLeadParaFollowUp] = useState<Lead | null>(null);
+  const [motivoFollowUp, setMotivoFollowUp] = useState('');
+  const [enviandoFollowUp, setEnviandoFollowUp] = useState(false);
   const [agendarLead, setAgendarLead] = useState<Lead | null>(null);
   const [agendarValor, setAgendarValor] = useState('');
   const [pickListaLead, setPickListaLead] = useState<Lead | null>(null);
@@ -122,13 +125,17 @@ export default function PainelPage() {
 
   const { data: leads = [], isLoading } = useQuery({
     queryKey: ['leads', filtro, periodo, loja, vendedorId],
-    queryFn: () =>
-      leadsService.list({
-        filtro,
-        periodo,
-        loja: loja || undefined,
-        vendedor_id: vendedorId || undefined,
-      }),
+    queryFn: async () => {
+      const { data } = await api.get<Lead[]>('/leads', {
+        params: {
+          filtro, periodo,
+          loja: loja || undefined,
+          vendedor_id: vendedorId || undefined,
+          painel: '1',
+        },
+      });
+      return Array.isArray(data) ? data : [];
+    },
     refetchInterval: 5000,
     refetchOnWindowFocus: true,
   });
@@ -252,6 +259,38 @@ export default function PainelPage() {
       setMenuLead(null);
     } catch (e: any) {
       toast.error(e?.response?.data?.error || 'Falha ao apagar');
+    }
+  }
+
+  async function confirmarEnvioFollowUp() {
+    if (!leadParaFollowUp || enviandoFollowUp) return;
+    // O superadmin deve enviar a empresa da carteira do vendedor.
+    // Nunca usar um valor arbitrario que possa mover um lead de outra empresa.
+    const empresaDoLead = Number((leadParaFollowUp as any).empresa_do_vendedor || 0);
+    if (user?.tipo === 'superadmin' && (!Number.isSafeInteger(empresaDoLead) || empresaDoLead <= 0)) {
+      toast.error('Não foi possível identificar a empresa desse lead.');
+      return;
+    }
+    setEnviandoFollowUp(true);
+    try {
+      await api.patch('/follow-up', {
+        lead_id: Number(leadParaFollowUp.id),
+        acao: 'mover',
+        motivo: motivoFollowUp.trim().slice(0, 400),
+        empresa_id: user?.tipo === 'superadmin' ? empresaDoLead : undefined,
+      });
+      setLeadParaFollowUp(null);
+      setMotivoFollowUp('');
+      toast.success('Lead enviado para Follow Up. Não foi excluído.');
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['leads'] }),
+        qc.invalidateQueries({ queryKey: ['stats'] }),
+        qc.invalidateQueries({ queryKey: ['followup-leads'] }),
+      ]);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Não foi possível enviar ao Follow Up.');
+    } finally {
+      setEnviandoFollowUp(false);
     }
   }
 
@@ -513,6 +552,17 @@ export default function PainelPage() {
                 setMenuLead(null);
               }}
             />
+            {['vendedor', 'gerente', 'admin', 'superadmin'].includes(String(user?.tipo || '').toLowerCase()) && (
+              <ActionRow
+                icon={<FolderHeart className="h-5 w-5" />}
+                label="Enviar ao Follow Up"
+                onClick={() => {
+                  setLeadParaFollowUp(menuLead);
+                  setMotivoFollowUp('');
+                  setMenuLead(null);
+                }}
+              />
+            )}
             <ActionRow
               icon={<Pin className="h-5 w-5" />}
               label={pins.includes(Number(menuLead.id)) ? 'Desafixar' : 'Fixar (máx. 3)'}
@@ -546,6 +596,37 @@ export default function PainelPage() {
             >
               Cancelar
             </button>
+          </div>
+        </div>
+      )}
+
+      {leadParaFollowUp && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => { if (!enviandoFollowUp) setLeadParaFollowUp(null); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="followup-titulo"
+            className="w-full max-w-md space-y-4 rounded-2xl border bg-card p-5 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}>
+            <div>
+              <h2 id="followup-titulo" className="text-lg font-semibold">Enviar ao Follow Up</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {leadParaFollowUp.nome_lead} sairá da lista principal e ficará na carteira do Follow Up.
+                O histórico será preservado. Isso não autoriza envios de campanhas.
+              </p>
+            </div>
+            <label htmlFor="motivo-followup" className="block space-y-2 text-sm">
+              <span>Motivo (opcional)</span>
+              <textarea id="motivo-followup" rows={3} maxLength={400}
+                className="w-full resize-y rounded-lg border bg-background p-3 text-sm"
+                placeholder="Ex.: cliente pediu retorno posterior; vendedor optou por não atender agora"
+                value={motivoFollowUp} onChange={e => setMotivoFollowUp(e.target.value)} />
+              <span className="block text-xs text-muted-foreground">O motivo ficará registrado no lead; não será enviado ao cliente.</span>
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" disabled={enviandoFollowUp} onClick={() => setLeadParaFollowUp(null)}>Cancelar</Button>
+              <Button disabled={enviandoFollowUp} onClick={() => void confirmarEnvioFollowUp()}>
+                {enviandoFollowUp ? 'Enviando…' : 'Confirmar envio'}
+              </Button>
+            </div>
           </div>
         </div>
       )}

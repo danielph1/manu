@@ -108,6 +108,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // A lista inicial nao inclui oportunidades movidas para o Follow Up
+    // nem recusas de credito; essas ficam na pagina /follow-up.
+    // Este filtro e exclusivo do Painel: outras telas continuam podendo consultar leads.
+    if (searchParams.get('painel') === '1') {
+      where.push(`COALESCE(l.followup_status,'na_fila') = 'na_fila'`);
+      where.push(`NOT EXISTS (
+        SELECT 1 FROM public.fichas_credito f
+        WHERE f.id=(SELECT MAX(f2.id) FROM public.fichas_credito f2 WHERE f2.lead_id=l.id)
+        AND LOWER(COALESCE(f.status_geral,'')) ~ '^(negad|recus|reprov)'
+      )`);
+    }
+
     params.push(limit);
     const lim = `$${params.length}`;
 
@@ -116,6 +128,7 @@ export async function GET(req: NextRequest) {
         l.*,
         v.nome AS vendedor_nome,
         v.loja AS vendedor_loja,
+        v.empresa_id AS empresa_do_vendedor,
         (SELECT f.status_geral FROM public.fichas_credito f WHERE f.lead_id = l.id ORDER BY f.id DESC LIMIT 1) AS status_ficha
       FROM public.leads l
       LEFT JOIN public.vendedores v ON v.id = l.vendedor_id
