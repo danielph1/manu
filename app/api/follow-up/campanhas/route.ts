@@ -99,6 +99,10 @@ export async function POST(req:NextRequest){
   await db.query('COMMIT');
   return NextResponse.json({ok:true,agendados:targets.length,ignorados:all?null:ids.length-targets.length,
    observacao:'Sem prazo mínimo após autorização; envios passam pela fila, limites e verificação de consentimento. WhatsApp QR não é canal oficial de campanhas.'},{status:201});
- }catch(e){await db.query('ROLLBACK').catch(()=>{});console.error('[followup campanha]',e instanceof Error?e.message:'erro');return NextResponse.json({error:'Não foi possível agendar campanha. Verifique limites e migrations.'},{status:503});}
+ }catch(e:unknown){await db.query('ROLLBACK').catch(()=>{});
+  const pg=e as {code?:string;constraint?:string};
+  console.error('[followup campanha]',{code:pg?.code||'unknown',constraint:pg?.constraint||'unknown'});
+  if(pg?.code==='23514'||pg?.code==='42703')return NextResponse.json({error:'Esta finalidade não foi habilitada corretamente no Supabase. Execute a migration de autorizações múltiplas e confirme as migrations anteriores.'},{status:409});
+  return NextResponse.json({error:'Não foi possível agendar campanha; confira a migração e os logs de produção.'},{status:503});}
  finally{db.release();}
 }
