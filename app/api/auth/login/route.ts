@@ -138,7 +138,16 @@ export async function POST(req: NextRequest) {
       user: payload,
     });
   } catch (e: any) {
-    console.error('login error', e);
+    // Não repetir consultas quando o Supavisor está sem conexões.
+    // O fallback legado só é permitido se faltar uma coluna SQL (42703).
+    const sqlState = String(e?.code || '');
+    if (sqlState !== '42703') {
+      console.error('[login] banco indisponível ou erro de autenticação SQL', sqlState || 'SEM_CODIGO');
+      return NextResponse.json(
+        { error: 'Banco temporariamente indisponível. Tente novamente em instantes.' },
+        { status: 503, headers: { 'Retry-After': '3' } },
+      );
+    }
     // fallback se colunas empresa/status ainda não existem
     try {
       const body = await req.clone().json().catch(() => ({}));
