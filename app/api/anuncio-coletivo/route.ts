@@ -3,7 +3,7 @@ import {getPool,query} from '@/lib/db';
 import {requireUser} from '@/lib/session';
 import {supabaseAdmin} from '@/lib/supabase';
 import {auditarAlteracao} from '@/lib/auditoria';
-import {BUCKET_COLETIVO,FINALIDADES,MAX_ALVOS_CAMPANHA,MIDIAS,parseSegmento,publicoSQL,personalizar,validaMidia,
+import {BUCKET_COLETIVO,FINALIDADES,MAX_ALVOS_CAMPANHA,MIDIAS,parseSegmento,publicoSQL,publicoTotalSQL,personalizar,validaMidia,
  type Finalidade,type Segmento,type MimeColetivo} from '@/lib/anuncio-coletivo';
 export const runtime='nodejs';export const dynamic='force-dynamic';
 const GESTORES=new Set(['marketing','gerente','admin','superadmin']);
@@ -29,8 +29,19 @@ export async function GET(req:NextRequest){
   if(q.get('modo')==='preview'){
    const f=finalidade(q.get('finalidade'));const seg=requestSegment(q.get('segmento'),q.get('interesse'));
    const spec=publicoSQL(s.empresaId,f,seg.segmento,seg.termo);
-   const {rows}=await query(spec.sql,spec.params);
-   return NextResponse.json({elegiveis:Math.min(rows.length,MAX_ALVOS_CAMPANHA),excede_limite:rows.length>MAX_ALVOS_CAMPANHA},
+   // Mostra toda a base no segmento, mas só permite enviar aos autorizados.
+   const totalSpec=publicoTotalSQL(s.empresaId,f,seg.segmento,seg.termo);
+   const [autorizados,base]=await Promise.all([
+     query(spec.sql,spec.params),
+     query<{total_leads:number;telefones_validos:number}>(totalSpec.sql,totalSpec.params),
+   ]);
+   const baseResumo=base.rows[0];
+   return NextResponse.json({
+     elegiveis:Math.min(autorizados.rows.length,MAX_ALVOS_CAMPANHA),
+     excede_limite:autorizados.rows.length>MAX_ALVOS_CAMPANHA,
+     total_leads:Number(baseResumo?.total_leads||0),
+     telefones_validos:Number(baseResumo?.telefones_validos||0),
+   },
     {headers:{'Cache-Control':'private, no-store'}});
   }
   const {rows}=await query(`SELECT c.id,c.titulo,c.finalidade,c.formato,c.criado_em,c.estado,c.segmento,

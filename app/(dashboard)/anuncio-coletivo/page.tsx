@@ -9,9 +9,9 @@ import {useAuth} from '@/contexts/auth-context';
 
 type ContatoConsentimento={id:number;nome_lead:string;produto_interesse:string|null;telefone_final:string;finalidades:string[]};
 type Campanha={id:number;titulo:string;finalidade:string;estado:string;criado_em:string;total:number;aceitos:number;confirmados_manual:number;pendentes:number;processando:number;incertos:number;falhas:number;cancelados:number;media_mime:string|null;segmento:{segmento?:string;termo?:string}};
-type Preview={elegiveis:number;excede_limite:boolean};
+type Preview={elegiveis:number;excede_limite:boolean;total_leads:number;telefones_validos:number};
 const PURPOSES=[['promocoes','Promoções e ofertas'],['novidades','Novidades da empresa'],['retorno_comercial','Retomada comercial'],['pesquisa_satisfacao','Pesquisa de satisfação']];
-const SEGMENTS=[['todos','Toda a base autorizada'],['interesse','Interesse no veículo'],['entrada','Possuem entrada (qualquer valor acima de zero)'],['interesse_ou_entrada','Interesse OU entrada'],['interesse_e_entrada','Interesse E entrada']];
+const SEGMENTS=[['todos','Base autorizada'],['todos_leads','Todos os leads da empresa'],['interesse','Veículo de interesse — toda a empresa'],['entrada','Entrada acima de zero — toda a empresa'],['interesse_ou_entrada','Interesse OU entrada — toda a empresa'],['interesse_e_entrada','Interesse E entrada — toda a empresa']];
 const input='mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary';
 const button='inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50';
 export default function AnuncioColetivo(){
@@ -97,23 +97,27 @@ export default function AnuncioColetivo(){
   <header className="flex flex-wrap items-start justify-between gap-3"><div>
    <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary"><Megaphone size={15}/>Marketing e relacionamento</p>
    <h1 className="mt-2 text-3xl font-semibold">Anúncio coletivo</h1>
-   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Campanhas segmentadas por empresa, com fotos, vídeos e personalização. Envie somente aos clientes que autorizaram a finalidade.</p>
+   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">Campanhas para todos os leads da empresa, com segmentação por interesse e entrada, fotos e vídeos. O envio respeita as permissões registradas.</p>
   </div><button className={button} onClick={()=>{void preview.refetch();void list.refetch();}} disabled={!ready}><RefreshCw size={16}/>Atualizar</button></header>
   {global&&<label className="block max-w-sm text-sm font-medium">Empresa<select className={input} value={empresa} onChange={e=>{setEmpresa(e.target.value);limpar();}}><option value="">Selecione a empresa</option>{(empresas.data||[]).map(c=><option value={c.id} key={c.id}>{c.nome}</option>)}</select></label>}
   <section className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
    <div className="space-y-5">
     <section className="rounded-2xl border bg-card p-5"><div className="flex items-center gap-2"><Users size={18} className="text-primary"/><h2 className="text-lg font-semibold">1. Público-alvo</h2></div>
-      <p className="mt-1 text-xs text-muted-foreground">Inclui todas as lojas da mesma empresa. Não mistura empresas nem exige que o lead esteja no Follow Up.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Pesquise todos os leads cadastrados da empresa, inclusive antigos e fora do Follow Up. Os filtros de veículo e entrada abrangem todas as lojas. O envio continua restrito aos contatos com permissão ativa para esta finalidade.</p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
        <label className="text-sm">Finalidade autorizada<select className={input} value={finalidade} onChange={e=>{setFinalidade(e.target.value);setConfirmado(false);}}>{PURPOSES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
        <label className="text-sm">Segmentação<select className={input} value={segmento} onChange={e=>{setSegmento(e.target.value);setConfirmado(false);}}>{SEGMENTS.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
       </div>
       {needsInterest&&<label className="mt-4 block text-sm">Veículo de interesse (marca ou modelo)<input className={input} value={interesse} maxLength={80} placeholder="Ex.: Onix, HB20, SUV" onChange={e=>{setInteresse(e.target.value);setConfirmado(false);}}/></label>}
       <div className="mt-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
-       <div className="flex items-end justify-between gap-2"><div><p className="text-xs text-muted-foreground">Público elegível (telefone único e consentimento ativo)</p>
-        <p className="mt-1 text-3xl font-semibold tabular-nums">{preview.isLoading?'…':preview.data?.elegiveis??0}</p></div><ShieldCheck size={22} className="text-primary"/></div>
-       {preview.data?.excede_limite&&<p className="mt-2 text-xs text-amber-600">Mais de 500 contatos. Refine o segmento; cada campanha aceita no máximo 500 destinos.</p>}
-       {preview.isError&&<p className="mt-2 text-xs text-red-500">Não foi possível consultar o público. Confira a migration.</p>}
+       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div><p className="text-xs text-muted-foreground">Todos os leads no segmento</p><p className="mt-1 text-2xl font-semibold tabular-nums">{preview.isLoading?'…':preview.data?.total_leads??0}</p></div>
+        <div><p className="text-xs text-muted-foreground">Telefones únicos válidos</p><p className="mt-1 text-2xl font-semibold tabular-nums">{preview.isLoading?'…':preview.data?.telefones_validos??0}</p></div>
+        <div><p className="flex items-center gap-1 text-xs text-muted-foreground"><ShieldCheck size={14}/>Autorizados para envio</p><p className="mt-1 text-2xl font-semibold tabular-nums">{preview.isLoading?'…':preview.data?.elegiveis??0}</p></div>
+       </div>
+       <p className="mt-3 text-xs text-muted-foreground">Todos os leads participam da segmentação. Contatos sem permissão promocional vigente ou que solicitaram descadastro não entram nos envios. Autorizações podem ser registradas abaixo, sem mover ninguém para o Follow Up.</p>
+       {preview.data?.excede_limite&&<p className="mt-2 text-xs text-amber-600">Mais de 500 contatos autorizados. Refine o segmento; cada campanha aceita no máximo 500 destinos.</p>}
+       {preview.isError&&<p className="mt-2 text-xs text-red-500">Não foi possível consultar o público. Confira a API.</p>}
       </div>
     </section>
     <section className="rounded-2xl border bg-card p-5"><div className="flex items-center gap-2"><ImageIcon size={18} className="text-primary"/><h2 className="text-lg font-semibold">2. Criativo e mensagem</h2></div>
@@ -143,7 +147,7 @@ export default function AnuncioColetivo(){
    </div>
   </section>
   <section className="rounded-2xl border bg-card p-5"><h2 className="text-lg font-semibold">Gerenciar autorizações de clientes</h2>
-   <p className="mt-1 text-xs text-muted-foreground">Para incluir alguém que ainda não está no Follow Up, localize o lead da empresa e registre as finalidades que o cliente realmente autorizou. Não é necessário transferir o lead.</p>
+   <p className="mt-1 text-xs text-muted-foreground">Busque qualquer lead da empresa, mesmo que nunca tenha ido ao Follow Up. Registre apenas finalidades efetivamente autorizadas pelo cliente. Esse registro não altera a carteira nem a situação do lead.</p>
    <label className="mt-4 block max-w-xl text-sm">Buscar lead pelo nome, telefone ou veículo<input className={input} value={buscaContato} onChange={e=>setBuscaContato(e.target.value)} placeholder="Digite ao menos 3 caracteres" maxLength={80}/></label>
    <div className="mt-4 divide-y">{(encontrados.data||[]).map(c=><div key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
     <div><strong>{c.nome_lead}</strong><p className="text-xs text-muted-foreground">Telefone final •••• {c.telefone_final||'não informado'} · {c.produto_interesse||'Sem interesse informado'}</p>
