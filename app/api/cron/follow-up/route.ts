@@ -69,18 +69,26 @@ export async function GET(req:NextRequest){
  try{
   // AUROX_FIX_REVALIDACAO_COLETIVO_20261110
   // A origem deve pertencer ao JOIN visivel nesta consulta, nunca a um alias dentro do EXISTS.
-  const chk=await query<{telefone:string|null}>(`SELECT l.telefone FROM public.leads l
-   JOIN public.vendedores v ON v.id=l.vendedor_id AND v.empresa_id=$2
-   JOIN public.aurox_followup_envios e ON e.id=$3 AND e.empresa_id=$2 AND e.lead_id=l.id AND e.estado='processando'
-   JOIN public.aurox_followup_campanhas c ON c.id=e.campanha_id AND c.empresa_id=e.empresa_id AND c.estado='ativa'
-   WHERE l.id=$1 AND (l.empresa_id=$2 OR l.empresa_id IS NULL)
-     AND l.followup_optin=TRUE AND l.followup_optout_em IS NULL
-     AND EXISTS (SELECT 1 FROM public.aurox_followup_permissoes cp
-       WHERE cp.empresa_id=$2 AND cp.lead_id=l.id AND cp.finalidade=c.finalidade AND cp.revogado_em IS NULL)
+  // AUROX_SQL_REVALIDACAO_JOINS_20261110
+  // Consulta unica: empresa, campanha, lead e permissao no mesmo escopo SQL.
+  // Nenhum alias externo referenciado por subconsultas de consentimento.
+  const chk=await query<{telefone:string|null}>(`SELECT l.telefone
+   FROM public.aurox_followup_envios e
+   JOIN public.aurox_followup_campanhas c
+     ON c.id=e.campanha_id AND c.empresa_id=e.empresa_id AND c.estado='ativa'
+   JOIN public.leads l
+     ON l.id=e.lead_id AND (l.empresa_id=e.empresa_id OR l.empresa_id IS NULL)
+       AND l.followup_optin=TRUE AND l.followup_optout_em IS NULL
+   JOIN public.vendedores v ON v.id=l.vendedor_id AND v.empresa_id=e.empresa_id
+   JOIN public.aurox_followup_permissoes cp
+     ON cp.empresa_id=e.empresa_id AND cp.lead_id=l.id
+       AND cp.finalidade=c.finalidade AND cp.revogado_em IS NULL
+   WHERE e.id=$3 AND e.empresa_id=$2 AND l.id=$1 AND e.estado='processando'
      AND (c.origem='coletivo' OR l.followup_status IN ('followup','recusado') OR
        (l.followup_status IS NULL AND EXISTS (SELECT 1 FROM public.fichas_credito f
         WHERE f.id=(SELECT MAX(f2.id) FROM public.fichas_credito f2 WHERE f2.lead_id=l.id)
-          AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)')))`,[leadId,empresaId,id]);
+          AND LOWER(COALESCE(f.status_geral,''))~'^(negad|recus|reprov)')))
+   LIMIT 1`,[leadId,empresaId,id]);
   if(!chk.rows.length){
    await query(`UPDATE public.aurox_followup_envios SET estado='ignorado',processado_em=now(),erro='Consentimento ou vínculo removido' WHERE id=$1 AND estado='processando'`,[id]);
    await concluirCampanhas(empresaId,campanhaId);

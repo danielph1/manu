@@ -45,7 +45,7 @@ export async function POST(req:NextRequest){
    await db.query('BEGIN');
    const {rows}=await db.query<{id:number}>(`INSERT INTO public.aurox_coletivo_midia
     (empresa_id,criado_por,path,mime,bytes_esperados)
-    SELECT $1,$2,$3,$4,$5 FROM public.empresas WHERE id=$1 AND ativo=TRUE RETURNING id`,
+    SELECT $1::integer,$2::integer,$3::text,$4::text,$5::integer FROM public.empresas WHERE id=$1::integer AND ativo=TRUE RETURNING id`,
     [empresaId,u.id,path,mime,size]);
    if(!rows[0]){await db.query('ROLLBACK');return NextResponse.json({error:'Empresa inativa ou inexistente'},{status:403});}
    await db.query('COMMIT');
