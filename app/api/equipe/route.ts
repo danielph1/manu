@@ -25,7 +25,7 @@ export async function GET(req:NextRequest){
     COUNT(l.id) FILTER(WHERE l.venda_concluida IS TRUE)::int AS vendas,
     COUNT(l.id) FILTER(WHERE l.atribuido_em::date=CURRENT_DATE)::int AS plus_hoje
     FROM public.vendedores v
-    LEFT JOIN public.leads l ON l.vendedor_id=v.id AND (l.empresa_id=v.empresa_id OR l.empresa_id IS NULL)
+    LEFT JOIN public.leads l ON l.vendedor_id=v.id AND l.empresa_id=v.empresa_id
       AND l.data_lead >= date_trunc('month',CURRENT_DATE)::date
     ${where}
     GROUP BY v.id,v.nome,v.loja ORDER BY v.nome`,params);

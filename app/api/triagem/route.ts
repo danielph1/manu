@@ -42,9 +42,9 @@ async function virarLead(triagemId:number,vendedorId:number,empresaPermitida:num
     }
     const {rows:[lead]}=await client.query(
       `INSERT INTO public.leads
-        (nome_lead,telefone,email,produto_interesse,observacao,vendedor_id,data_lead,atribuido_em,rotacionar)
-       VALUES($1,$2,$3,$4,$5,$6,now(),now(),TRUE) RETURNING id`,
-      [t.nome,t.telefone,t.email,t.interesse,`[${t.origem}] ${t.mensagem||''}`.trim(),vendedorId],
+        (nome_lead,telefone,email,produto_interesse,observacao,vendedor_id,empresa_id,data_lead,atribuido_em,rotacionar)
+       VALUES($1,$2,$3,$4,$5,$6,$7,now(),now(),TRUE) RETURNING id`,
+      [t.nome,t.telefone,t.email,t.interesse,`[${t.origem}] ${t.mensagem||''}`.trim(),vendedorId,v.empresa_id],
     );
     leadId=Number(lead.id);mensagem=String(t.mensagem||'');origem=String(t.origem||'');empresaDoLead=Number(v.empresa_id);
     await client.query(

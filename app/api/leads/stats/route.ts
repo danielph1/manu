@@ -15,7 +15,7 @@ export async function GET(req:NextRequest){
  const empresaId=superadmin?(Number.isSafeInteger(requested)&&requested>0?requested:0):Number(u.empresa_id||0);
  if(!empresaId)return NextResponse.json({error:'Selecione a empresa para consultar indicadores'},{status:400});
  if(!superadmin&&Number.isSafeInteger(requested)&&requested>0&&requested!==empresaId)return NextResponse.json({error:'Empresa não autorizada'},{status:403});
- const args:unknown[]=[empresaId];let where=`(l.empresa_id=$1 OR (l.empresa_id IS NULL AND v.empresa_id=$1)) AND v.empresa_id=$1`;
+ const args:unknown[]=[empresaId];let where=`l.empresa_id=$1 AND v.empresa_id=$1`;
  if(u.tipo==='vendedor'){
   if(!u.vendedor_id)return NextResponse.json({error:'Vendedor não vinculado'},{status:403});
   args.push(u.vendedor_id);where+=` AND l.vendedor_id=$${args.length}`;

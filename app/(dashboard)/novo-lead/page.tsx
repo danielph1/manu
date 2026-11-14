@@ -72,9 +72,9 @@ export default function NovoLeadPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="aurox-workspace max-w-5xl space-y-6">
       <header>
-        <h1 className="text-4xl font-bold tracking-tight">Novo Lead</h1>
+        <p className="aurox-eyebrow">Central comercial / Cadastro</p><h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Novo lead</h1><p className="mt-2 text-sm text-muted-foreground">Vincule o contato à empresa e ao vendedor responsável antes de salvar.</p>
       </header>
       <Card>
         <CardContent className="p-6">

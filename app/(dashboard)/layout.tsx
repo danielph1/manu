@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Menu, X } from 'lucide-react';
+import './workspace.css';
 import { ProtectedRoute } from '@/components/protected-route';
 import { SidebarNav } from '@/components/sidebar-nav';
 import { AvisosFlutuante } from '@/components/avisos-flutuante';
@@ -67,19 +68,28 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <ProtectedRoute>
       <RealtimeBootstrap />
-      <div className="flex min-h-screen w-full bg-background">
+      <div className="aurox-app-shell flex min-h-screen w-full bg-background">
         <button
-          className="fixed left-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-card"
+          className="fixed left-3 top-3 z-50 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card shadow-sm lg:hidden"
           onClick={() => (voltar ? router.push(noChat ? '/chat' : '/configuracoes') : setOpen((o) => !o))}
           aria-label={voltar ? 'Voltar' : 'Menu'}
         >
           {voltar ? <ArrowLeft className="h-5 w-5" /> : open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
-        {open && <div className="fixed inset-0 z-30 bg-black/50" onClick={() => setOpen(false)} />}
-        <div className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+        {open && <div className="fixed inset-0 z-30 bg-black/50 lg:hidden" onClick={() => setOpen(false)} />}
+        <div className={`fixed inset-y-0 left-0 z-40 w-72 transition-transform ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
           <SidebarNav onNavigate={() => setOpen(false)} />
         </div>
-        <main className="min-h-screen w-full flex-1 px-3 pb-28 pt-16 sm:px-6">{children}</main>
+        <main className="aurox-shell-main min-h-screen min-w-0 w-full flex-1 px-3 pb-28 pt-16 sm:px-6 lg:ml-72 lg:px-7 lg:pt-6 xl:px-10">
+          {!noChat && <div className="aurox-workspace-head hidden items-center justify-between gap-3 lg:flex">
+            <div>
+              <p className="aurox-breadcrumb">AUROX <span aria-hidden="true">/</span> Central de operações</p>
+              <strong className="block mt-1">{({ '/painel': 'Painel de Leads', '/triagem': 'Triagem', '/follow-up': 'Follow Up', '/fichas': 'Fichas de Crédito', '/estoque': 'Estoque', '/oficina': 'Oficina', '/chat': 'Conversas', '/configuracoes': 'Configurações' } as Record<string,string>)[path] || 'Área de trabalho'}</strong>
+            </div>
+            <span className="text-xs text-muted-foreground">Gestão de atendimento e vendas</span>
+          </div>}
+          {children}
+        </main>
         <AvisosFlutuante />
         <BottomNav />
       </div>

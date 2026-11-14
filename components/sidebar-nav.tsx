@@ -50,7 +50,11 @@ export function SidebarNav({onNavigate}:{onNavigate?:()=>void}){
  const path=usePathname()||'';const {user,logout}=useAuth();const {t}=useI18n();
  const role=String(user?.tipo||'').toLowerCase();const [expanded,setExpanded]=useState<Record<string,boolean>>({leads:true});
  const match=(href:string)=>path===href||path.startsWith(href+'/');
- return <aside className="sticky top-0 flex h-screen w-72 flex-col overflow-y-auto border-r border-border/60 bg-background/95 px-3 pb-5 pt-16">
+ return <aside className="aurox-sidebar sticky top-0 flex h-screen w-72 flex-col overflow-y-auto border-r border-border/60 bg-background/95 px-3 pb-5 pt-16 lg:pt-4">
+  <div className="aurox-sidebar-brand">
+    <span className="aurox-sidebar-emblem" aria-hidden="true">A</span>
+    <span><strong>AUROX</strong><small>Gestão automotiva</small></span>
+  </div>
   <Link href="/minha-conta" onClick={onNavigate} className="mb-5 flex items-center gap-3 rounded-xl border bg-card/70 p-3 hover:bg-muted/40">
    <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-lg font-semibold text-primary-foreground">{(user as any)?.foto_url?<img alt="" src={(user as any).foto_url} className="h-full w-full object-cover"/>:String(user?.nome||user?.login||'?')[0]?.toUpperCase()}</span>
    <span className="min-w-0 flex-1"><strong className="block truncate text-sm">{user?.nome||user?.login||'Minha conta'}</strong><span className="block truncate text-xs capitalize text-muted-foreground">{role}{user?.loja?` · Loja ${user.loja}`:''}</span></span>

@@ -123,12 +123,27 @@ export default function PainelPage() {
     [uid],
   );
 
+  // Empresas e lojas vêm da API autenticada. Não há nomes fixos (ex.: NINA) no frontend.
+  const [empresaFiltro, setEmpresaFiltro] = useState('');
+  const {data: vendedoresEscopo=[]} = useQuery<any[]>({
+    queryKey:['painel-vendedores-escopo',user?.id],
+    queryFn:async () => { const {data}=await api.get('/vendedores'); return Array.isArray(data)?data:[]; },
+    enabled:Boolean(user?.id),
+  });
+  const empresaAtiva = user?.tipo === 'superadmin' ? Number(empresaFiltro||0) : Number(user?.empresa_id||0);
+  const empresasEscopo = useMemo(() => Array.from(new Map(vendedoresEscopo.filter(v=>Number(v.empresa_id)>0)
+    .map(v=>[String(v.empresa_id),{id:String(v.empresa_id),nome:String(v.empresa_nome||`Empresa ${v.empresa_id}`)}] as const)).values()), [vendedoresEscopo]);
+  const lojasEscopo = useMemo(() => Array.from(new Set(vendedoresEscopo
+    .filter(v=>Number(v.empresa_id)===empresaAtiva).map(v=>String(v.loja||'').trim()).filter(Boolean))).sort(), [vendedoresEscopo,empresaAtiva]);
+  const podeCarregarLeads = Boolean(user?.id && empresaAtiva);
+
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['leads', filtro, periodo, loja, vendedorId],
+    queryKey: ['leads', filtro, periodo, loja, vendedorId, empresaAtiva],
     queryFn: async () => {
       const { data } = await api.get<Lead[]>('/leads', {
         params: {
           filtro, periodo,
+          empresa_id: empresaAtiva || undefined,
           loja: loja || undefined,
           vendedor_id: vendedorId || undefined,
           painel: '1',
@@ -136,14 +151,17 @@ export default function PainelPage() {
       });
       return Array.isArray(data) ? data : [];
     },
+    enabled: podeCarregarLeads,
     refetchInterval: 5000,
     refetchOnWindowFocus: true,
   });
 
-  const { data: stats } = useQuery({
-    queryKey: ['stats', periodo],
-    queryFn: () => leadsService.stats({ periodo }),
-    refetchInterval: 10000,
+  const {data:stats} = useQuery({
+    queryKey:['stats',periodo,loja,vendedorId,empresaAtiva],
+    queryFn:async () => (await api.get('/leads/stats', {params:{periodo,loja:loja||undefined,
+      vendedor_id:vendedorId||undefined,empresa_id:empresaAtiva}})).data,
+    enabled:podeCarregarLeads,
+    refetchInterval:10000,
   });
 
   const daLista = {
@@ -309,134 +327,87 @@ export default function PainelPage() {
   }
 
   return (
-    <div className={`mx-auto max-w-7xl space-y-6 ${selecionados.length ? 'pb-48' : ''}`}>
-      <header>
-        <h1 className="text-4xl font-bold tracking-tight">{t('page.painel.title')}</h1>
-        <Link href="/novo-lead">
-          <Button className="mt-4" size="lg">
-            <PlusCircle className="mr-2 h-4 w-4" /> {t('page.painel.add_lead')}
-          </Button>
-        </Link>
+    <div className={`aurox-workspace ${selecionados.length ? 'pb-48' : ''}`}>
+      <header className="aurox-page-heading">
+        <div>
+          <p className="aurox-eyebrow">Central comercial <span aria-hidden="true">/</span> Atendimento</p>
+          <h1>{t('page.painel.title')}</h1>
+          <p className="aurox-page-description">Acompanhe cada contato, identifique prioridades e realize as próximas ações sem perder o contexto.</p>
+        </div>
+        <Link href="/novo-lead"><Button className="aurox-add-lead" size="lg"><PlusCircle className="mr-2 h-4 w-4" />{t('page.painel.add_lead')}</Button></Link>
       </header>
 
-      
-
-      <section className="space-y-4">
-        <div>
-          <Label className="text-base">{t('page.painel.filter')}</Label>
-          <RadioGroup
-            className="mt-2 flex flex-wrap gap-5"
-            value={filtro}
-            onValueChange={(v) => setFiltro(v as any)}
-          >
-            {FILTROS.map((f) => (
-              <div key={f.value} className="flex items-center gap-2">
-                <RadioGroupItem value={f.value} id={`f-${f.value}`} />
-                <Label htmlFor={`f-${f.value}`} className="cursor-pointer font-normal">
-                  {f.label}
-                </Label>
-              </div>
-            ))}
-          </RadioGroup>
-        </div>
-
-        {(user?.tipo === 'admin' ||
-          user?.tipo === 'gerente' ||
-          user?.tipo === 'marketing' ||
-          user?.tipo === 'superadmin') && (
-          <div className="flex flex-wrap gap-3">
-            {(user?.tipo === 'admin' || user?.tipo === 'marketing' || user?.tipo === 'superadmin') && (
-              <div>
-                <Label className="text-sm">Loja</Label>
-                <select
-                  className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm"
-                  value={loja}
-                  onChange={(e) => setLoja(e.target.value)}
-                >
-                  <option value="">Todas</option>
-                  <option value="381">381</option>
-                  <option value="764">764</option>
-                  <option value="NINA">NINA</option>
-                </select>
-              </div>
-            )}
-            <div>
-              <Label className="text-sm">Vendedor</Label>
-              <VendedorSelect
-                loja={user?.tipo === 'gerente' ? user.loja || undefined : loja}
-                value={vendedorId}
-                onChange={setVendedorId}
-              />
-            </div>
-          </div>
-        )}
-
-        <div className="max-w-xs">
-          <Label className="text-sm">{t('page.painel.period')}</Label>
-          <Select value={periodo} onValueChange={(v) => setPeriodo(v as any)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="hoje">Hoje</SelectItem>
-              <SelectItem value="semana">Esta semana</SelectItem>
-              <SelectItem value="mes">Este mês</SelectItem>
-              <SelectItem value="todas">Todo período</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* métricas */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {[
-            ['Leads', totalLeads],
-            ['Responderam', totalResp],
-            ['Fichas', totalFichas],
-            ['Aprovados', totalAprov],
-            ['Vendidos', totalVend],
-          ].map(([lab, val]) => (
-            <Card key={String(lab)}>
-              <CardContent className="p-3 text-center">
-                <div className="text-2xl font-bold">{val as any}</div>
-                <div className="text-xs text-muted-foreground">{lab}</div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[200px] flex-1">
-            <Label className="text-sm">Buscar lead</Label>
-            <div className="relative mt-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Nome, CPF, telefone..."
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-              />
-            </div>
-          </div>
-          <div>
-            <Label className="text-sm">Carroceria</Label>
-            <select
-              className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm"
-              value={carroceria}
-              onChange={(e) => setCarroceria(e.target.value)}
-            >
-              <option value="todas">todas</option>
-              <option value="hatch">hatch</option>
-              <option value="sedan">sedan</option>
-              <option value="suv">suv</option>
-              <option value="pickup">pickup</option>
-            </select>
-          </div>
-        </div>
+      <section className="aurox-kpis" aria-label="Indicadores — clique para filtrar leads">
+        {([
+          {key:'todos', title:'Todos os leads', number:totalLeads, context:'Visão geral'},
+          {key:'responderam', title:'Respondidos', number:totalResp, context:'Contatos atendidos'},
+          {key:'nao_responderam', title:'Aguardando', number:Math.max(0,totalLeads-totalResp), context:'Precisam de resposta'},
+          {key:'fichas', title:'Fichas', number:totalFichas, context:'Crédito em análise'},
+          {key:'aprovados', title:'Aprovados', number:totalAprov, context:'Crédito aprovado'},
+          {key:'vendidos', title:'Vendas', number:totalVend, context:'Negócios concluídos'},
+        ] as const).map((k) => (
+          <button key={k.key} type="button" className="aurox-kpi" aria-pressed={filtro===k.key}
+            onClick={() => setFiltro(k.key)} title={`Filtrar: ${k.title}`}>
+            <span className="aurox-kpi-label">{k.title}</span>
+            <span className="aurox-kpi-value">{Number(k.number).toLocaleString('pt-BR')}</span>
+            <span className="aurox-kpi-context">{k.context}</span>
+            <span className="aurox-kpi-track" aria-hidden="true"><span className="aurox-kpi-progress block"
+              style={{width:`${Math.min(100,Math.round(Number(k.number)/Math.max(1,Number(totalLeads))*100))}%`}} /></span>
+          </button>
+        ))}
       </section>
 
-      
+      <section className="aurox-filter-board" aria-label="Filtros de leads">
+        <div className="aurox-filter-head">
+          <h2>Encontre o lead certo</h2>
+          <button type="button" onClick={() => {setBusca('');setCarroceria('todas');setLoja('');setVendedorId('');setPeriodo('mes');setFiltro('todos');setListaAtiva('todos');}}>Limpar filtros</button>
+        </div>
+        <div className={`aurox-filter-fields ${user?.tipo === 'superadmin' ? 'has-company' : ''}`}>
+          <div>
+            <label htmlFor="aurox-busca" className="aurox-field-label">Buscar lead</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input id="aurox-busca" className="pl-9" placeholder="Nome, CPF, telefone ou veículo" value={busca} onChange={(e)=>setBusca(e.target.value)}/>
+            </div>
+          </div>
+          {user?.tipo === 'superadmin' && <div>
+            <label htmlFor="aurox-empresa" className="aurox-field-label">Empresa</label>
+            <select id="aurox-empresa" className="aurox-control" value={empresaFiltro} onChange={e=>{setEmpresaFiltro(e.target.value);setLoja('');setVendedorId('');}}>
+              <option value="">Escolha uma empresa</option>
+              {empresasEscopo.map(e=><option key={e.id} value={e.id}>{e.nome}</option>)}
+            </select>
+          </div>}
+          <div>
+            <label htmlFor="aurox-periodo" className="aurox-field-label">Período</label>
+            <select id="aurox-periodo" className="aurox-control" value={periodo} onChange={e=>setPeriodo(e.target.value as LeadFiltros['periodo'])}>
+              <option value="hoje">Hoje</option><option value="semana">Esta semana</option><option value="mes">Este mês</option><option value="todas">Todo o período</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="aurox-carroceria" className="aurox-field-label">Carroceria</label>
+            <select id="aurox-carroceria" className="aurox-control" value={carroceria} onChange={e=>setCarroceria(e.target.value)}>
+              <option value="todas">Todas</option><option value="hatch">Hatch</option><option value="sedan">Sedan</option><option value="suv">SUV</option><option value="pickup">Picape</option>
+            </select>
+          </div>
+          {['admin','marketing','superadmin'].includes(user?.tipo || '') && <div>
+            <label htmlFor="aurox-loja" className="aurox-field-label">Loja / Pátio</label>
+            <select id="aurox-loja" className="aurox-control" value={loja} onChange={e=>{setLoja(e.target.value);setVendedorId('');}} disabled={!empresaAtiva}>
+              <option value="">Todas as lojas</option>
+              {lojasEscopo.map(x=><option key={x} value={x}>{x}</option>)}
+            </select>
+          </div>}
+          {['admin','gerente','marketing','superadmin'].includes(user?.tipo || '') && <div>
+            <span className="aurox-field-label">Vendedor</span>
+            <VendedorSelect empresaId={empresaAtiva} loja={user?.tipo === 'gerente' ? user.loja || undefined : loja}
+              value={vendedorId} onChange={setVendedorId}/>
+          </div>}
+        </div>
+        {user?.tipo === 'superadmin' && !empresaAtiva &&
+          <p className="mt-3 text-xs text-muted-foreground">Selecione uma empresa para consultar os dados separadamente.</p>}
+      </section>
+
       {/* chips de listas — abaixo da busca, acima dos cards */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+      <div className="aurox-list-tabs">
         <Chip active={listaAtiva === 'todos'} onClick={() => setListaAtiva('todos')}>
           Todos
         </Chip>
@@ -463,9 +434,9 @@ export default function PainelPage() {
         </button>
       </div>
 
-<section>
+<section className="aurox-list-section">
         <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold">Leads cadastrados</h2>
+        <h2 className="aurox-list-title">Leads cadastrados</h2>
         {podeAcoes && <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" onClick={()=>{setModoSelecao(!modoSelecao);setSelecionados([]);}}>{modoSelecao?'Cancelar seleção':'Selecionar / Ações'}</Button>
           {modoSelecao && <Button variant="outline" size="sm" onClick={()=>setSelecionados(selecionados.length===Math.min(filteredLeads.length,100)?[]:filteredLeads.slice(0,100).map(l=>Number(l.id)))}>{selecionados.length===Math.min(filteredLeads.length,100)?'Desmarcar':'Selecionar todos'}</Button>}
@@ -485,16 +456,21 @@ export default function PainelPage() {
             <Button size="sm" variant="outline" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>acaoMassa('favoritar')}><Heart className="mr-1 h-3.5 w-3.5"/>Favoritar</Button>
           </div>
         </div>}
-        <p className="text-sm text-muted-foreground">
-          Exibindo {filteredLeads.length} de {leads.length} leads.
-        </p>
+        <p className="aurox-list-subtitle">Exibindo {filteredLeads.length} de {leads.length} leads da empresa selecionada.</p>
 
         {isLoading ? (
           <div className="flex justify-center py-16">
             <CarLoader />
           </div>
+        ) : filteredLeads.length === 0 ? (
+          <div className="aurox-empty mt-4" role="status">
+            <Search className="h-8 w-8" aria-hidden="true" />
+            <strong>{empresaAtiva ? 'Nenhum lead encontrado' : 'Selecione uma empresa'}</strong>
+            <p>{empresaAtiva ? 'Tente outro período ou limpe os filtros para visualizar mais oportunidades.' : 'Os dados de cada empresa aparecem somente após a seleção.'}</p>
+            {empresaAtiva && <Button variant="outline" onClick={()=>{setBusca('');setCarroceria('todas');setLoja('');setVendedorId('');setPeriodo('mes');setFiltro('todos');setListaAtiva('todos');}}>Limpar filtros</Button>}
+          </div>
         ) : (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="aurox-lead-grid mt-4">
             {filteredLeads.map((lead) => (
               <LeadCard
                 key={lead.id}
@@ -906,7 +882,7 @@ function LeadCard({
   const showAct = locked === 'left' || dx < -12;
 
   return (
-    <div className="relative overflow-hidden rounded-xl">
+    <div className="relative overflow-hidden rounded-2xl">
       {/* direita do dedo = Fixar (faixa à esquerda) */}
       <div
         className="absolute inset-y-0 left-0 flex w-[88px] items-stretch"
@@ -952,7 +928,7 @@ function LeadCard({
       </div>
 
       <Card
-        className={`relative cursor-pointer transition-all duration-200 hover:border-primary/60 hover:shadow-lg ${isSelected ? 'border-primary bg-primary/[.07] shadow-[0_0_0_1px_hsl(var(--primary)/.25)]' : 'bg-card'}`}
+        className={`aurox-lead-card relative cursor-pointer transition-all duration-200 hover:border-primary/60 hover:shadow-lg ${isSelected ? 'border-primary bg-primary/[.07] shadow-[0_0_0_1px_hsl(var(--primary)/.25)]' : 'bg-card'}`}
         style={{
           transform: `translateX(${dx}px)`,
           transition: startX.current != null ? 'none' : 'transform 180ms ease',
@@ -978,12 +954,13 @@ function LeadCard({
           startX.current = null;
         }}
       >
-        <CardContent className="space-y-3 p-5">
+        <CardContent className="aurox-lead-card-content space-y-3">
           <div className="flex items-start justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-2 text-lg font-semibold">
+            <div className="flex min-w-0 items-center gap-2">
               {selectionMode && <input type="checkbox" checked={!!isSelected} readOnly aria-label="Selecionar lead" className="h-5 w-5 shrink-0 rounded accent-primary pointer-events-none" />}
-              <UserCircle2 className="h-5 w-5 shrink-0 text-primary" />
-              <span className="truncate">{lead.nome_lead}</span>
+              <span className="aurox-avatar" aria-hidden="true">{String(lead.nome_lead||'?').trim().split(/\s+/).slice(0,2).map(n=>n[0]||'').join('').toUpperCase()}</span>
+              <div className="min-w-0"><span className="aurox-lead-name block truncate">{lead.nome_lead}</span>
+                <span className="text-[11px] text-muted-foreground">Lead #{lead.id}</span></div>
               {pinned && (
                 <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
                   FIXO
@@ -1052,7 +1029,10 @@ function LeadCard({
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="aurox-status" data-state={lead.respondeu ? 'respondido' : 'pendente'}>
+              {lead.respondeu ? 'Respondido' : 'Aguardando resposta'}
+            </span>
             {lead.venda_concluida && (
               <Badge className="bg-emerald-600 hover:bg-emerald-600">VENDA CONCLUIDA</Badge>
             )}
@@ -1071,7 +1051,7 @@ function LeadCard({
             })()}
           </div>
 
-          <div className="space-y-1 text-sm text-muted-foreground">
+          <div className="aurox-lead-info space-y-1 text-sm text-muted-foreground">
             <div>
               Vendedor:{' '}
               <span className="capitalize text-foreground">{lead.vendedor_nome ?? '-'}</span>
@@ -1109,24 +1089,23 @@ function LeadCard({
 }
 
 function VendedorSelect({
-  loja,
-  value,
-  onChange,
+  empresaId, loja, value, onChange,
 }: {
+  empresaId: number;
   loja?: string;
   value: string;
   onChange: (v: string) => void;
 }) {
-  const { data } = useQuery({
-    queryKey: ['vendedores-filtro', loja],
-    queryFn: async () => (await api.get('/equipe')).data,
+  const { data=[] } = useQuery<any[]>({
+    queryKey:['vendedores-filtro-empresa',empresaId],
+    queryFn:async () => { const {data}=await api.get('/vendedores'); return Array.isArray(data)?data:[]; },
+    enabled:empresaId>0,
   });
-  const lista = (Array.isArray(data) ? data : data?.vendedores || data?.equipe || []).filter(
-    (v: any) => !loja || String(v.loja || '').toUpperCase() === String(loja).toUpperCase(),
-  );
+  const lista = data.filter((v: any) => Number(v.empresa_id) === empresaId &&
+    (!loja || String(v.loja || '').toUpperCase() === String(loja).toUpperCase()));
   return (
     <select
-      className="mt-1 block rounded border border-border bg-background px-2 py-1 text-sm"
+      className="aurox-control"
       value={value}
       onChange={(e) => onChange(e.target.value)}
     >

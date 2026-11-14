@@ -13,7 +13,7 @@ export async function POST(req:NextRequest){
  const client=await getPool().connect();
  try{
   await client.query('BEGIN');
-  const {rows}=await client.query(`SELECT l.id,v.empresa_id,v.loja FROM public.leads l LEFT JOIN public.vendedores v ON v.id=l.vendedor_id WHERE l.id=ANY($1::bigint[]) FOR UPDATE OF l`,[ids]);
+  const {rows}=await client.query(`SELECT l.id,l.empresa_id,v.loja FROM public.leads l LEFT JOIN public.vendedores v ON v.id=l.vendedor_id AND v.empresa_id=l.empresa_id WHERE l.id=ANY($1::bigint[]) AND l.empresa_id IS NOT NULL AND (l.vendedor_id IS NULL OR v.id IS NOT NULL) FOR UPDATE OF l`,[ids]);
   if(rows.length!==ids.length){await client.query('ROLLBACK');return NextResponse.json({error:'Algum lead não existe'},{status:404});}
   const autorizado=rows.every((r:any)=>u.tipo==='superadmin'||(
    u.empresa_id!=null&&r.empresa_id!=null&&Number(r.empresa_id)===Number(u.empresa_id)&&

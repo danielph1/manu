@@ -45,7 +45,7 @@ export function BottomNav(){
     {href:'/chat',label:'Chat',Icon:MessageCircle,roles:[]},
     {href:'/configuracoes',label:'Menu',Icon:Settings,roles:[]},
   ].filter(x=>!x.roles.length||x.roles.includes(role));
-  return createPortal(<nav aria-label="Atalhos do Aurox" className="fixed bottom-3 left-1/2 z-[90] flex max-w-[96vw] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur-xl transition-transform duration-300 ease-out"
+  return createPortal(<nav aria-label="Atalhos do Aurox" className="aurox-mobile-nav fixed bottom-3 left-1/2 z-[90] flex max-w-[96vw] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur-xl transition-transform duration-300 ease-out"
     style={{transform:`translateX(-50%) translateY(${hidden?'calc(100% + 32px)':'0'})`,pointerEvents:hidden?'none':'auto'}}>
     {items.map(({href,label,Icon})=>{const active=path===href||path.startsWith(href+'/');return <Link key={href} href={href} aria-current={active?'page':undefined}
       className={`flex min-w-[62px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[10px] font-medium ${active?'bg-primary/15 text-primary':'text-foreground/75 hover:bg-muted'}`}>

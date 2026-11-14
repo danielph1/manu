@@ -39,19 +39,25 @@ export async function GET(req: NextRequest) {
     const busca = (searchParams.get('busca') || '').trim();
     const vendedorIdParam = searchParams.get('vendedor_id');
     const lojaParam = searchParams.get('loja');
+    const empresaParam = Number(searchParams.get('empresa_id'));
     const limit = Math.min(parseInt(searchParams.get('limit') || '200', 10) || 200, 500);
 
-    const where: string[] = ['1=1'];
+    const where: string[] = ['l.empresa_id IS NOT NULL'];
     const params: unknown[] = [];
     const add = (sql: string, val: unknown) => {
       params.push(val);
       where.push(sql.replace('?', `$${params.length}`));
     };
 
-    // Isolamento por empresa (SaaS) — nunca vaza lead de outra empresa
+    // Não basta a empresa do vendedor: o lead TAMBÉM precisa ter empresa_id explícito.
     if (u.tipo !== 'superadmin') {
-      if (!u.empresa_id) return NextResponse.json({ error: 'Empresa nao associada' }, { status: 403 });
-      add('l.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = ?)', u.empresa_id);
+      if (!u.empresa_id) return NextResponse.json({ error: 'Empresa não associada' }, { status: 403 });
+      if (Number.isSafeInteger(empresaParam) && empresaParam>0 && empresaParam!==Number(u.empresa_id))
+        return NextResponse.json({ error: 'Empresa fora do escopo' }, { status: 403 });
+      add('l.empresa_id = ?', Number(u.empresa_id));
+      add('l.vendedor_id IN (SELECT id FROM public.vendedores WHERE empresa_id = ?)', Number(u.empresa_id));
+    } else if (Number.isSafeInteger(empresaParam) && empresaParam>0) {
+      add('l.empresa_id = ?', empresaParam);
     }
 
     // RBAC dentro da empresa
