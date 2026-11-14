@@ -7,6 +7,7 @@ export const dynamic='force-dynamic';
 
 export async function GET(req: NextRequest) {
   const u=await requireUser(req); if(!u)return NextResponse.json({error:'Não autenticado'},{status:401});
+  if(!PAPEIS_CAIXA.has(String(u.tipo||'').toLowerCase()))return NextResponse.json({error:'Finanças restritas a admin e superadmin'},{status:403});
   let sc:ReturnType<typeof resolverEscopoMetricas>;
   try{sc=resolverEscopoMetricas(u,req.nextUrl.searchParams.get('empresa_id'),req.nextUrl.searchParams.get('loja'));}
   catch{return NextResponse.json({error:'Empresa ou permissão inválida'},{status:403});}

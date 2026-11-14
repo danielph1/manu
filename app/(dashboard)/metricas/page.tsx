@@ -48,6 +48,7 @@ export default function MetricasPage() {
   const qc=useQueryClient();
   const superadmin=String(user?.tipo||'')==='superadmin';
   const podeLancar=['admin','superadmin'].includes(String(user?.tipo||''));
+  const financialView=podeLancar;
   const [empresa,setEmpresa]=useState('');
   const [loja,setLoja]=useState('geral');
   const [periodo,setPeriodo]=useState('mes');
@@ -70,7 +71,7 @@ export default function MetricasPage() {
   const r=useQuery({queryKey:['metricas-v2',empresa,loja,periodo],enabled:pronto,
     queryFn:async()=> (await api.get('/metricas',{params:{empresa_id:superadmin?empresa:undefined,loja,periodo}})).data,
     refetchInterval:60000,staleTime:15000});
-  const movimento=useQuery({queryKey:['metricas-lancamentos',empresa,loja],enabled:pronto,
+  const movimento=useQuery({queryKey:['metricas-lancamentos',empresa,loja],enabled:pronto&&podeLancar,
     queryFn:async()=>(await api.get('/metricas/lancamentos',{params:{empresa_id:superadmin?empresa:undefined,loja}})).data,
     staleTime:30000});
   const d=r.data;
@@ -128,9 +129,9 @@ export default function MetricasPage() {
         <summary className="cursor-pointer font-medium text-amber-300"><CircleAlert className="mr-2 inline" size={17}/> {d.alertas.length} verificações pendentes de dados</summary>
         <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">{d.alertas.map((a:string,i:number)=><li key={i}>{a}</li>)}</ul>
       </details>}
-      <section className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-3">
+      {financialView&&<><section className="space-y-3"><div className="flex flex-wrap items-center justify-between gap-3">
         <div><h2 className="text-xl font-semibold">Caixa efetivo</h2><p className="text-xs text-muted-foreground">Somente entradas e pagamentos confirmados, registrados no razão de caixa.</p></div>
-        {podeLancar&&<button className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500" onClick={()=>setNovo(v=>!v)}><Plus size={16}/> Registrar movimento</button>}
+        {podeLancar&&<Link href="/financas" className="flex items-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500"><Wallet size={16}/> Abrir Finanças</Link>}
       </div>
       {novo&&podeLancar&&<form onSubmit={registrar} className="grid gap-3 rounded-xl border border-violet-500/30 bg-card p-4 sm:grid-cols-3">
         <label className="text-xs">Loja<select required value={f.loja} onChange={e=>setF({...f,loja:e.target.value})} className="mt-1 w-full rounded-lg border bg-background p-2 text-sm"><option value="">Selecione</option>{lojas.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
@@ -145,10 +146,10 @@ export default function MetricasPage() {
       </form>}
       {d.caixa?.lancamentos===0&&<p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-300">Nenhum movimento de caixa confirmado foi registrado neste recorte. R$ 0,00 não comprova que não houve transações reais; o histórico financeiro precisa ser conciliado.</p>}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Tile titulo="Entradas liquidadas" valor={brl(d.caixa?.entradas)} descricao="Total confirmado no período" icon={ArrowDownRight}/>
-        <Tile titulo="Saídas liquidadas" valor={brl(d.caixa?.saidas)} descricao="Pagamentos efetivamente realizados" icon={ArrowUpRight}/>
-        <Tile titulo="Saldo líquido do período" valor={brl(d.caixa?.saldo)} descricao="Entradas menos saídas (não saldo bancário)" icon={Wallet}/>
-        <Tile titulo="Lançamentos confirmados" valor={quantidade(d.caixa?.lancamentos)} descricao="Ainda não importa extratos antigos automaticamente" icon={Landmark}/>
+        <Tile titulo="Bruto de vendas documentado" valor={brl(d.vendas_monetarias?.bruto)} descricao="Financiamento + entrada, apenas faturas vinculadas a vendas. Não comprova recebimento." icon={FileText}/>
+        <Tile titulo="Saídas líquidas da oficina" valor={brl(d.caixa?.oficina)} descricao="Gastos efetivamente pagos na oficina" icon={ArrowUpRight}/>
+        <Tile titulo="Saldo operacional recebido" valor={brl(d.caixa?.saldo_operacional)} descricao="Entradas recebidas confirmadas menos gastos pagos de oficina" icon={Wallet}/>
+        <Tile titulo="Entradas confirmadas" valor={brl(d.caixa?.entradas)} descricao="Dinheiro realmente baixado no caixa; {d.caixa?.lancamentos||0} movimentos confirmados" icon={ArrowDownRight}/>
       </div>
       <div className="grid gap-4 lg:grid-cols-2"><Bloco titulo="Entradas e saídas por mês" subtitulo="Gráfico de liquidações registradas. Meses sem lançamentos não representam caixa histórico reconstruído.">
         {chartBar.length?<ResponsiveContainer width="100%" height={260}><BarChart data={chartBar}><CartesianGrid strokeDasharray="3 3" opacity={0.15}/><XAxis dataKey="mes" fontSize={11}/><YAxis fontSize={10}/><Tooltip formatter={(v:any)=>brl(v)}/><Legend/><Bar dataKey="entradas" name="Entradas" fill="#67c89a" radius={[4,4,0,0]}/><Bar dataKey="saidas" name="Saídas" fill="#dd839e" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer>:<Vazio msg="Sem lançamentos confirmados nos últimos meses."/>}
@@ -168,7 +169,7 @@ export default function MetricasPage() {
           <Tile titulo="Despesas de oficina pagas" valor={brl(d.oficina_financeiro?.custos_pagos)} descricao="Contabilizadas na saida do caixa sem duplicar" icon={Wallet}/>
         </div>
         <p className="text-xs text-muted-foreground">Vendas no CRM pela data de venda: <strong>{quantidade(d.vendas_crm_periodo?.total)}</strong>. Faturamentos nao sao somados automaticamente como vendas adicionais do mesmo lead.</p>
-      </section>
+      </section></>}
       <section className="space-y-3"><h2 className="text-xl font-semibold">Funil comercial</h2><div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[['Leads',d.funil?.leads,Users],['Respondidos',d.funil?.responderam,BadgeCheck],['Fichas',d.funil?.fichas,BarChart3],['Aprovados',d.funil?.aprovados,Landmark],['Vendidos',d.funil?.vendidos,Activity]].map(([t,v,Icon]:any)=><Tile key={t} titulo={t} valor={quantidade(v)} icon={Icon}/>)}
       </div><div className="grid gap-4 lg:grid-cols-2"><Bloco titulo="Evolução de leads e vendas" subtitulo="Vendas marcadas no CRM, por mês de chegada do lead; não equivalem a recebimentos financeiros.">

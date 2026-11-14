@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
   try { escopo = resolverEscopoMetricas(usuario, sp.get('empresa_id'), sp.get('loja')); }
   catch (e) { const code=String((e as Error).message);return NextResponse.json({error: code==='EMPRESA_OBRIGATORIA'?'Selecione a empresa para consultar métricas':code==='PERMISSAO'?'Sem permissão':code==='LOJA_OBRIGATORIA'?'Gerente sem loja atribuída':'Loja inválida'}, {status:code==='PERMISSAO'?403:400}); }
   const { empresaId, loja, papel } = escopo;
+  const leituraFinanceira=papel==='superadmin'||papel==='admin';
   const { inicio, fim, etiqueta } = periodoMetricas(sp.get('periodo') || 'mes');
   const alertas:string[]=[];
   const disponibilidade:Record<string,boolean>={};
@@ -193,11 +194,13 @@ export async function GET(req: NextRequest) {
       w+=dateRange('data_movimento',inicio,fim,p);
       const total=await queryOne<any>(`SELECT COALESCE(SUM(valor) FILTER (WHERE tipo='entrada'),0)::numeric AS entradas,
         COALESCE(SUM(valor) FILTER (WHERE tipo='saida'),0)::numeric AS saidas,
-        COUNT(*)::int AS lancamentos
+        COUNT(*)::int AS lancamentos,
+        COALESCE(SUM(valor) FILTER(WHERE tipo='saida' AND origem_tipo='oficina'),0)::numeric AS oficina
         FROM public.manu_movimentos_caixa WHERE ${w}`,p);
       const porCategoria=(await query(`SELECT tipo,categoria,COALESCE(SUM(valor),0)::numeric AS total,COUNT(*)::int AS qtd
         FROM public.manu_movimentos_caixa WHERE ${w} GROUP BY tipo,categoria ORDER BY total DESC`,p)).rows;
       return {entradas:n(total?.entradas),saidas:n(total?.saidas),saldo:n(total?.entradas)-n(total?.saidas),
+        oficina:n(total?.oficina),saldo_operacional:n(total?.entradas)-n(total?.oficina),
         lancamentos:n(total?.lancamentos),por_categoria:porCategoria};
     });
     // Documentos fiscais e de faturamento sao indicadores proprios, nunca presumem pagamento.
@@ -210,6 +213,31 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(COALESCE(f.entrada_total,0)),0)::numeric AS entradas_documentadas
         FROM public.faturamentos f WHERE ${w}`,p);
       return {documentos:n(r?.documentos),entradas_documentadas:n(r?.entradas_documentadas)};
+    });
+    // Mesma venda pode ter varias notas: usar apenas a ultima fatura vinculada ao lead vendido.
+    // Bruto DOCUMENTADO = entrada + financiamento; pago somente quando confirmado no caixa.
+    const vendasMonetarias=await executar('Bruto de vendas documentadas',
+      existe(caps,'faturamentos','id','empresa_id','lead_id','ficha_id','entrada_total','loja') &&
+      existe(caps,'fichas_credito','id','lead_id','valor_financiado','valor_liberado') &&
+      existe(caps,'leads','id','empresa_id','venda_concluida','data_venda'),async()=>{
+      const p:unknown[]=[empresaId];let w=`f.empresa_id=$1 AND l.empresa_id=$1
+        AND (l.venda_concluida IS TRUE OR l.data_venda IS NOT NULL)
+        AND LOWER(COALESCE(f.status,'')) NOT IN ('cancelado','excluido','excluído')`;
+      if(loja){p.push(loja);w+=` AND UPPER(COALESCE(f.loja,''))=$${p.length}`;}
+      w+=dateRange('COALESCE(l.data_venda,l.data_lead)',inicio,fim,p);
+      const r=await queryOne<any>(`WITH docs AS (
+        SELECT DISTINCT ON (l.id) l.id AS lead_id,
+          GREATEST(COALESCE(f.entrada_total,0),0) AS entrada,
+          GREATEST(COALESCE(NULLIF(fc.valor_liberado,0),NULLIF(fc.valor_financiado,0),0),0) AS financiado
+        FROM public.faturamentos f LEFT JOIN public.fichas_credito fc ON fc.id=f.ficha_id
+        JOIN public.leads l ON l.id=COALESCE(f.lead_id,fc.lead_id) AND l.empresa_id=f.empresa_id
+        WHERE ${w} ORDER BY l.id,f.id DESC)
+        SELECT COUNT(*)::int AS vendas_com_documento,
+         COALESCE(SUM(entrada),0)::numeric AS entradas,
+         COALESCE(SUM(financiado),0)::numeric AS financiamentos,
+         COALESCE(SUM(entrada+financiado),0)::numeric AS bruto FROM docs`,p);
+      return {vendas_com_documento:n(r?.vendas_com_documento),entradas:n(r?.entradas),
+       financiamentos:n(r?.financiamentos),bruto:n(r?.bruto)};
     });
     const vendasCrmPeriodo=await executar('Vendas do CRM por data da venda',
       leadOk&&existe(caps,'leads','data_venda'),async()=>{
@@ -311,9 +339,13 @@ export async function GET(req: NextRequest) {
       empresa:{id:empresaId,nome:empresa.nome},loja:loja||'geral',periodo:{inicio,fim,etiqueta},
       atualizado_em:new Date().toISOString(),
       funil, vendedores, funcionarios, transferencias_disponiveis:disponibilidade['Transferências por atraso'],
-      origens,triagem_por_origem:triagem,integracoes,bancos,caixa,estoque,vendas_por_carroceria:vendasCarroceria,
-      faturamento,oficina_financeiro:oficinaFinanceiro,vendas_crm_periodo:vendasCrmPeriodo,
-      por_loja:porLoja,historico_mensal:historico,caixa_mensal:recebimentoMes,
+      origens,triagem_por_origem:triagem,integracoes,bancos,
+      caixa:leituraFinanceira?caixa:null,estoque,vendas_por_carroceria:vendasCarroceria,
+      faturamento:leituraFinanceira?faturamento:null,
+      oficina_financeiro:leituraFinanceira?oficinaFinanceiro:null,
+      vendas_monetarias:leituraFinanceira?vendasMonetarias:null,
+      vendas_crm_periodo:vendasCrmPeriodo,
+      por_loja:porLoja,historico_mensal:historico,caixa_mensal:leituraFinanceira?recebimentoMes:null,
       disponibilidade,alertas,
       definicoes:{
         entradas:'Somente movimentos marcados confirmado, com data de liquidação. Não inclui financiamento apenas aprovado.',
