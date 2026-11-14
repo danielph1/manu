@@ -7,6 +7,8 @@ import { ProtectedRoute } from '@/components/protected-route';
 import { SidebarNav } from '@/components/sidebar-nav';
 import { AvisosFlutuante } from '@/components/avisos-flutuante';
 import { BottomNav } from '@/components/bottom-nav';
+import { useAuth } from '@/contexts/auth-context';
+import { permiteRota } from '@/lib/permissoes-acesso';
 import { useRealtimeCore } from '@/hooks/use-realtime';
 import type { ReactNode } from 'react';
 
@@ -18,6 +20,8 @@ function RealtimeBootstrap() {
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const path = usePathname() || '';
+  const {user}=useAuth();
+  const acessoPagina=permiteRota(user?.tipo,path);
   const [noChat, setNoChat] = useState(false);
   useEffect(() => {
     setNoChat(path.startsWith('/chat') && new URLSearchParams(window.location.search).get('lead') !== null);
@@ -88,7 +92,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             </div>
             <span className="text-xs text-muted-foreground">Gestão de atendimento e vendas</span>
           </div>}
-          {children}
+          {acessoPagina ? children : <section className="mx-auto mt-8 max-w-lg rounded-xl border p-6" role="alert">
+            <h1 className="text-xl font-semibold">Acesso restrito</h1>
+            <p className="mt-2 text-sm text-muted-foreground">Seu cargo não permite acessar esta área.</p>
+          </section>}
         </main>
         <AvisosFlutuante />
         <BottomNav />

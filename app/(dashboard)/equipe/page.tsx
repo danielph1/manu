@@ -1,5 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,6 +9,22 @@ import { useAuth } from '@/contexts/auth-context';
 
 export default function EquipePage() {
   const { user } = useAuth();
+  const qc=useQueryClient();
+  const [redistribuindo,setRedistribuindo]=useState<number|null>(null);
+  const papel=String(user?.tipo||'').toLowerCase();
+  async function redistribuir(v:any) {
+    const total=Number(v.leads_em_aberto||0);
+    if (!total || v.ativo || !['gerente','admin','superadmin'].includes(papel)) return;
+    if (!window.confirm(`Redistribuir aleatoriamente até 80 leads não vendidos de ${v.nome} para vendedores ATIVOS da ${papel==='gerente'?'mesma loja':'mesma empresa'}? Se escolher Cancelar, os leads continuam com ele.`)) return;
+    setRedistribuindo(Number(v.id));
+    try {
+      const {data}=await api.post('/leads/redistribuir-inativo',{vendedor_id:Number(v.id)});
+      toast.success(`${data.transferidos} leads redistribuídos. Restantes: ${data.restantes}.`);
+      await qc.invalidateQueries({queryKey:['equipe']});
+      await qc.invalidateQueries({queryKey:['leads']});
+    } catch(e:any) {toast.error(e?.response?.data?.error||'Não foi possível redistribuir');}
+    finally {setRedistribuindo(null);}
+  }
   const isGerente = String(user?.tipo || '').toLowerCase() === 'gerente';
   const [loja, setLoja] = useState<string>(isGerente ? String(user?.loja || '') : '');
 
@@ -23,10 +41,6 @@ export default function EquipePage() {
     for (const v of lista) {
       const L = String(v.loja || '').replace('.0', '').trim();
       if (L) s.add(L);
-    }
-    // se filtrou e lista vazia, ainda mostra opções conhecidas
-    if (!s.size && !loja) {
-      ['381', '764', 'NINA'].forEach((x) => s.add(x));
     }
     return Array.from(s).sort();
   }, [lista, loja]);
@@ -79,7 +93,7 @@ export default function EquipePage() {
                     </span>
                   )}
                   <span className="truncate">
-                    {i + 1}. {v.nome}
+                    {i + 1}. {v.nome}{v.ativo===false?' · Inativo':''}
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-2 text-sm font-bold">
@@ -91,6 +105,12 @@ export default function EquipePage() {
                 <span>Loja {String(v.loja || '—').replace('.0', '')}</span>
                 <span className="font-semibold text-primary">{Number(v.pontos || 0).toFixed(1)} pts</span>
               </div>
+              {v.ativo===false&&Number(v.leads_em_aberto||0)>0&&['gerente','admin','superadmin'].includes(papel)&&
+                <button type="button" disabled={redistribuindo===Number(v.id)}
+                  onClick={()=>void redistribuir(v)}
+                  className="mt-3 rounded-lg border border-amber-500/50 px-3 py-2 text-xs hover:bg-amber-500/10 disabled:opacity-50">
+                  {redistribuindo===Number(v.id)?'Redistribuindo…':`Redistribuir ${v.leads_em_aberto} leads do inativo`}
+                </button>}
               <div className="mt-2 text-xs text-muted-foreground">
                 Mês: Leads {v.leads} · Resp. {v.responderam} · Fichas {v.fichas} · Aprov. {v.aprovados} ·
                 Vendas {v.vendas}

@@ -38,11 +38,11 @@ export function BottomNav(){
   if(!mounted)return null;
   const role=String(user?.tipo||'').toLowerCase();
   const items=[
-    {href:'/painel',label:'Leads',Icon:LayoutDashboard,roles:[]},
+    {href:'/painel',label:'Leads',Icon:LayoutDashboard,roles:['superadmin','admin','gerente','marketing','vendedor']},
     {href:'/follow-up',label:'Follow Up',Icon:FolderHeart,roles:['vendedor','gerente','admin','superadmin']},
-    {href:'/fichas',label:'Fichas',Icon:FileText,roles:[]},
+    {href:'/fichas',label:'Fichas',Icon:FileText,roles:['superadmin','admin','gerente','marketing','vendedor','elfenai','elfen_ai','elfenaí']},
     {href:'/tarefas',label:'Tarefas',Icon:CheckSquare,roles:[]},
-    {href:'/chat',label:'Chat',Icon:MessageCircle,roles:[]},
+    {href:'/chat',label:'Chat',Icon:MessageCircle,roles:['superadmin','admin','gerente','marketing','vendedor']},
     {href:'/configuracoes',label:'Menu',Icon:Settings,roles:[]},
   ].filter(x=>!x.roles.length||x.roles.includes(role));
   return createPortal(<nav aria-label="Atalhos do Aurox" className="aurox-mobile-nav fixed bottom-3 left-1/2 z-[90] flex max-w-[96vw] -translate-x-1/2 items-center gap-1 overflow-x-auto rounded-2xl border border-border bg-card/95 p-1.5 shadow-2xl backdrop-blur-xl transition-transform duration-300 ease-out"

@@ -34,14 +34,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     await client.query('BEGIN');
     const { rows: [lead] } = await client.query<{
-      vendedor_id: number | null; empresa_id: number | null; loja: string | null; de_nome: string | null; comentario_interno:string|null; rotacionar:boolean|null;
+      vendedor_id: number | null; empresa_id: number | null; vendedor_empresa_id: number | null; loja: string | null; de_nome: string | null; comentario_interno:string|null; rotacionar:boolean|null;
     }>(`
-      SELECT l.vendedor_id, v.empresa_id, v.loja, v.nome AS de_nome, l.comentario_interno, l.rotacionar
+      SELECT l.vendedor_id, l.empresa_id, v.empresa_id AS vendedor_empresa_id, v.loja, v.nome AS de_nome, l.comentario_interno, l.rotacionar
         FROM public.leads l
         LEFT JOIN public.vendedores v ON v.id=l.vendedor_id
        WHERE l.id=$1 FOR UPDATE OF l`, [leadId]);
 
-    if (!lead || lead.empresa_id == null || lead.vendedor_id == null) {
+    if (!lead || lead.empresa_id == null || lead.vendedor_id == null || Number(lead.empresa_id)!==Number(lead.vendedor_empresa_id)) {
       await client.query('ROLLBACK');
       return NextResponse.json({ error: 'Lead sem vendedor/empresa. Encaminhe pela Triagem.' }, { status: 404 });
     }
@@ -63,7 +63,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const loja = role === 'gerente' ? String(user.loja) : String(lead.loja || '');
     const candidato = await client.query<{ id: number; nome: string; loja: string | null }>(`
       SELECT id, nome, loja FROM public.vendedores
-       WHERE empresa_id=$1 AND COALESCE(ativo, TRUE)=TRUE
+       WHERE empresa_id=$1 AND COALESCE(ativo, FALSE)=TRUE
+         AND EXISTS(SELECT 1 FROM public.usuarios u WHERE u.vendedor_id=public.vendedores.id
+           AND u.empresa_id=public.vendedores.empresa_id AND LOWER(u.tipo)='vendedor'
+           AND COALESCE(u.ativo,FALSE) AND LOWER(COALESCE(u.status,'ativo'))='ativo')
          AND id <> $2
          AND ($3::boolean=FALSE OR UPPER(COALESCE(loja,''))=UPPER($4))
          AND ($5::int=0 OR id=$5)

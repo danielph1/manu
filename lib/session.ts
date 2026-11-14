@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import type { NextRequest } from 'next/server';
 import { queryOne } from './db';
 import { STATUS_LOGIN_OK } from './tenant';
+import { permiteRota } from './permissoes-acesso';
 
 const JWT_SECRET = process.env.JWT_SECRET || (process.env.NODE_ENV === 'development' ? 'dev-secret' : '');
 
@@ -86,10 +87,10 @@ export async function requireUser(req: NextRequest): Promise<SessionUser | null>
     // hidrata sessão com dados atuais do banco (tipo/loja podem ter mudado)
     u.ativo = true;
     u.status = String(row.status || 'ativo');
-    u.empresa_id = row.empresa_id != null ? Number(row.empresa_id) : u.empresa_id ?? null;
+    u.empresa_id = row.empresa_id == null ? null : Number(row.empresa_id);
     u.tipo = String(row.tipo || u.tipo || 'vendedor').toLowerCase();
     u.vendedor_id = row.vendedor_id != null ? Number(row.vendedor_id) : null;
-    u.loja = row.loja || u.loja;
+    u.loja = row.loja ?? null;
     u.nome = row.nome || u.nome;
     u.login = row.login || u.login;
   } catch (e) {
@@ -97,6 +98,9 @@ export async function requireUser(req: NextRequest): Promise<SessionUser | null>
     console.error('[auth] validação no banco indisponível', e instanceof Error ? e.message : 'erro');
     return null;
   }
+  // Barreira central para todas as rotas de API protegidas por requireUser.
+  // Mesmo usando URL diretamente, uma conta operacional nao acessa credito/chat/faturamento.
+  if (!permiteRota(u.tipo, req.nextUrl.pathname)) return null;
   return u;
 }
 

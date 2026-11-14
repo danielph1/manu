@@ -18,6 +18,11 @@ export async function GET(req:NextRequest){
  }
  try{
   const {rows}=await query<any>(`SELECT v.id,v.nome,v.loja,
+    (COALESCE(v.ativo,FALSE) AND EXISTS(SELECT 1 FROM public.usuarios ua
+      WHERE ua.vendedor_id=v.id AND ua.empresa_id=v.empresa_id AND LOWER(ua.tipo)='vendedor'
+        AND COALESCE(ua.ativo,FALSE) AND LOWER(COALESCE(ua.status,'ativo'))='ativo')) AS ativo,
+    (SELECT COUNT(*)::int FROM public.leads la WHERE la.vendedor_id=v.id
+        AND la.empresa_id=v.empresa_id AND COALESCE(la.venda_concluida,FALSE)=FALSE) AS leads_em_aberto,
     COALESCE((SELECT u.foto_url FROM public.usuarios u WHERE u.vendedor_id=v.id AND u.empresa_id=v.empresa_id ORDER BY u.id LIMIT 1),'') AS foto_url,
     COUNT(l.id)::int AS leads,COUNT(l.id) FILTER(WHERE l.respondeu IS TRUE)::int AS responderam,
     COUNT(l.id) FILTER(WHERE l.gerou_ficha IS TRUE)::int AS fichas,

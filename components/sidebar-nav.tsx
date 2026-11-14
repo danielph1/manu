@@ -9,20 +9,24 @@ import {LayoutDashboard,Inbox,Clock3,MessageCircle,FileText,Target,CheckSquare,B
 import type {LucideIcon} from 'lucide-react';
 type LinkDef={href:string;label:string;icon:LucideIcon;roles?:string[]};
 const ALL=['vendedor','gerente','admin','superadmin','marketing','documentista','documento','elfenai','mecanico','guariba'];
+const COMERCIAL=['superadmin','admin','gerente','marketing','vendedor'];
+const CREDITO=[...COMERCIAL,'elfenai','elfen_ai','elfenaí'];
+const DOCUMENTAL=['superadmin','admin','gerente','vendedor','documentista','documento'];
+const FATURAMENTO=[...COMERCIAL,'documentista','documento'];
 const MGR=['gerente','admin','superadmin'];
 const ADMIN=['admin','marketing','superadmin'];
 const METRIC=['admin','marketing','gerente','superadmin'];
 const sections:{id:string;title:string;links:LinkDef[]}[]=[
  {id:'leads',title:'Leads e atendimento',links:[
   {href:'/triagem',label:'Triagem',icon:Inbox,roles:METRIC},
-  {href:'/painel',label:'Painel de Leads',icon:LayoutDashboard,roles:ALL},
+  {href:'/painel',label:'Painel de Leads',icon:LayoutDashboard,roles:COMERCIAL},
   {href:'/follow-up',label:'Follow Up',icon:FolderHeart,roles:['vendedor',...MGR]},
   {href:'/atendimento',label:'Gestão de Atendimento',icon:Clock3,roles:METRIC},
-  {href:'/chat',label:'Conversas',icon:MessageCircle,roles:ALL},
-  {href:'/novo-lead',label:'Cadastrar Lead',icon:PlusCircle,roles:ALL},
+  {href:'/chat',label:'Conversas',icon:MessageCircle,roles:COMERCIAL},
+  {href:'/novo-lead',label:'Cadastrar Lead',icon:PlusCircle,roles:COMERCIAL},
  ]},
  {id:'comercial',title:'Comercial e resultados',links:[
-  {href:'/fichas',label:'Fichas',icon:FileText,roles:ALL},
+  {href:'/fichas',label:'Fichas',icon:FileText,roles:CREDITO},
   {href:'/tarefas',label:'Tarefas',icon:CheckSquare,roles:ALL},
   {href:'/metas',label:'Metas',icon:Target,roles:ALL},
   {href:'/metricas',label:'Métricas',icon:BarChart3,roles:METRIC},
@@ -33,9 +37,9 @@ const sections:{id:string;title:string;links:LinkDef[]}[]=[
   {href:'/estoque',label:'Estoque',icon:Car,roles:ALL},
   {href:'/anuncios',label:'Anúncios',icon:Megaphone,roles:METRIC},
   {href:'/anuncio-coletivo',label:'Anúncio coletivo',icon:Megaphone,roles:METRIC},
-  {href:'/processos',label:'Transferências',icon:ArrowRightLeft,roles:ALL},
+  {href:'/processos',label:'Transferências',icon:ArrowRightLeft,roles:DOCUMENTAL},
   {href:'/oficina',label:'Oficina',icon:Wrench,roles:ALL},
-  {href:'/faturamento',label:'Faturamento',icon:Receipt,roles:ALL},
+  {href:'/faturamento',label:'Faturamento',icon:Receipt,roles:FATURAMENTO},
  ]},
  {id:'admin',title:'Administração',links:[
   {href:'/equipe',label:'Equipe',icon:Users,roles:MGR},

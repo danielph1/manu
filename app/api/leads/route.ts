@@ -167,7 +167,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const vendedor = await queryOne<{ id: number; empresa_id: number | null; loja: string | null }>(
-      `SELECT id, empresa_id, loja FROM public.vendedores WHERE id = $1 AND COALESCE(ativo,TRUE)=TRUE`, [vendedorId],
+      `SELECT id, empresa_id, loja FROM public.vendedores v
+        WHERE id=$1 AND COALESCE(v.ativo,FALSE)=TRUE
+          AND EXISTS(SELECT 1 FROM public.usuarios u WHERE u.vendedor_id=v.id
+            AND u.empresa_id=v.empresa_id AND LOWER(u.tipo)='vendedor'
+            AND COALESCE(u.ativo,FALSE) AND LOWER(COALESCE(u.status,'ativo'))='ativo')`, [vendedorId],
     );
     if (!vendedor?.empresa_id) return NextResponse.json({ error: 'Vendedor não encontrado ou sem empresa vinculada' }, { status: 400 });
     const empresaId = Number(vendedor.empresa_id);

@@ -28,7 +28,8 @@ export async function POST(req: NextRequest) {
     const result = await client.query<{ id: number }>(`
       SELECT l.id FROM public.leads l
       JOIN public.vendedores v ON v.id=l.vendedor_id
-      WHERE v.empresa_id IS NOT NULL AND COALESCE(l.rotacionar, TRUE)=TRUE
+      WHERE v.empresa_id IS NOT NULL AND l.empresa_id=v.empresa_id AND COALESCE(v.ativo,FALSE)=TRUE
+        AND COALESCE(l.rotacionar, TRUE)=TRUE
         AND COALESCE(l.respondeu,FALSE)=FALSE
         AND COALESCE(TRIM(l.comentario_interno),'')=''
         AND COALESCE(l.venda_concluida,FALSE)=FALSE
@@ -42,7 +43,8 @@ export async function POST(req: NextRequest) {
         const locked = await client.query<{ id: number; vendedor_id: number; empresa_id: number; loja: string | null }>(`
           SELECT l.id, l.vendedor_id, v.empresa_id, v.loja
           FROM public.leads l JOIN public.vendedores v ON v.id=l.vendedor_id
-          WHERE l.id=$1 AND v.empresa_id IS NOT NULL
+          WHERE l.id=$1 AND v.empresa_id IS NOT NULL AND l.empresa_id=v.empresa_id
+            AND COALESCE(v.ativo,FALSE)=TRUE
             AND COALESCE(l.respondeu,FALSE)=FALSE
             AND COALESCE(l.rotacionar,TRUE)=TRUE
             AND COALESCE(TRIM(l.comentario_interno),'')=''
@@ -53,7 +55,10 @@ export async function POST(req: NextRequest) {
         if (!atual) { await client.query('ROLLBACK'); continue; }
         const candidate = await client.query<{ id: number }>(`
           SELECT id FROM public.vendedores
-          WHERE empresa_id=$1 AND COALESCE(ativo,TRUE)=TRUE AND id<>$2
+          WHERE empresa_id=$1 AND COALESCE(ativo,FALSE)=TRUE AND id<>$2
+            AND EXISTS (SELECT 1 FROM public.usuarios u WHERE u.vendedor_id=public.vendedores.id
+               AND u.empresa_id=public.vendedores.empresa_id AND LOWER(u.tipo)='vendedor'
+               AND COALESCE(u.ativo,FALSE) AND LOWER(COALESCE(u.status,'ativo'))='ativo')
           ORDER BY CASE WHEN UPPER(COALESCE(loja,''))=UPPER(COALESCE($3,'')) THEN 0 ELSE 1 END,
                    random() LIMIT 1`, [atual.empresa_id, atual.vendedor_id, atual.loja]);
         const to = candidate.rows[0]?.id;

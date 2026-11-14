@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
 
   if (u.tipo === 'vendedor' && u.vendedor_id) {
     params.push(u.vendedor_id);
-    where.push(`f.vendedor_id = $${params.length}`);
+    where.push(`EXISTS (SELECT 1 FROM public.leads lx WHERE lx.id=f.lead_id AND lx.vendedor_id=$${params.length} AND lx.empresa_id=$${params.length-1})`);
   } else if (u.tipo === 'gerente' && u.loja) {
     params.push(u.loja);
     where.push(`f.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER($${params.length}))`);

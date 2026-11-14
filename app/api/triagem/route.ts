@@ -19,7 +19,10 @@ async function expirar(empresaId: number | null, superadmin: boolean) {
   for(const t of rows) {
     const v=await queryOne<{id:number}>(
       `SELECT id FROM public.vendedores
-        WHERE empresa_id=$1 AND COALESCE(ativo,TRUE)=TRUE AND LOWER(COALESCE(nome,'')) <> 'matheus'
+        WHERE empresa_id=$1 AND COALESCE(ativo,FALSE)=TRUE
+          AND EXISTS (SELECT 1 FROM public.usuarios u WHERE u.vendedor_id=public.vendedores.id
+            AND u.empresa_id=public.vendedores.empresa_id AND LOWER(u.tipo)='vendedor'
+            AND COALESCE(u.ativo,FALSE) AND LOWER(COALESCE(u.status,'ativo'))='ativo')
         ORDER BY random() LIMIT 1`,[t.empresa_id]);
     if(v) await virarLead(t.id,v.id,t.empresa_id).catch(err=>console.error('triagem auto',err instanceof Error?err.message:'erro'));
   }
@@ -35,7 +38,10 @@ async function virarLead(triagemId:number,vendedorId:number,empresaPermitida:num
       `SELECT * FROM public.triagem WHERE id=$1 AND status='aguardando' FOR UPDATE`,[triagemId]);
     if(!t) {await client.query('ROLLBACK');return null;}
     const {rows:[v]}=await client.query(
-      `SELECT id,empresa_id FROM public.vendedores WHERE id=$1`,[vendedorId]);
+      `SELECT id,empresa_id FROM public.vendedores v WHERE id=$1 AND COALESCE(v.ativo,FALSE)=TRUE
+          AND EXISTS(SELECT 1 FROM public.usuarios u WHERE u.vendedor_id=v.id AND u.empresa_id=v.empresa_id
+            AND LOWER(u.tipo)='vendedor' AND COALESCE(u.ativo,FALSE)
+            AND LOWER(COALESCE(u.status,'ativo'))='ativo')`,[vendedorId]);
     if(!v || !v.empresa_id || (t.empresa_id!=null && Number(t.empresa_id)!==Number(v.empresa_id)) ||
        (empresaPermitida!=null && Number(v.empresa_id)!==empresaPermitida)) {
       await client.query('ROLLBACK');throw new Error('vendedor não pertence à empresa do lead');
@@ -117,7 +123,11 @@ export async function POST(req:NextRequest) {
     if(!alvo) return NextResponse.json({error:'triagem não encontrada na sua empresa'},{status:404});
     if(!vendedorId&&b?.loja) {
       const v=await queryOne<{id:number}>(
-        `SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,''))=UPPER($1)
+        `SELECT id FROM public.vendedores v WHERE UPPER(COALESCE(v.loja,''))=UPPER($1)
+          AND COALESCE(v.ativo,FALSE)=TRUE
+          AND EXISTS(SELECT 1 FROM public.usuarios u WHERE u.vendedor_id=v.id AND u.empresa_id=v.empresa_id
+            AND LOWER(u.tipo)='vendedor' AND COALESCE(u.ativo,FALSE)
+            AND LOWER(COALESCE(u.status,'ativo'))='ativo')
           AND ($2::boolean OR empresa_id=$3) AND ($4::int IS NULL OR empresa_id=$4)
           ORDER BY random() LIMIT 1`,
         [String(b.loja).slice(0,30),actor.tipo==='superadmin',actor.empresa_id,alvo.empresa_id],

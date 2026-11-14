@@ -11,7 +11,10 @@ export async function GET(req: NextRequest) {
     // O superadmin pode escolher a empresa; os demais recebem apenas seus vendedores.
     // Nunca agrupar por nome: pessoas com nomes iguais em lojas diferentes são distintas.
     const params: unknown[] = [];
-    const where: string[] = ['COALESCE(v.ativo,TRUE)=TRUE', 'v.empresa_id IS NOT NULL'];
+    const where: string[] = ['COALESCE(v.ativo,FALSE)=TRUE', 'v.empresa_id IS NOT NULL',
+      `EXISTS(SELECT 1 FROM public.usuarios u WHERE u.vendedor_id=v.id AND u.empresa_id=v.empresa_id
+        AND LOWER(u.tipo)='vendedor' AND COALESCE(u.ativo,FALSE)
+        AND LOWER(COALESCE(u.status,'ativo'))='ativo')`];
     if (u.tipo !== 'superadmin') {
       if (!u.empresa_id) return NextResponse.json({ error: 'Usuário sem empresa vinculada' }, { status: 403 });
       params.push(Number(u.empresa_id));

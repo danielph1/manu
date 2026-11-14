@@ -1,9 +1,11 @@
 import { queryOne } from '@/lib/db';
 import { leadAcessivel } from '@/lib/lead-access';
 import type { SessionUser } from '@/lib/session';
+import { permiteArea } from '@/lib/permissoes-acesso';
 
 /** Acesso às fichas é conferido no servidor, nunca por um ID fornecido pelo browser. */
 export async function fichaAcessivel(u: SessionUser, ficha: { lead_id?: number | null; vendedor_id?: number | null }) {
+  if (!permiteArea(u.tipo,'fichas')) return false;
   if (u.tipo === 'superadmin') return true;
   if (ficha.lead_id) return Boolean(await leadAcessivel(u, Number(ficha.lead_id)));
   // Fichas legadas sem lead: liberar somente se a empresa do vendedor for conhecida.

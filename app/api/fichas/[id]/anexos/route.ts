@@ -37,11 +37,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     await ensureAnexos('ficha_anexos', 'ficha_id');
     await salvarAnexo('ficha_anexos', 'ficha_id', Number(id), b.nome || 'anexo', b.mime || 'application/octet-stream', b.arquivo_b64);
-    await notificar({
+    const dono=await queryOne<{empresa_id:number|null}>(`SELECT COALESCE(l.empresa_id,v.empresa_id) AS empresa_id
+      FROM public.fichas_credito f LEFT JOIN public.leads l ON l.id=f.lead_id
+      LEFT JOIN public.vendedores v ON v.id=f.vendedor_id WHERE f.id=$1`,[Number(id)]);
+    if (dono?.empresa_id) await notificar({
       titulo: 'Anexo na ficha',
       mensagem: `${u.nome || u.login} anexou ${b.nome || 'arquivo'} na ficha #${id}`,
       tipo: 'ficha',
       tipos: ['elfenai', 'elfenaí', 'admin', 'gerente'],
+      empresa_id:Number(dono.empresa_id),
     });
     return NextResponse.json({ ok: true });
   } catch (e: any) {

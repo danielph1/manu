@@ -1,4 +1,5 @@
-import {NextRequest,NextResponse} from 'next/server';import {query,queryOne} from '@/lib/db';
+import {NextRequest,NextResponse} from 'next/server';import {query,queryOne,getPool} from '@/lib/db';
+import {auditarAlteracao} from '@/lib/auditoria';
 import {requireUser,can} from '@/lib/session';
 export const runtime='nodejs';export const dynamic='force-dynamic';
 export async function GET(req:NextRequest){

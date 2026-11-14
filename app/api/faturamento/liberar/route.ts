@@ -5,7 +5,7 @@ import { auditarAlteracao } from '@/lib/auditoria';
 import { notificar } from '@/lib/notify';
 
 export const runtime='nodejs';
-const PERMITIDOS=new Set(['superadmin','admin','gerente','marketing','documentista','documento','elfenai','elfenaí']);
+const PERMITIDOS=new Set(['superadmin','admin','gerente','marketing','documentista','documento']);
 const positive=(x:unknown)=>{const n=Number(x);return Number.isSafeInteger(n)&&n>0?n:0};
 
 /** Liberação pelo ID do faturamento. Estoque e Transferências mudam na mesma transação. */
