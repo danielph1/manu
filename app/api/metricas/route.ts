@@ -228,9 +228,10 @@ export async function GET(req: NextRequest) {
       const r=await queryOne<any>(`WITH docs AS (
         SELECT DISTINCT ON (l.id) l.id AS lead_id,
           GREATEST(COALESCE(f.entrada_total,0),0) AS entrada,
-          GREATEST(COALESCE(NULLIF(fc.valor_liberado,0),NULLIF(fc.valor_financiado,0),0),0) AS financiado
+          GREATEST(COALESCE(af.valor_informado,NULLIF(fc.valor_liberado,0),NULLIF(fc.valor_financiado,0),0),0) AS financiado
         FROM public.faturamentos f LEFT JOIN public.fichas_credito fc ON fc.id=f.ficha_id
         JOIN public.leads l ON l.id=COALESCE(f.lead_id,fc.lead_id) AND l.empresa_id=f.empresa_id
+        LEFT JOIN public.manu_fin_venda_ajustes af ON af.lead_id=l.id AND af.empresa_id=l.empresa_id AND af.componente='financiamento'
         WHERE ${w} ORDER BY l.id,f.id DESC)
         SELECT COUNT(*)::int AS vendas_com_documento,
          COALESCE(SUM(entrada),0)::numeric AS entradas,

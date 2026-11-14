@@ -66,15 +66,18 @@ export async function materializar(empresaId?:number) {
   await c.query('COMMIT');
  }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e;}finally{c.release();}
 }
-export async function reconcilePaid(empresaId:number){
+export async function reconcilePaid(empresaId:number,desde:string|null=null,ate:string|null=null){
  const r=await queryOne<{entradas:string;saidas:string;oficina:string;gerais:string;lancamentos:number}>(`
  SELECT COALESCE(SUM(valor) FILTER(WHERE tipo='entrada'),0)::text AS entradas,
   COALESCE(SUM(valor) FILTER(WHERE tipo='saida'),0)::text AS saidas,
   COALESCE(SUM(valor) FILTER(WHERE tipo='saida' AND origem_tipo='oficina'),0)::text AS oficina,
   COALESCE(SUM(valor) FILTER(WHERE tipo='saida' AND COALESCE(origem_tipo,'')<>'oficina'),0)::text AS gerais,
   COUNT(*)::int AS lancamentos
- FROM public.manu_movimentos_caixa WHERE empresa_id=$1 AND status='confirmado'`,[empresaId]);
- const n=(v:any)=>Number(v||0);
+ FROM public.manu_movimentos_caixa
+ WHERE empresa_id=$1 AND status='confirmado'
+   AND ($2::date IS NULL OR data_movimento >= $2::date)
+   AND ($3::date IS NULL OR data_movimento <= $3::date)`,[empresaId,desde,ate]);
+ const n=(v:unknown)=>Number(v||0);
  return {entradas:n(r?.entradas),saidas:n(r?.saidas),oficina:n(r?.oficina),outras_saidas:n(r?.gerais),
    saldo_caixa:n(r?.entradas)-n(r?.saidas),saldo_operacional:n(r?.entradas)-n(r?.oficina),
    lancamentos_confirmados:Number(r?.lancamentos||0)};

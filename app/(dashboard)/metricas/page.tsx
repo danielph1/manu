@@ -146,7 +146,7 @@ export default function MetricasPage() {
       </form>}
       {d.caixa?.lancamentos===0&&<p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-300">Nenhum movimento de caixa confirmado foi registrado neste recorte. R$ 0,00 não comprova que não houve transações reais; o histórico financeiro precisa ser conciliado.</p>}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Tile titulo="Bruto de vendas documentado" valor={brl(d.vendas_monetarias?.bruto)} descricao="Financiamento + entrada, apenas faturas vinculadas a vendas. Não comprova recebimento." icon={FileText}/>
+        <Tile titulo="Total documental identificado" valor={brl(d.vendas_monetarias?.bruto)} descricao="Entrada + financiamento liberado informado dos leads com venda; faturas sem venda e financiamentos desconhecidos não são somados." icon={FileText}/>
         <Tile titulo="Saídas líquidas da oficina" valor={brl(d.caixa?.oficina)} descricao="Gastos efetivamente pagos na oficina" icon={ArrowUpRight}/>
         <Tile titulo="Saldo operacional recebido" valor={brl(d.caixa?.saldo_operacional)} descricao="Entradas recebidas confirmadas menos gastos pagos de oficina" icon={Wallet}/>
         <Tile titulo="Entradas confirmadas" valor={brl(d.caixa?.entradas)} descricao="Dinheiro realmente baixado no caixa; {d.caixa?.lancamentos||0} movimentos confirmados" icon={ArrowDownRight}/>
