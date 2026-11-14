@@ -15,9 +15,17 @@ export async function POST(req:NextRequest){
   await client.query('BEGIN');
   const r=await client.query<any>(`SELECT f.id,f.empresa_id,f.loja,f.entrada_total,f.entrada_boleto,f.placa,
        l.id AS lead_id,l.venda_concluida,l.data_venda,
-       COALESCE(NULLIF(fc.valor_liberado,0),NULLIF(fc.valor_financiado,0)) AS financiado
+       COALESCE(CASE WHEN fc.lead_id=l.id THEN NULLIF(fc.valor_liberado,0) END,
+        CASE WHEN fc.lead_id=l.id THEN NULLIF(fc.valor_financiado,0) END,
+        fallback.financiado) AS financiado
     FROM public.faturamentos f LEFT JOIN public.fichas_credito fc ON fc.id=f.ficha_id
     JOIN public.leads l ON l.id=COALESCE(f.lead_id,fc.lead_id) AND l.empresa_id=f.empresa_id
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(NULLIF(ff.valor_liberado,0),NULLIF(ff.valor_financiado,0)) AS financiado
+      FROM public.fichas_credito ff WHERE ff.lead_id=l.id
+      AND COALESCE(NULLIF(ff.valor_liberado,0),NULLIF(ff.valor_financiado,0)) IS NOT NULL
+      ORDER BY (ff.id=f.ficha_id) DESC,ff.id DESC LIMIT 1
+    ) fallback ON TRUE
     WHERE f.id=$1 AND f.empresa_id=$2 AND LOWER(COALESCE(f.status,'')) NOT IN ('cancelado','excluido','excluído')
       AND (l.venda_concluida=TRUE OR l.data_venda IS NOT NULL)
     FOR UPDATE OF l`,[id,auth.empresaId]);
@@ -61,6 +69,19 @@ export async function POST(req:NextRequest){
   }else if(acao==='receber'){
    if(esperado==null||esperado<=0)throw Error('Financiamento ainda sem valor liberado. Registre o valor antes de receber');
    const valor=money(b?.valor),dia=dateOnly(b?.data_movimento);
+   const promessaId=positive(b?.promessa_id)||null;
+   if(b?.promessa_id!=null&&!promessaId)throw Error('Agendamento inválido');
+   if(promessaId){
+     const compromisso=await client.query<any>(`SELECT id,valor,ativo FROM public.manu_fin_venda_promessas
+       WHERE id=$1 AND empresa_id=$2 AND lead_id=$3 AND faturamento_id=$4 AND componente=$5 FOR UPDATE`,
+       [promessaId,auth.empresaId,f.lead_id,id,componente]);
+     if(!compromisso.rows[0]?.ativo)throw Error('Agendamento inexistente, cancelado ou de outra venda');
+     const jaPromessa=await client.query<{total:number}>(`SELECT COALESCE(SUM(valor),0)::numeric AS total
+       FROM public.manu_fin_pagamentos_venda WHERE promessa_id=$1 AND empresa_id=$2 AND estornado_em IS NULL`,
+       [promessaId,auth.empresaId]);
+     if(Number(jaPromessa.rows[0]?.total||0)+valor>Number(compromisso.rows[0].valor)+0.009)
+       throw Error('Pagamento maior que o saldo agendado');
+   }
    const descontoNovo=b?.desconto===undefined?descontoAtual:Number(b.desconto);
    if(!Number.isFinite(descontoNovo)||descontoNovo<0||descontoNovo>=esperado)throw Error('Desconto inválido');
    const motivo=String(b?.observacao||'').trim();
@@ -80,8 +101,8 @@ export async function POST(req:NextRequest){
    const ja=Number(parcelas?.valor||0)+Number(antigo?.valor||0);
    if(ja+Number(valor)>esperado-descontoNovo+0.009)throw Error(`Recebimento ultrapassa saldo: R$ ${Math.max(0,esperado-descontoNovo-ja).toFixed(2)}`);
    await client.query(`INSERT INTO public.manu_fin_pagamentos_venda
-     (empresa_id,lead_id,faturamento_id,componente,valor,pago_em,observacao,criado_por)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[auth.empresaId,f.lead_id,id,componente,valor,dia,String(b?.observacao||'').slice(0,500),auth.actor.id]);
+     (empresa_id,lead_id,faturamento_id,componente,promessa_id,valor,pago_em,observacao,criado_por)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[auth.empresaId,f.lead_id,id,componente,promessaId,valor,dia,String(b?.observacao||'').slice(0,500),auth.actor.id]);
   }else{
    const pagamentoId=positive(b?.pagamento_id);
    if(!pagamentoId)throw Error('Pagamento inválido');

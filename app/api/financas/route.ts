@@ -20,10 +20,20 @@ export async function GET(req:NextRequest){
     f.id AS faturamento_id,f.loja,f.placa,f.created_at,COALESCE(l.data_venda,f.created_at) AS data_venda,
     GREATEST(COALESCE(f.entrada_total,0)-COALESCE(f.entrada_boleto,0),0)::numeric AS entrada_documentada,
     GREATEST(COALESCE(f.entrada_boleto,0),0)::numeric AS boleto_documentado,
-    COALESCE(NULLIF(fc.valor_liberado,0),NULLIF(fc.valor_financiado,0))::numeric AS financiado_ficha,
+    COALESCE(
+      CASE WHEN fc.lead_id=l.id THEN NULLIF(fc.valor_liberado,0) END,
+      CASE WHEN fc.lead_id=l.id THEN NULLIF(fc.valor_financiado,0) END,
+      fallback.financiado
+    )::numeric AS financiado_ficha,
     f.fin_parcelas,f.fin_valor_parcela
    FROM public.faturamentos f LEFT JOIN public.fichas_credito fc ON fc.id=f.ficha_id
    JOIN public.leads l ON l.id=COALESCE(f.lead_id,fc.lead_id) AND l.empresa_id=f.empresa_id
+   LEFT JOIN LATERAL (
+    SELECT COALESCE(NULLIF(ff.valor_liberado,0),NULLIF(ff.valor_financiado,0)) AS financiado
+    FROM public.fichas_credito ff WHERE ff.lead_id=l.id
+    AND COALESCE(NULLIF(ff.valor_liberado,0),NULLIF(ff.valor_financiado,0)) IS NOT NULL
+    ORDER BY (ff.id=f.ficha_id) DESC, ff.id DESC LIMIT 1
+   ) fallback ON TRUE
    WHERE f.empresa_id=$1 AND (l.venda_concluida=TRUE OR l.data_venda IS NOT NULL)
     AND LOWER(COALESCE(f.status,'')) NOT IN ('cancelado','excluido','excluído')
     AND ($2::date IS NULL OR COALESCE(l.data_venda,f.created_at)::date >= $2::date)
@@ -41,7 +51,7 @@ export async function GET(req:NextRequest){
    LEFT JOIN public.manu_fin_venda_ajustes ab ON ab.empresa_id=$1 AND ab.lead_id=f.lead_id AND ab.componente='boleto'
    LEFT JOIN public.manu_fin_venda_ajustes af ON af.empresa_id=$1 AND af.lead_id=f.lead_id AND af.componente='financiamento'
    ORDER BY f.data_venda DESC LIMIT 250`;
-  const [caixa,agenda,parcelas,boletos,vendas,semVinculo,novosPagamentos,pagamentosParcela,legados,movimentos]=await Promise.all([
+  const [caixa,agenda,parcelas,boletos,vendas,semVinculo,novosPagamentos,pagamentosParcela,legados,movimentos,promessas]=await Promise.all([
    reconcilePaid(empresaId,desde,ate),
    query(`SELECT a.*,l.nome_lead AS cliente FROM public.manu_fin_agendamentos a
       LEFT JOIN public.leads l ON l.id=a.lead_id AND l.empresa_id=a.empresa_id
@@ -85,7 +95,7 @@ export async function GET(req:NextRequest){
        WHEN t.vendida IS NOT TRUE THEN 'lead_sem_venda' ELSE 'duplicado' END AS motivo
     FROM todas t WHERE NOT EXISTS(SELECT 1 FROM escolhidas e WHERE e.id=t.id)
     ORDER BY t.id DESC LIMIT 200`,scope),
-   query(`SELECT pg.id,pg.empresa_id,pg.lead_id,pg.faturamento_id,pg.componente,pg.valor,pg.pago_em,pg.observacao,pg.estornado_em
+   query(`SELECT pg.id,pg.empresa_id,pg.lead_id,pg.faturamento_id,pg.componente,pg.promessa_id,pg.valor,pg.pago_em,pg.observacao,pg.estornado_em
       FROM public.manu_fin_pagamentos_venda pg WHERE pg.empresa_id=$1
       ORDER BY pg.pago_em DESC,pg.id DESC LIMIT 2000`,[empresaId]),
    query(`SELECT pg.id,pg.parcela_id,pg.valor,pg.pago_em,pg.observacao,pg.estornado_em
@@ -98,7 +108,17 @@ export async function GET(req:NextRequest){
    query(`SELECT id,loja,tipo,status,categoria,descricao,valor,data_movimento,origem_tipo,origem_id FROM public.manu_movimentos_caixa
       WHERE empresa_id=$1 AND ($2::date IS NULL OR data_movimento >= $2::date)
       AND ($3::date IS NULL OR data_movimento <= $3::date)
-      ORDER BY data_movimento DESC,id DESC LIMIT 300`,scope)
+      ORDER BY data_movimento DESC,id DESC LIMIT 300`,scope),
+   query(`SELECT p.id,p.empresa_id,p.lead_id,p.faturamento_id,p.componente,p.valor,p.vencimento,
+      p.observacao,p.ativo,p.criado_em,l.nome_lead AS cliente,f.placa,f.loja,
+      COALESCE(SUM(pg.valor) FILTER (WHERE pg.estornado_em IS NULL),0)::numeric AS recebido
+      FROM public.manu_fin_venda_promessas p
+      JOIN public.leads l ON l.id=p.lead_id AND l.empresa_id=p.empresa_id
+      JOIN public.faturamentos f ON f.id=p.faturamento_id AND f.empresa_id=p.empresa_id
+      LEFT JOIN public.manu_fin_pagamentos_venda pg ON pg.promessa_id=p.id AND pg.empresa_id=p.empresa_id
+      WHERE p.empresa_id=$1
+      GROUP BY p.id,l.nome_lead,f.placa,f.loja
+      ORDER BY p.vencimento ASC,p.id DESC LIMIT 500`,[empresaId])
   ]);
   const ds=vendas.rows as Array<any>;
   return NextResponse.json({caixa,desde,ate,
@@ -109,6 +129,7 @@ export async function GET(req:NextRequest){
     financiamento_ausente:ds.filter(f=>f.financiamento==null).length,
     documentos_nao_conciliados:semVinculo.rows,
     pagamentos_venda:novosPagamentos.rows,pagamentos_parcela:pagamentosParcela.rows,
+    promessas:promessas.rows,
     movimentos_recebidos:legados.rows,
     agenda:agenda.rows,parcelas:parcelas.rows,clientes_boleto:boletos.rows,movimentos:movimentos.rows,
     nota:'Bruto = soma dos valores documentados identificados (pode faltar financiamento). Recebido = apenas baixas reais por data. Documentos sem venda CRM ficam em separado.'},

@@ -52,6 +52,43 @@ export async function GET(req:NextRequest){
      tipo:'financeiro',empresa_id:a.empresa_id,usuario_ids:usuarios,url:'/financas'});
    enviados++;
   }
+  // V3: lembretes de parcelas de vendas, separados do financeiro genérico.
+  // A previsão nunca movimenta caixa; apenas a baixa de venda faz isso.
+  const promessasAtraso=(await query<{promessa_id:number;empresa_id:number;classe:string}>(`
+    INSERT INTO public.manu_fin_promessa_alertas(empresa_id,promessa_id,classe)
+    SELECT p.empresa_id,p.id,
+      CASE WHEN p.vencimento=timezone('America/Sao_Paulo',now())::date+3 THEN 'antes'
+           WHEN p.vencimento=timezone('America/Sao_Paulo',now())::date THEN 'vence_hoje'
+           ELSE 'atraso' END
+    FROM public.manu_fin_venda_promessas p
+    WHERE p.ativo AND p.vencimento IN (
+      timezone('America/Sao_Paulo',now())::date+3,
+      timezone('America/Sao_Paulo',now())::date,
+      timezone('America/Sao_Paulo',now())::date-1)
+      AND p.valor > COALESCE((SELECT SUM(pg.valor) FROM public.manu_fin_pagamentos_venda pg
+         WHERE pg.promessa_id=p.id AND pg.empresa_id=p.empresa_id AND pg.estornado_em IS NULL),0)
+    ON CONFLICT(promessa_id,classe) DO NOTHING
+    RETURNING promessa_id,empresa_id,classe`)).rows;
+  for(const p of promessasAtraso){
+   const detalhe=(await query<any>(`SELECT pr.vencimento,pr.valor,pr.componente,
+      l.nome_lead AS cliente,
+      COALESCE((SELECT SUM(pg.valor) FROM public.manu_fin_pagamentos_venda pg
+        WHERE pg.promessa_id=pr.id AND pg.empresa_id=pr.empresa_id AND pg.estornado_em IS NULL),0)::numeric AS recebido
+      FROM public.manu_fin_venda_promessas pr JOIN public.leads l
+        ON l.id=pr.lead_id AND l.empresa_id=pr.empresa_id
+      WHERE pr.id=$1 AND pr.empresa_id=$2`,[p.promessa_id,p.empresa_id])).rows[0];
+   if(!detalhe)continue;
+   const pendente=Math.max(0,Number(detalhe.valor)-Number(detalhe.recebido));
+   if(pendente<0.01)continue;
+   const usuarios=(await query<{id:number}>(`SELECT id FROM public.usuarios
+     WHERE COALESCE(ativo,TRUE)=TRUE AND
+       ((tipo='admin' AND empresa_id=$1) OR tipo='superadmin')`,[p.empresa_id])).rows.map(x=>x.id);
+   if(!usuarios.length)continue;
+   await notificar({titulo:p.classe==='antes'?'Recebimento combinado vence em 3 dias':
+     p.classe==='vence_hoje'?'Recebimento combinado para hoje':'Recebimento combinado vencido',
+     mensagem:`${detalhe.cliente} · ${detalhe.componente} · R$ ${pendente.toFixed(2)} · ${String(detalhe.vencimento).slice(0,10)}`,
+     tipo:'financeiro',empresa_id:p.empresa_id,usuario_ids:usuarios,url:'/financas'});
+  }
   return NextResponse.json({ok:true,alertas_novos:alertas.length,envios_solicitados:enviados},
      {headers:{'Cache-Control':'no-store'}});
  }catch(e){console.error('[financas cron]',e instanceof Error?e.message:'erro');

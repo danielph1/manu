@@ -18,21 +18,24 @@ type Venda={lead_id:number;cliente:string;faturamento_id:number;loja:string;plac
  desconto_entrada:number;desconto_boleto:number;desconto_financiamento:number;
  fin_parcelas:number|string|null;fin_valor_parcela:number|string|null};
 type PagamentoVenda={id:number;empresa_id:number;lead_id:number;faturamento_id:number;componente:string;
- valor:number;pago_em:string;observacao:string;estornado_em:string|null};
+ promessa_id:number|null;valor:number;pago_em:string;observacao:string;estornado_em:string|null};
+type Promessa={id:number;empresa_id:number;lead_id:number;faturamento_id:number;componente:'entrada'|'boleto'|'financiamento';
+ valor:number;recebido:number;vencimento:string;observacao:string;ativo:boolean;cliente:string;placa:string;loja:string};
+type AgendarVenda={venda:Venda;componente:'entrada'|'boleto'|'financiamento';valor:string;vencimento:string;observacao:string};
 type PagamentoParcela={id:number;parcela_id:number;valor:number;pago_em:string;observacao:string;estornado_em:string|null};
 type Movimento={id:number;loja:string;tipo:string;status:string;categoria:string;descricao:string;
  valor:number;data_movimento:string;origem_tipo:string|null;origem_id:string|null};
 type Data={caixa:{entradas:number;saidas:number;oficina:number;outras_saidas:number;
  saldo_caixa:number;saldo_operacional:number;lancamentos_confirmados:number};
  bruto_documentado:number;financiamento_ausente:number;desde:string|null;ate:string|null;
- vendas:Venda[];agenda:Agenda[];parcelas:Parcela[];
+ vendas:Venda[];agenda:Agenda[];parcelas:Parcela[];promessas:Promessa[];
  documentos_nao_conciliados:Array<{id:number;nome:string;placa:string;entrada_total:number;
   entrada_boleto:number;fin_parcelas:number|null;fin_valor_parcela:number|null;motivo:string;status:string}>;
  clientes_boleto:Array<{id:number;nome:string;faturamento_id:number|null}>;
  pagamentos_venda:PagamentoVenda[];pagamentos_parcela:PagamentoParcela[];
  movimentos_recebidos:Array<{id:number;origem_tipo:string;origem_id:string;valor:number;data_movimento:string}>;
  movimentos:Movimento[];nota:string};
-type FinanceSource={tipo:'parcela';parcela:Parcela}|{tipo:'venda';venda:Venda;componente:'entrada'|'boleto'|'financiamento'};
+type FinanceSource={tipo:'parcela';parcela:Parcela}|{tipo:'venda';venda:Venda;componente:'entrada'|'boleto'|'financiamento';promessa_id?:number};
 type Draft={fonte:FinanceSource;valor:string;desconto:string;data:string;observacao:string};
 const reais=(v:number|null|undefined)=>v==null?'Não informado':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v));
 const diaAtual=()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
@@ -68,6 +71,8 @@ export default function FinancasPage(){
  const [form,setForm]=useState(formularioVazio),[editando,setEditando]=useState<number|null>(null);
  const [criando,setCriando]=useState(false),[salvando,setSalvando]=useState(false);
  const [draft,setDraft]=useState<Draft|null>(null),[sourceFin,setSourceFin]=useState<{venda:Venda;valor:string;fonte:string}|null>(null);
+ const [agendarVenda,setAgendarVenda]=useState<AgendarVenda|null>(null);
+ const [mesCalendario,setMesCalendario]=useState(()=>diaAtual().slice(0,7)),[diaEscolhido,setDiaEscolhido]=useState('');
  const [preco,setPreco]=useState(''),[lojaAurox,setLojaAurox]=useState('');
  const [maisMensalidades,setMaisMensalidades]=useState(false);
  const es=useQuery({queryKey:['financas-empresas'],enabled:acesso,queryFn:async()=>
@@ -86,6 +91,13 @@ export default function FinancasPage(){
  const parcelas=d?.parcelas||[],manuais=parcelas.filter(x=>x.origem!=='aurox');
  const abertas=manuais.filter(p=>p.status!=='pago'&&p.status!=='cancelado'&&dataApenas(p.vencimento)>=hoje);
  const atrasadas=manuais.filter(p=>p.status!=='pago'&&p.status!=='cancelado'&&dataApenas(p.vencimento)<hoje);
+ const promessas=d?.promessas||[];
+ const abertasVenda=promessas.filter(p=>p.ativo&&Number(p.valor)-Number(p.recebido)>0.009&&dataApenas(p.vencimento)>=hoje);
+ const atrasadasVenda=promessas.filter(p=>p.ativo&&Number(p.valor)-Number(p.recebido)>0.009&&dataApenas(p.vencimento)<hoje);
+ const proximos=[...abertas.map(p=>({tipo:'conta' as const,p,vencimento:dataApenas(p.vencimento)})),
+   ...abertasVenda.map(p=>({tipo:'venda' as const,p,vencimento:dataApenas(p.vencimento)}))].sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
+ const vencidos=[...atrasadas.map(p=>({tipo:'conta' as const,p,vencimento:dataApenas(p.vencimento)})),
+   ...atrasadasVenda.map(p=>({tipo:'venda' as const,p,vencimento:dataApenas(p.vencimento)}))].sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
  const mensalidades=parcelas.filter(p=>p.origem==='aurox').sort((a,b)=>a.vencimento.localeCompare(b.vencimento));
  const proximaAurox=mensalidades.find(p=>p.status!=='pago'&&dataApenas(p.vencimento)>=hoje)||mensalidades.find(p=>p.status!=='pago');
  const contratoAurox=d?.agenda.find(a=>a.origem==='aurox');
@@ -96,6 +108,46 @@ export default function FinancasPage(){
  function legadoRecebido(v:Venda,c:string){return (d?.movimentos_recebidos||[]).filter(p=>p.origem_tipo===`faturamento_${c}`&&p.origem_id===`lead:${v.lead_id}`).reduce((s,p)=>s+Number(p.valor),0);}
  function recebidoVenda(v:Venda,c:string){return (pagosPorVenda.get(`${v.lead_id}:${c}`)||[]).filter(p=>!p.estornado_em)
    .reduce((s,p)=>s+Number(p.valor),0)+legadoRecebido(v,c);}
+ function saldoVenda(v:Venda,c:'entrada'|'boleto'|'financiamento'){
+  return v[c]==null?null:Math.max(0,Number(v[c])-Number(v[`desconto_${c}`]||0)-recebidoVenda(v,c));
+ }
+ function promessaPendente(p:Promessa){return Math.max(0,Number(p.valor)-Number(p.recebido));}
+ function agendadoAberto(v:Venda,c:string){return promessas.filter(p=>p.ativo&&p.lead_id===v.lead_id&&p.componente===c)
+  .reduce((s,p)=>s+promessaPendente(p),0);}
+ function primeiroVencimento(){const d=new Date();d.setDate(d.getDate()+7);
+  return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);}
+ function abrirAgendamentoVenda(v:Venda,c:'entrada'|'boleto'|'financiamento'){
+  const disponivel=Math.max(0,Number(saldoVenda(v,c)||0)-agendadoAberto(v,c));
+  if(!disponivel)return toast.error('Não há saldo livre para agendar. Confira os agendamentos já criados.');
+  setAgendarVenda({venda:v,componente:c,valor:disponivel.toFixed(2),vencimento:primeiroVencimento(),observacao:''});
+ }
+ async function salvarAgendamentoVenda(e:FormEvent){e.preventDefault();if(!agendarVenda||salvando)return;
+  const valor=moneyNumber(agendarVenda.valor);
+  if(!(valor>0)||!agendarVenda.vencimento)return toast.error('Informe valor e vencimento válidos');
+  setSalvando(true);try{await api.post('/financas/venda/promessas',enviar({
+   faturamento_id:agendarVenda.venda.faturamento_id,componente:agendarVenda.componente,
+   valor,vencimento:agendarVenda.vencimento,observacao:agendarVenda.observacao}));
+   toast.success('Recebimento agendado. Ainda não entrou no caixa.');setAgendarVenda(null);await atualizar();
+  }catch(e:any){toast.error(e?.response?.data?.error||'Não foi possível agendar o saldo');}finally{setSalvando(false);}}
+ async function editarPromessa(p:Promessa){if(!p.ativo||promessaPendente(p)<0.01)return;
+  const novo=prompt('Novo vencimento (AAAA-MM-DD):',dataApenas(p.vencimento));if(!novo)return;
+  try{await api.patch('/financas/venda/promessas',enviar({promessa_id:p.id,acao:'vencimento',vencimento:novo}));
+   toast.success('Vencimento atualizado');await atualizar();}catch(e:any){toast.error(e?.response?.data?.error||'Erro ao alterar vencimento');}}
+ async function cancelarPromessa(p:Promessa){if(!p.ativo||!confirm('Cancelar o saldo futuro agendado? Os recebimentos já feitos serão preservados.'))return;
+  try{await api.patch('/financas/venda/promessas',enviar({promessa_id:p.id,acao:'cancelar'}));
+   toast.success('Agendamento encerrado, sem excluir os recebimentos anteriores');await atualizar();}
+  catch(e:any){toast.error(e?.response?.data?.error||'Não foi possível cancelar');}}
+ async function abrirPagamentoPromessa(p:Promessa){
+  let v=d?.vendas.find(v=>v.lead_id===p.lead_id&&v.faturamento_id===p.faturamento_id);
+  if(!v){try{const resposta=await api.get('/financas',{params:enviar()});
+    v=(resposta.data?.vendas||[]).find((x:Venda)=>x.lead_id===p.lead_id&&x.faturamento_id===p.faturamento_id);
+   }catch(e:any){return toast.error(e?.response?.data?.error||'Não foi possível abrir o recebimento agendado');}}
+  if(!v)return toast.error('A venda não está mais disponível para conciliação. Verifique o faturamento original.');
+  const saldo=Math.min(promessaPendente(p),Number(saldoVenda(v,p.componente)||0));
+  if(saldo<0.01)return toast.message('Este compromisso já está quitado ou não tem saldo livre');
+  setDraft({fonte:{tipo:'venda',venda:v,componente:p.componente,promessa_id:p.id},
+   valor:saldo.toFixed(2),desconto:String(Number(v[`desconto_${p.componente}`]||0)),data:diaAtual(),observacao:p.observacao});
+ }
  async function atualizar(){await qc.invalidateQueries({queryKey:['financas-v2',empresaId]});}
  const enviar=(extras?:Record<string,unknown>)=>({...extras,empresa_id:superadmin?empresaId:undefined});
  async function salvarConta(e:FormEvent){e.preventDefault();if(salvando)return;
@@ -130,6 +182,7 @@ export default function FinancasPage(){
      enviar({acao:'receber',valor,...(draft.fonte.parcela.origem==='aurox'?{}:{desconto}),pago_em:draft.data,observacao:draft.observacao}));
    else await api.post('/financas/venda',enviar({acao:'receber',valor,desconto,
      faturamento_id:draft.fonte.venda.faturamento_id,componente:draft.fonte.componente,
+     ...(draft.fonte.promessa_id?{promessa_id:draft.fonte.promessa_id}:{}),
      data_movimento:draft.data,observacao:draft.observacao}));
    toast.success('Recebimento real registrado na data informada');setDraft(null);await atualizar();
   }catch(e:any){toast.error(e?.response?.data?.error||'Falha ao confirmar recebimento');}finally{setSalvando(false);}}
@@ -201,16 +254,27 @@ export default function FinancasPage(){
    {aba==='resumo'&&<div className="space-y-4">
     <div className="grid gap-4 lg:grid-cols-2">
      <Bloco titulo="Próximas contas a pagar e receber" descricao="Somente compromissos manuais; a assinatura Aurox é mostrada separadamente.">
-      {abertas.slice(0,6).map(p=><LinhaParcela key={p.id} p={p} pagamentos={pagamentosPorParcela.get(p.id)||[]} onReceber={abrirParcela}
-        onEstornar={estornarParcela} onVencimento={mudarVencimento} superadmin={superadmin}/>)}
-      {!abertas.length&&<Vazio>Nenhuma conta futura cadastrada.</Vazio>}
+      {proximos.slice(0,8).map(e=>e.tipo==='conta'?<LinhaParcela key={`parcela-${e.p.id}`} p={e.p}
+        pagamentos={pagamentosPorParcela.get(e.p.id)||[]} onReceber={abrirParcela}
+        onEstornar={estornarParcela} onVencimento={mudarVencimento} superadmin={superadmin}/>:
+        <LinhaPromessa key={`venda-${e.p.id}`} p={e.p} onReceber={abrirPagamentoPromessa}
+         onEditar={editarPromessa} onCancelar={cancelarPromessa}/>)}
+      {!proximos.length&&<Vazio>Nenhuma conta futura cadastrada.</Vazio>}
      </Bloco>
      <Bloco titulo="Contas vencidas" descricao="Saldos ainda não quitados. Pagamentos parciais ficam destacados.">
-      {atrasadas.slice(0,6).map(p=><LinhaParcela key={p.id} p={p} pagamentos={pagamentosPorParcela.get(p.id)||[]} onReceber={abrirParcela}
-        onEstornar={estornarParcela} onVencimento={mudarVencimento} superadmin={superadmin}/>)}
-      {!atrasadas.length&&<Vazio>Nenhuma pendência vencida.</Vazio>}
+      {vencidos.slice(0,8).map(e=>e.tipo==='conta'?<LinhaParcela key={`parcela-${e.p.id}`} p={e.p}
+        pagamentos={pagamentosPorParcela.get(e.p.id)||[]} onReceber={abrirParcela}
+        onEstornar={estornarParcela} onVencimento={mudarVencimento} superadmin={superadmin}/>:
+        <LinhaPromessa key={`venda-${e.p.id}`} p={e.p} onReceber={abrirPagamentoPromessa}
+         onEditar={editarPromessa} onCancelar={cancelarPromessa}/>)}
+      {!vencidos.length&&<Vazio>Nenhuma pendência vencida.</Vazio>}
      </Bloco>
     </div>
+    <Bloco titulo="Calendário de vencimentos" descricao="Verde: valores a receber. Vermelho: despesas a pagar e qualquer conta vencida. Mensalidade Aurox fica em sua própria seção.">
+     <CalendarioFinanceiro mes={mesCalendario} onMes={setMesCalendario} dia={diaEscolhido} onDia={setDiaEscolhido}
+       eventos={[...manuais.filter(p=>p.status!=='pago'&&p.status!=='cancelado').map(p=>({data:dataApenas(p.vencimento),tipo:p.tipo,descricao:p.descricao,valor:Number(p.valor||0)-Number(p.desconto||0)-Number(p.recebido||0)})),
+        ...promessas.filter(p=>p.ativo&&promessaPendente(p)>0.009).map(p=>({data:dataApenas(p.vencimento),tipo:'entrada',descricao:`${p.cliente} · ${nomesComponente[p.componente]}`,valor:promessaPendente(p)}))]}/>
+    </Bloco>
     <Bloco titulo="Assinatura Aurox" descricao="Contrato mensal protegido. As próximas competências são previsões, não doze cobranças atrasadas.">
      {contratoAurox?<div className="flex flex-wrap items-center gap-6">
       <p className="text-sm">Início do contrato: <strong>{mostrarData(contratoAurox.inicio)}</strong></p>
@@ -300,8 +364,18 @@ export default function FinancasPage(){
         </div>}
         <div className="mt-3 flex flex-wrap gap-2">
          {saldo!=null&&saldo>0&&<button className={btn} onClick={()=>abrirVenda(v,c)}>Registrar recebimento</button>}
+         {saldo!=null&&saldo>0.009&&<button className={`${btn} border-emerald-500/40 text-emerald-500`}
+           onClick={()=>abrirAgendamentoVenda(v,c)} disabled={saldo-agendadoAberto(v,c)<0.01}>
+            <CalendarDays size={14}/>Agendar saldo</button>}
          {c==='financiamento'&&<button className={btn} onClick={()=>setSourceFin({venda:v,valor:valor==null?'':String(valor),fonte:''})}>
           Informar valor liberado</button>}</div>
+        {promessas.some(p=>p.lead_id===v.lead_id&&p.componente===c)&&<div className="mt-3 space-y-1 border-t pt-2 text-xs">
+         <strong className="text-muted-foreground">Recebimentos combinados:</strong>
+         {promessas.filter(p=>p.lead_id===v.lead_id&&p.componente===c).map(p=><div key={p.id} className="flex flex-wrap items-center justify-between gap-2">
+          <span className={p.ativo?'text-emerald-500':'text-muted-foreground'}>{mostrarData(p.vencimento)} · {reais(promessaPendente(p))} pendentes {p.ativo?'':'· cancelado'}</span>
+          {p.ativo&&promessaPendente(p)>0.009&&<button className="underline" onClick={()=>abrirPagamentoPromessa(p)}>Registrar baixa</button>}
+         </div>)}
+        </div>}
         {pagamentos.length>0&&<details className="mt-3 text-xs"><summary className="cursor-pointer text-primary">Histórico ({pagamentos.length})</summary>
          {pagamentos.map(p=><div key={p.id} className="mt-2 flex flex-wrap justify-between gap-2 border-b pb-2">
           <span>{mostrarData(p.pago_em)} · {reais(p.valor)}{p.estornado_em?' · estornado':''}</span>
@@ -323,6 +397,22 @@ export default function FinancasPage(){
     </Bloco>
    </div>}
   </>}
+  {agendarVenda&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3" role="dialog" aria-modal="true" aria-label="Agendar recebimento do saldo">
+   <form onSubmit={salvarAgendamentoVenda} className="w-full max-w-lg space-y-4 rounded-2xl border bg-card p-5 shadow-2xl">
+    <h2 className="text-lg font-semibold">Agendar saldo a receber</h2>
+    <p className="text-sm text-muted-foreground">{agendarVenda.venda.cliente} · {nomesComponente[agendarVenda.componente]} · Faturamento #{agendarVenda.venda.faturamento_id}</p>
+    <div className="grid gap-3 sm:grid-cols-2">
+     <Campo label="Valor combinado (R$)"><input autoFocus required type="number" min="0.01" step="0.01" className={input} value={agendarVenda.valor}
+      onChange={e=>setAgendarVenda(x=>x?{...x,valor:e.target.value}:x)}/></Campo>
+     <Campo label="Data combinada para receber"><input required type="date" className={input} value={agendarVenda.vencimento}
+      onChange={e=>setAgendarVenda(x=>x?{...x,vencimento:e.target.value}:x)}/></Campo>
+     <div className="sm:col-span-2"><Campo label="Observação ou acordo"><input className={input} maxLength={500} value={agendarVenda.observacao}
+      onChange={e=>setAgendarVenda(x=>x?{...x,observacao:e.target.value}:x)} placeholder="Ex.: cliente pagará o restante dia 20"/></Campo></div>
+    </div>
+    <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 text-xs text-muted-foreground">O agendamento entra no calendário como valor a receber, mas NÃO conta como dinheiro recebido até registrar a baixa. O futuro pagamento ficará ligado a esta mesma venda.</p>
+    <div className="flex justify-end gap-2"><button type="button" className={btn} onClick={()=>setAgendarVenda(null)}>Cancelar</button>
+     <button type="submit" className={principal} disabled={salvando}>{salvando?'Salvando…':'Salvar vencimento'}</button></div>
+   </form></div>}
   {draft&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-3" role="dialog" aria-modal="true" aria-label="Registrar pagamento">
    <form onSubmit={confirmarPagamento} className="w-full max-w-lg space-y-4 rounded-2xl border bg-card p-5 shadow-2xl">
     <h2 className="text-lg font-semibold">Registrar pagamento ou recebimento</h2>
@@ -362,9 +452,12 @@ function LinhaParcela({p,pagamentos,onReceber,onEstornar,onVencimento,superadmin
  onVencimento:(p:Parcela)=>Promise<void>;superadmin:boolean}){
  const receb=Number(p.recebido||0),saldo=p.valor==null?null:Math.max(0,Number(p.valor)-Number(p.desconto||0)-receb);
  const bloqueada=p.origem==='aurox'&&!superadmin;
- return <div className="border-b py-3 last:border-0">
+ const vencido=!!saldo&&saldo>0&&dataApenas(p.vencimento)<diaAtual();
+ const aReceber=p.tipo==='entrada'&&!vencido;
+ const cor=vencido||p.tipo==='saida'?'border-rose-500/35 bg-rose-500/5':'border-emerald-500/35 bg-emerald-500/5';
+ return <div className={`rounded-xl border px-3 py-3 mb-2 ${cor}`}>
   <div className="flex flex-wrap items-center gap-3"><div className="min-w-40 flex-1"><strong className="text-sm">{p.descricao}</strong>
-   <p className="text-xs text-muted-foreground">{p.cliente||`Loja ${p.loja}`} · Parcela {p.numero} · {p.tipo==='entrada'?'A receber':'A pagar'}</p></div>
+   <p className={`text-xs ${aReceber?'text-emerald-500':'text-rose-500'}`}>{p.cliente||`Loja ${p.loja}`} · Parcela {p.numero} · {vencido?'Vencida':p.tipo==='entrada'?'A receber':'A pagar'}</p></div>
    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Clock3 size={13}/>{mostrarData(p.vencimento)}</span>
    <div className="text-right text-sm"><strong>{reais(p.valor)}</strong><p className="text-xs">{p.status==='pago'?'Quitada':p.status==='parcial'?'Recebimento parcial':p.status==='negociado'?'Negociada':p.valor==null?'Prevista':p.status}</p></div>
    {!bloqueada&&saldo!=null&&saldo>0&&p.status!=='cancelado'&&<button className={btn} onClick={()=>onReceber(p)}>Dar baixa</button>}
@@ -376,5 +469,60 @@ function LinhaParcela({p,pagamentos,onReceber,onEstornar,onVencimento,superadmin
    {pagamentos.map(pg=><div className="mt-2 flex justify-between gap-3" key={pg.id}><span>{mostrarData(pg.pago_em)} · {reais(Number(pg.valor))}
     {pg.estornado_em?' · Estornado':''}</span>{!pg.estornado_em&&!bloqueada&&p.origem!=='aurox'&&
     <button className="underline" onClick={()=>void onEstornar(p,pg)}>Estornar</button>}</div>)}</details>}
+ </div>;
+}
+
+function LinhaPromessa({p,onReceber,onEditar,onCancelar}:{p:Promessa;
+ onReceber:(p:Promessa)=>void;onEditar:(p:Promessa)=>Promise<void>;onCancelar:(p:Promessa)=>Promise<void>}){
+ const saldo=Math.max(0,Number(p.valor)-Number(p.recebido));
+ const vencida=dataApenas(p.vencimento)<diaAtual();
+ return <div className={`mb-2 rounded-xl border p-3 ${vencida?'border-rose-500/40 bg-rose-500/5':'border-emerald-500/40 bg-emerald-500/5'}`}>
+  <div className="flex flex-wrap items-center gap-3">
+   <div className="min-w-40 flex-1"><strong className="text-sm">{p.cliente||`Venda #${p.lead_id}`} · {nomesComponente[p.componente]}</strong>
+    <p className={`text-xs ${vencida?'text-rose-500':'text-emerald-500'}`}>{vencida?'Recebimento vencido':'A receber'} · {p.placa||'Sem placa'} · Faturamento #{p.faturamento_id}</p></div>
+   <span className="inline-flex items-center gap-1 text-xs"><CalendarDays size={14}/>{mostrarData(p.vencimento)}</span>
+   <div className="text-right text-sm"><strong>{reais(saldo)}</strong><p className="text-xs text-muted-foreground">Recebido: {reais(Number(p.recebido))}</p></div>
+   <button className={btn} onClick={()=>onReceber(p)}>Registrar recebimento</button>
+   <button title="Reagendar" className={btn} onClick={()=>void onEditar(p)}><CalendarDays size={14}/></button>
+   <button title="Cancelar previsão sem apagar os pagamentos" className={btn} onClick={()=>void onCancelar(p)}><Trash2 size={14}/></button>
+  </div>
+  {p.observacao&&<p className="mt-2 text-xs text-muted-foreground">Acordo: {p.observacao}</p>}
+ </div>;
+}
+
+type EventoCalendario={data:string;tipo:string;descricao:string;valor:number};
+function CalendarioFinanceiro({mes,onMes,dia,onDia,eventos}:{mes:string;onMes:(mes:string)=>void;
+ dia:string;onDia:(dia:string)=>void;eventos:EventoCalendario[]}){
+ const [ano,mm]=mes.split('-').map(Number);
+ const total=new Date(ano,mm,0).getDate();
+ const inicio=new Date(ano,mm-1,1).getDay();
+ const dias=[...Array(inicio).fill(null),...Array.from({length:total},(_,i)=>i+1)];
+ function navegar(delta:number){const d=new Date(ano,mm-1+delta,1);onMes(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);onDia('');}
+ const hoje=diaAtual();
+ const selecionados=eventos.filter(e=>dia?e.data===dia:e.data.startsWith(mes)).sort((a,b)=>a.data.localeCompare(b.data));
+ return <div className="space-y-4">
+  <div className="flex items-center justify-between gap-2"><button type="button" className={btn} onClick={()=>navegar(-1)}>Anterior</button>
+   <strong className="text-sm">{new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(new Date(ano,mm-1,1))}</strong>
+   <button type="button" className={btn} onClick={()=>navegar(1)}>Próximo</button></div>
+  <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground">{['D','S','T','Q','Q','S','S'].map((x,i)=><strong key={i}>{x}</strong>)}</div>
+  <div className="grid grid-cols-7 gap-1">{dias.map((numero,i)=>{
+   if(numero==null)return <div key={`vazio-${i}`}/>;
+   const data=`${mes}-${String(numero).padStart(2,'0')}`;
+   const evs=eventos.filter(e=>e.data===data);
+   const receb=evs.filter(e=>e.tipo==='entrada'&&e.data>=hoje).length;
+   const pagar=evs.length-receb;
+   return <button type="button" key={data} onClick={()=>onDia(dia===data?'':data)}
+    aria-label={`${numero} de ${mes}, ${evs.length} compromissos`}
+    className={`min-h-12 rounded-lg border p-1.5 text-left text-xs ${dia===data?'border-primary bg-primary/10':data===hoje?'border-primary/40 bg-muted/40':'border-border/60 bg-background/30'}`}>
+    <span className="font-medium">{numero}</span><div className="mt-1 flex flex-wrap gap-1">
+     {receb>0&&<span title="Recebimentos" className="rounded-md bg-emerald-500/20 px-1 text-emerald-500">+{receb}</span>}
+     {pagar>0&&<span title="Pagamentos ou vencidos" className="rounded-md bg-rose-500/20 px-1 text-rose-500">{pagar}</span>}
+    </div></button>})}</div>
+  <div className="space-y-2"><p className="text-xs text-muted-foreground">{dia?`Compromissos de ${mostrarData(dia)}`:`Compromissos de ${mes.split('-').reverse().join('/')}`}</p>
+   {selecionados.slice(0,30).map((e,i)=>{const recebe=e.tipo==='entrada'&&e.data>=hoje;
+    return <div key={`${e.data}-${i}`} className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border p-2 text-xs ${recebe?'border-emerald-500/30 text-emerald-500':'border-rose-500/30 text-rose-500'}`}>
+     <span>{mostrarData(e.data)} · {e.descricao}</span><strong>{recebe?'+':'−'}{reais(e.valor)}</strong></div>})}
+   {!selecionados.length&&<p className="text-xs text-muted-foreground">Sem vencimentos nesse recorte.</p>}
+  </div>
  </div>;
 }
