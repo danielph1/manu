@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { validateWorkerSignature } from '@/lib/aurox-whatsapp/security';
-import { processIncoming, isDirectChat } from '@/lib/aurox-whatsapp/ingest';
+import { processIncoming, processOutgoing, isDirectChat } from '@/lib/aurox-whatsapp/ingest';
 export const runtime='nodejs';
 export const dynamic='force-dynamic';
 
@@ -32,6 +32,13 @@ export async function POST(req:NextRequest) {
         if(e?.code==='23505') return NextResponse.json({error:'Número já conectado a outra empresa'}, {status:409});
         throw e;
       }
+    }
+    if(b.type==='outgoing') {
+      if(!isDirectChat(String(b.chat_id||'')))return NextResponse.json({ok:true,ignored:true});
+      if(typeof b.message_id!=='string'||typeof b.body!=='string'||typeof b.sent_at!=='number')
+        return NextResponse.json({error:'Envio invalido'}, {status:400});
+      const result=await processOutgoing({...b,empresa_id:empresaId});
+      return NextResponse.json(result,{status:result.ok?200:403});
     }
     if(b.type==='message') {
       if(!isDirectChat(String(b.chat_id||''))) return NextResponse.json({ok:true,ignored:true});

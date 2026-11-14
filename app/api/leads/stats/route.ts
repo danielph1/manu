@@ -22,7 +22,7 @@ export async function GET(req:NextRequest){
  }
  const loja=u.tipo==='gerente'?String(u.loja||''):String(q.get('loja')||'').trim();
  if(u.tipo==='gerente'&&!loja)return NextResponse.json({error:'Gerente sem loja atribuída'},{status:403});
- if(loja&&['gerente','admin','marketing','superadmin'].includes(u.tipo)){
+ if(loja&&['gerente','admin','superadmin'].includes(u.tipo)){
   args.push(loja);where+=` AND UPPER(COALESCE(v.loja,''))=UPPER($${args.length})`;
  }
  const vendedor=Number(q.get('vendedor_id'));

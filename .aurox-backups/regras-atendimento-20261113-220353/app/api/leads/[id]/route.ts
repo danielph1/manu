@@ -1,0 +1,92 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin } from '@/lib/supabase';
+import { requireUser, can } from '@/lib/session';
+import { podeAcessarLead } from '@/lib/lead-access';
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const u = await requireUser(req);
+  if (!u) return NextResponse.json({ error: 'nao autenticado' }, { status: 401 });
+  const { id } = await params;
+  if (!(await podeAcessarLead(u, Number(id)))) return NextResponse.json({ error: 'Lead fora do seu escopo' }, { status: 403 });
+  const { data, error } = await supabaseAdmin
+    .from('leads')
+    .select('*, vendedor:vendedores!leads_vendedor_id_fkey(id,nome,loja)')
+    .eq('id', id).single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+  return NextResponse.json({ ...data, vendedor_nome: data?.vendedor?.nome ?? null });
+}
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const u = await requireUser(req);
+  if (!u) return NextResponse.json({ error: 'nao autenticado' }, { status: 401 });
+  const { id } = await params;
+  if (!(await podeAcessarLead(u, Number(id)))) return NextResponse.json({ error: 'Lead fora do seu escopo' }, { status: 403 });
+  const body = await req.json();
+
+  if (u.tipo === 'vendedor') {
+    const { data: lead } = await supabaseAdmin.from('leads').select('vendedor_id').eq('id', id).single();
+    if (!lead || lead.vendedor_id !== u.vendedor_id) {
+      return NextResponse.json({ error: 'sem permissao' }, { status: 403 });
+    }
+  }
+
+  const allowed = ['nome_lead','telefone','cpf','produto_interesse','observacao','comentario_interno','respondeu','gerou_ficha','data_hora_visita','data_agendamento','venda_concluida','data_venda','nome_completo','data_nascimento','habilitado','data_lead','em_loja','cliente_na_loja','carro_selecionado','marca_carro','ano_carro','placa_carro','cor_carro','valor_carro','valor_entrada','score','rg','data_expedicao','orgao_expeditor','nome_pai','nome_mae','email','endereco','bairro','cidade','estado','cep','empresa','cnpj','endereco_empresa','bairro_empresa','cidade_empresa','estado_empresa','cep_empresa','tempo_carreira','salario','banco_correntista'];
+  const payload: any = {};
+  for (const k of allowed) if (k in body) payload[k] = body[k];
+  for (const col of ['data_lead', 'data_nascimento', 'data_expedicao', 'data_hora_visita', 'data_agendamento', 'data_venda']) {
+    if (col in payload && (payload[col] === '' || payload[col] === undefined)) payload[col] = null;
+  }
+  for (const col of ['valor_carro', 'valor_entrada', 'salario']) {
+    if (col in payload && payload[col] === '') payload[col] = null;
+  }
+  if ('score' in payload && payload.score !== null && payload.score !== '') {
+    const n = Number(payload.score);
+    payload.score = Number.isFinite(n) ? n : null;
+  }
+
+  if ('comentario_interno' in body && !['vendedor','superadmin'].includes(String(u.tipo||'').toLowerCase())) {
+    return NextResponse.json({error:'Somente vendedor responsável e superadmin podem editar o comentário interno.'},{status:403});
+  }
+  // comentário interno segura o lead — para de rotacionar
+  if ('comentario_interno' in body) {
+    const ci = String(body.comentario_interno || '').trim();
+    payload.comentario_interno = ci;
+    if (ci.length > 0) payload.rotacionar = false; // limpar texto não reativa rotação sozinho
+  }
+
+  const { data, error } = await supabaseAdmin.from('leads').update(payload).eq('id', id).select().single();
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (body.gerou_ficha === true) {
+    const { data: exists } = await supabaseAdmin.from('fichas_credito').select('id').eq('lead_id', id).maybeSingle();
+    if (!exists) {
+      const ins: any = {
+        lead_id: Number(id),
+        vendedor_id: data.vendedor_id,
+        criado_por_id: u.id,
+        valor_entrada: data.valor_entrada || 0,
+        valor_veiculo: data.valor_carro || 0,
+        status_geral: 'pendente',
+      };
+      if (data.score != null) ins.score = data.score;
+      const { error: erroFicha } = await supabaseAdmin.from('fichas_credito').insert(ins);
+      if (erroFicha) {
+        // Não sinalizar que houve ficha criada se o banco recusou a inserção.
+        await supabaseAdmin.from('leads').update({ gerou_ficha: false }).eq('id', id);
+        return NextResponse.json({ error: `Lead salvo, mas não foi possível criar a ficha: ${erroFicha.message}` }, { status: 500 });
+      }
+    }
+  }
+  return NextResponse.json(data);
+}
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const u = await requireUser(req);
+  if (!u) return NextResponse.json({ error: 'nao autenticado' }, { status: 401 });
+  if (!can.editarQualquerLead(u)) return NextResponse.json({ error: 'apenas gerente/admin' }, { status: 403 });
+  const { id } = await params;
+  if (!(await podeAcessarLead(u, Number(id)))) return NextResponse.json({ error: 'Lead fora do seu escopo' }, { status: 403 });
+  const { error } = await supabaseAdmin.from('leads').delete().eq('id', id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

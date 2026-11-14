@@ -6,6 +6,7 @@ const GESTORES=new Set(['admin','gerente','marketing','superadmin']);
 export async function POST(req:NextRequest){
  const u=await requireUser(req);if(!u)return NextResponse.json({error:'Não autenticado'},{status:401});
  const b=await req.json().catch(()=>null);const acao=String(b?.acao||'');
+ if(acao==='marcar_respondido')return NextResponse.json({error:'Atendido exige envio confirmado pelo WhatsApp. Abrir o link ou criar nota nao e prova de atendimento.'},{status:409});
  if(!['excluir','marcar_respondido','marcar_pendente','favoritar','agendar'].includes(acao))return NextResponse.json({error:'Ação desconhecida'},{status:400});
  const ids=[...new Set((Array.isArray(b?.ids)?b.ids:[]).map(Number))].filter(x=>Number.isSafeInteger(x)&&x>0);
  if(!ids.length||ids.length>100)return NextResponse.json({error:'Selecione até 100 leads'},{status:400});

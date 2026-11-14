@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     if (!Number.isSafeInteger(empresaId) || empresaId <= 0) return NextResponse.json({error:'Selecione uma empresa válida'},{status:400});
     const empresa = await queryOne<{id:number}>(`SELECT id FROM public.empresas WHERE id=$1 AND ativo=TRUE`,[empresaId]);
     if(!empresa) return NextResponse.json({error:'Empresa inválida ou inativa'},{status:422});
-    const lojaCodigo=String(b.loja_codigo||u.loja||'').toUpperCase().trim();
+    const lojaCodigo=String(['superadmin','admin'].includes(u.tipo)?(b.loja_codigo||u.loja||''):(u.loja||'')).toUpperCase().trim();
     if(lojaCodigo) {
       const loja=await queryOne(`SELECT id FROM public.lojas WHERE empresa_id=$1 AND UPPER(codigo)=$2 AND ativo=TRUE`,[empresaId,lojaCodigo]);
       if(!loja)return NextResponse.json({error:'Loja não pertence à empresa selecionada'},{status:403});
@@ -165,10 +165,14 @@ export async function PATCH(req: NextRequest) {
   try {
     const b = await req.json();
     if (!b.id) return NextResponse.json({ error: 'id obrigatório' }, { status: 400 });
-    const existing = await queryOne<{ empresa_id: number | null }>('SELECT empresa_id FROM public.oficina_carros WHERE id=$1', [b.id]);
+    if ('custo_pago' in b && !['superadmin','admin'].includes(u.tipo))
+      return NextResponse.json({ error: 'Somente administracao pode registrar pagamento' }, {status:403});
+    const existing = await queryOne<{ empresa_id: number | null; custo_pago:boolean }>('SELECT empresa_id,custo_pago FROM public.oficina_carros WHERE id=$1', [b.id]);
     if (!existing) return NextResponse.json({ error: 'Veiculo nao encontrado' }, { status: 404 });
     if (existing.empresa_id == null || (!isSuperAdmin(u) && Number(existing.empresa_id) !== Number(u.empresa_id))) return NextResponse.json({ error: 'Oficina de outra empresa ou sem vinculacao' }, { status: 403 });
     const empresaId = Number(existing.empresa_id);
+    if(existing.custo_pago && 'valor_final' in b && !['superadmin','admin'].includes(u.tipo))
+      return NextResponse.json({error:'Despesa paga: somente administracao altera o valor contabilizado'},{status:403});
 
     const alvo = await queryOne<{empresa_id:number|null,loja:string|null}>(`SELECT empresa_id,loja FROM public.oficina_carros WHERE id=$1`,[b.id]);
     if(!alvo || (u.tipo!=='superadmin' && (!u.empresa_id || Number(alvo.empresa_id)!==Number(u.empresa_id))) || (u.tipo==='gerente' && u.loja && alvo.loja && u.loja.toUpperCase()!==alvo.loja.toUpperCase()))
@@ -182,6 +186,9 @@ export async function PATCH(req: NextRequest) {
         mecanica = COALESCE($5, mecanica),
         lataria = COALESCE($6, lataria),
         valor_final = COALESCE($7, valor_final),
+        custo_pago = COALESCE($10::boolean, custo_pago),
+        custo_pago_em = CASE WHEN $10::boolean IS TRUE THEN COALESCE($11::date,custo_pago_em,CURRENT_DATE)
+          WHEN $10::boolean IS FALSE THEN NULL ELSE custo_pago_em END,
         atualizado_por_id = $8,
         updated_at = NOW()
       WHERE id = $1 AND empresa_id=$9
@@ -196,6 +203,8 @@ export async function PATCH(req: NextRequest) {
         b.lataria ?? null,
         b.valor_final ?? null,
         u.id, empresaId,
+        typeof b.custo_pago==='boolean'?b.custo_pago:null,
+        b.custo_pago_em||null,
       ],
     );
 

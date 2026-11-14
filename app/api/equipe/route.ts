@@ -11,7 +11,7 @@ export async function GET(req:NextRequest){
  const params:unknown[]=[];let where=`WHERE LOWER(COALESCE(v.nome,''))<>'matheus'`;
  if(empresaId){params.push(empresaId);where+=` AND v.empresa_id=$${params.length}`;}
  const loja=u.tipo==='gerente'?(u.loja||''):String(req.nextUrl.searchParams.get('loja')||'').trim();
- if(loja&&['gerente','admin','marketing','superadmin'].includes(u.tipo)){params.push(loja);where+=` AND UPPER(COALESCE(v.loja,''))=UPPER($${params.length})`;}
+ if(loja&&['gerente','admin','superadmin'].includes(u.tipo)){params.push(loja);where+=` AND UPPER(COALESCE(v.loja,''))=UPPER($${params.length})`;}
  if(u.tipo==='vendedor'){
   if(!u.vendedor_id)return NextResponse.json([]);
   params.push(u.vendedor_id);where+=` AND v.id=$${params.length}`;

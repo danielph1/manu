@@ -108,6 +108,16 @@ function ChatPageInner() {
         ].map((x) => String(x || '').toLowerCase()).join(' ');
         return blob.includes(q);
       });
+  // Leitura compartilhada no backend: localStorage e insuficiente para varios vendedores.
+  const ultimaMsgCliente = Array.isArray(data) ? (data as any[]).reduce((id:number,m:any)=>
+    m.remetente_tipo==='cliente' && !/^Transferido de /i.test(String(m.mensagem||'')) ? Math.max(id,Number(m.id)||0):id,0):0;
+  useEffect(()=>{
+    if(!leadId||!ultimaMsgCliente)return;
+    void api.post('/leads/atendimento',{
+      lead_id:Number(leadId),acao:'marcar_lidas',ate_mensagem_id:ultimaMsgCliente,
+    }).catch(()=>{});
+  },[leadId,ultimaMsgCliente]);
+
   useEffect(() => {
     if (!leadId || !Array.isArray(data) || !data.length) return;
     const lidos = JSON.parse(localStorage.getItem('manu.lidos') || '{}');
@@ -383,7 +393,9 @@ function ChatPageInner() {
           {info && <div className="z-10 max-h-[45vh] shrink-0 space-y-3 overflow-y-auto border-b border-border/70 bg-card p-3 text-sm shadow-lg sm:p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><div className="font-semibold">{nomeConv}</div><div className="text-xs text-muted-foreground">{conv?.interesse||'Sem interesse informado'}</div></div>
-              {urlTelefone && <a href={urlTelefone} target="_blank" rel="noopener noreferrer" className="rounded-full border px-3 py-2 text-xs text-primary">Abrir WhatsApp</a>}
+              {urlTelefone && <a href={urlTelefone} target="_blank" rel="noopener noreferrer" onClick={()=>{
+                void api.post('/leads/atendimento',{lead_id:Number(leadId),acao:'abrir_whatsapp'}).catch(()=>{});
+              }} className="rounded-full border px-3 py-2 text-xs text-primary">Abrir WhatsApp</a>}
             </div>
             <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
               <span>Telefone: {conv?.telefone||'—'}</span><span>E-mail: {conv?.email||'—'}</span>

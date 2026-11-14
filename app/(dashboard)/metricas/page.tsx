@@ -11,7 +11,7 @@ import {
   BarChart,Bar,XAxis,YAxis,Tooltip,ResponsiveContainer,CartesianGrid,Legend,LineChart,Line,
 } from 'recharts';
 import { Activity,ArrowDownRight,ArrowUpRight,BadgeCheck,BarChart3,CalendarDays,
-  CircleAlert,Landmark,Loader2,Plus,RefreshCw,ShieldAlert,Users,Wallet } from 'lucide-react';
+  CircleAlert,FileText,Landmark,Loader2,Plus,RefreshCw,ShieldAlert,Users,Wallet,Wrench } from 'lucide-react';
 
 const brl=(v:unknown)=>v===null||v===undefined?'Indisponível':new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(v));
 const pct=(v:unknown)=>v===null||v===undefined?'—':`${(Number(v)*100).toFixed(1)}%`;
@@ -112,10 +112,10 @@ export default function MetricasPage() {
         <select className="mt-1 w-full rounded-lg border bg-card p-2.5 text-sm text-foreground" value={empresa} onChange={e=>setEmpresa(e.target.value)}>
           {(empresas.data||[]).map((x:any)=><option key={x.id} value={x.id}>{x.nome}</option>)}
         </select></label>}
-      <label className="space-y-1 text-xs text-muted-foreground">Loja
-        <select className="mt-1 w-full rounded-lg border bg-card p-2.5 text-sm text-foreground" value={loja} disabled={String(user?.tipo)==='gerente'} onChange={e=>setLoja(e.target.value)}>
-          <option value="geral">{String(user?.tipo)==='gerente'?'Minha loja':'Todas as lojas da empresa'}</option>{lojas.map(x=><option key={x} value={x}>{x}</option>)}
-        </select></label>
+      {(superadmin||String(user?.tipo)==='admin')&&<label className="space-y-1 text-xs text-muted-foreground">Loja
+        <select className="mt-1 w-full rounded-lg border bg-card p-2.5 text-sm text-foreground" value={loja} onChange={e=>setLoja(e.target.value)}>
+          <option value="geral">Todas as lojas da empresa</option>{lojas.map(x=><option key={x} value={x}>{x}</option>)}
+        </select></label>}
       <label className="space-y-1 text-xs text-muted-foreground">Período
         <select className="mt-1 w-full rounded-lg border bg-card p-2.5 text-sm text-foreground" value={periodo} onChange={e=>setPeriodo(e.target.value)}>
           <option value="mes">Este mês</option><option value="mes_passado">Mês passado</option><option value="tudo">Todo o histórico</option>
@@ -158,6 +158,17 @@ export default function MetricasPage() {
       <Bloco titulo="Últimos movimentos registrados" subtitulo="Até 100 lançamentos do razão, com categoria, descrição e data. Valores previstos não integram o caixa confirmado.">
         {Array.isArray(movimento.data)&&movimento.data.length?<GridTabela colunas={['Data','Loja','Tipo','Situação','Categoria','Descrição','Valor']} linhas={movimento.data.map((x:any)=>[String(x.data_movimento).slice(0,10),x.loja,x.tipo,x.status,x.categoria,x.descricao||'—',brl(x.valor)])}/>:<Vazio msg="Sem lançamentos financeiros nesta empresa/loja."/>}
       </Bloco></section>
+      <section className="space-y-3">
+        <div><h2 className="text-xl font-semibold">Resultados documentados</h2>
+          <p className="text-xs text-muted-foreground">Faturamentos emitidos e despesas registradas na oficina. Documento emitido nao comprova recebimento; so pagamentos marcados como pagos entram no caixa.</p></div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Tile titulo="Faturamentos emitidos" valor={quantidade(d.faturamento?.documentos)} descricao="Documentos nao cancelados no periodo" icon={FileText}/>
+          <Tile titulo="Entradas documentadas" valor={brl(d.faturamento?.entradas_documentadas)} descricao="Valor registrado no faturamento, nao necessariamente recebido" icon={Landmark}/>
+          <Tile titulo="Custos da oficina" valor={brl(d.oficina_financeiro?.custos_cadastrados)} descricao="Orcamentos/custos registrados; podem estar pendentes" icon={Wrench}/>
+          <Tile titulo="Despesas de oficina pagas" valor={brl(d.oficina_financeiro?.custos_pagos)} descricao="Contabilizadas na saida do caixa sem duplicar" icon={Wallet}/>
+        </div>
+        <p className="text-xs text-muted-foreground">Vendas no CRM pela data de venda: <strong>{quantidade(d.vendas_crm_periodo?.total)}</strong>. Faturamentos nao sao somados automaticamente como vendas adicionais do mesmo lead.</p>
+      </section>
       <section className="space-y-3"><h2 className="text-xl font-semibold">Funil comercial</h2><div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {[['Leads',d.funil?.leads,Users],['Respondidos',d.funil?.responderam,BadgeCheck],['Fichas',d.funil?.fichas,BarChart3],['Aprovados',d.funil?.aprovados,Landmark],['Vendidos',d.funil?.vendidos,Activity]].map(([t,v,Icon]:any)=><Tile key={t} titulo={t} valor={quantidade(v)} icon={Icon}/>)}
       </div><div className="grid gap-4 lg:grid-cols-2"><Bloco titulo="Evolução de leads e vendas" subtitulo="Vendas marcadas no CRM, por mês de chegada do lead; não equivalem a recebimentos financeiros.">

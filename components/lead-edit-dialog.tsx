@@ -79,7 +79,7 @@ export function LeadEditDialog({ lead, onClose }: { lead: Lead | null; onClose: 
           </div>
 
           <div className="flex flex-wrap gap-5">
-            <CheckField label="Respondeu" checked={!!form.respondeu} onChange={(v) => setForm({ ...form, respondeu: v })} disabled={!canEdit} />
+            <CheckField label="Atendido (automatico pelo WhatsApp)" checked={!!form.respondeu} onChange={() => {}} disabled />
             <CheckField label="Gerar ficha de credito" checked={!!form.gerou_ficha} onChange={(v) => setForm({ ...form, gerou_ficha: v })} disabled={!canEdit} />
             <CheckField label="Cliente na loja" checked={!!form.em_loja} onChange={(v) => setForm({ ...form, em_loja: v, cliente_na_loja: v })} disabled={!canEdit} />
             <CheckField label="Venda concluida" checked={!!form.venda_concluida} onChange={(v) => setForm({ ...form, venda_concluida: v })} disabled={!canEdit} />

@@ -194,6 +194,22 @@ async function startSession(empresa_id,instancia_id) {
   client.on('ready',()=>{s.qr=null;void statusEvent(s,'conectado',String(client.info?.wid?.user||''));});
   client.on('auth_failure',e=>{s.qr=null;void statusEvent(s,'erro','',String(e||'Falha de autenticação'));});
   client.on('disconnected',reason=>{s.qr=null;void statusEvent(s,'desconectado','',String(reason||''));});
+  client.on('message_create',async msg=>{
+    try {
+      if(s.halted || !msg.fromMe || msg.isStatus || msg.broadcast) return;
+      const chatId=String(msg.to||'');
+      if(!/^\d{5,22}@(c\.us|lid)$/.test(chatId))return;
+      if(!['chat','image','audio','ptt'].includes(String(msg.type||'')))return;
+      const serialized=String(msg.id?._serialized||`${chatId}_${msg.timestamp||Date.now()}_${msg.type}_${msg.body||''}`);
+      const ev={type:'outgoing',empresa_id,instancia_id,
+        message_id:digest(serialized),chat_id:chatId,
+        phone:chatId.endsWith('@c.us')?chatId.split('@')[0]:null,
+        body:String(msg.body||'').slice(0,4000),message_type:String(msg.type||'chat'),
+        sent_at:Number(msg.timestamp||Math.floor(Date.now()/1000))};
+      await storeEvent(ev);
+      void flushOutbox();
+    } catch(e) {console.error(`[${empresa_id}] falha ao registrar mensagem enviada`,e.message);}
+  });
   client.on('message',async msg=>{
     try {
       if(s.halted || msg.fromMe || msg.isStatus || msg.broadcast)return;

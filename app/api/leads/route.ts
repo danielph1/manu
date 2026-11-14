@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
         );
       }
     }
-    if (lojaParam && ['admin', 'marketing', 'superadmin'].includes(u.tipo)) {
+    if (lojaParam && ['admin', 'superadmin'].includes(u.tipo)) {
       add(
         `l.vendedor_id IN (SELECT id FROM public.vendedores WHERE UPPER(COALESCE(loja,'381')) = UPPER(?))`,
         lojaParam,

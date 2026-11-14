@@ -144,7 +144,7 @@ export default function FollowUp(){
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
      <label className="text-xs text-muted-foreground">Buscar por nome, telefone ou veículo<input className={input} value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar lead…"/></label>
      <label className="text-xs text-muted-foreground">Situação<select className={input} value={filtro} onChange={e=>setFiltro(e.target.value)}><option value="todos">Todas</option><option value="recusados">Recusados</option><option value="outros">Retirados do painel</option><option value="autorizados">Com autorização</option><option value="sem-permissao">Sem autorização</option></select></label>
-     <label className="text-xs text-muted-foreground">Loja<select className={input} value={loja} onChange={e=>setLoja(e.target.value)}><option value="">Todas as lojas do escopo</option>{lojas.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+     {['superadmin','admin'].includes(papel)&&<label className="text-xs text-muted-foreground">Loja<select className={input} value={loja} onChange={e=>setLoja(e.target.value)}><option value="">Todas as lojas do escopo</option>{lojas.map(v=><option key={v} value={v}>{v}</option>)}</select></label>}
      {gestor&&<label className="text-xs text-muted-foreground">Vendedor<select className={input} value={responsavel} onChange={e=>setResponsavel(e.target.value)}><option value="">Todos os responsáveis</option>{vendedores.map(v=><option key={v.id} value={v.id}>{v.nome}</option>)}</select></label>}
     </div>
    </section>

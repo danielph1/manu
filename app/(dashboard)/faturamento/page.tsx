@@ -221,7 +221,7 @@ export default function FaturamentoPage() {
       <DialogContent className="max-h-[94vh] w-[95vw] max-w-4xl overflow-y-auto"><DialogHeader><DialogTitle>{form?.id?'Editar':'Novo'} faturamento · {empresaAtual?.nome||''}</DialogTitle></DialogHeader>
       {form&&<form onSubmit={salvar} className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-1"><Label>Loja</Label>
-          {['gerente','vendedor'].includes(user?.tipo||'')?<div className="rounded-md border px-3 py-2 text-sm">{form.loja||'—'}</div>:
+          {!['superadmin','admin'].includes(user?.tipo||'')?<div className="rounded-md border px-3 py-2 text-sm">{form.loja||'—'}</div>:
           <select value={form.loja||''} onChange={e=>set('loja',e.target.value)} disabled={!!form.id} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">Selecione…</option>{lojas.map(l=><option key={l.codigo} value={l.codigo}>{l.codigo} — {l.nome}</option>)}</select>}
         </div><div className="space-y-1"><Label>Data do documento</Label><Input type="date" value={form.data_assinatura||''} onChange={e=>set('data_assinatura',e.target.value)}/></div></div>
         <div><h3 className="mb-3 border-b pb-2 text-sm font-semibold">Comprador e veículo</h3><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{dados.map(([key,label])=><Campo key={key} form={form} onChange={set} field={key} label={label}/>)}</div></div>

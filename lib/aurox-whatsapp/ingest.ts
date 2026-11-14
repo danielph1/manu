@@ -26,7 +26,7 @@ async function existingLead(client:any,empresaId:number,phone:string|null):Promi
   const result=await client.query(`
     SELECT l.id FROM public.leads l
     LEFT JOIN public.vendedores v ON v.id=l.vendedor_id
-    WHERE COALESCE(l.empresa_id,v.empresa_id)=$1
+    WHERE l.empresa_id=$1
       AND (CASE WHEN LEFT(REGEXP_REPLACE(COALESCE(l.telefone,''),'[^0-9]','','g'),2)='55'
                   AND LENGTH(REGEXP_REPLACE(COALESCE(l.telefone,''),'[^0-9]','','g')) IN (12,13)
             THEN SUBSTRING(REGEXP_REPLACE(COALESCE(l.telefone,''),'[^0-9]','','g') FROM 3)
@@ -149,3 +149,57 @@ export async function processIncoming(ev:IncomingEvent) {
   }catch(e){await db.query('ROLLBACK').catch(()=>{});throw e;}
   finally{db.release();}
 }
+/** Mensagem enviada fora do MANU, pelo WhatsApp da empresa conectado ao worker.
+ * Sem usuario autenticado: nao atribuir o envio a vendedor especifico.
+ */
+export async function processOutgoing(ev: Omit<IncomingEvent,'type'> & {type:'outgoing';sent_at:number}) {
+  if (!isDirectChat(ev.chat_id)) return {ok:true,ignored:true};
+  if (!/^[a-f0-9]{64}$/i.test(ev.message_id)) throw new Error('message_id inválido');
+  if (!['chat','image','audio','ptt'].includes(String(ev.message_type||''))) return {ok:true,ignored:true};
+  if(!Number.isFinite(ev.sent_at) || ev.sent_at<1700000000) throw new Error('horario invalido');
+  const db=await getPool().connect();
+  try {
+    await db.query('BEGIN');
+    const owner=await db.query(`SELECT 1 FROM public.aurox_wa_instancias i
+      JOIN public.empresas e ON e.id=i.empresa_id
+      WHERE i.empresa_id=$1 AND i.instancia_id=$2 AND i.habilitada AND e.ativo=TRUE`,
+      [ev.empresa_id,ev.instancia_id]);
+    if(!owner.rowCount) {await db.query('ROLLBACK');return {ok:false,error:'Instância sem empresa autorizada'};}
+    const contato=await db.query(`SELECT c.lead_id FROM public.aurox_wa_contatos c
+      JOIN public.leads l ON l.id=c.lead_id AND l.empresa_id=c.empresa_id
+      WHERE c.empresa_id=$1 AND c.chat_id=$2 AND c.lead_id IS NOT NULL LIMIT 2`,
+      [ev.empresa_id,ev.chat_id]);
+    let leadId=contato.rows.length===1?Number(contato.rows[0].lead_id):null;
+    if(!leadId) {
+      const phone=cleanPhone(ev.phone)||(ev.chat_id.endsWith('@c.us')?cleanPhone(ev.chat_id.split('@')[0]):null);
+      if(phone)leadId=await existingLead(db,ev.empresa_id,phone);
+    }
+    if(!leadId) {await db.query('COMMIT');return {ok:true,ignored:true,reason:'Sem lead vinculado de forma univoca'};}
+    const gravado=await db.query(`INSERT INTO public.manu_lead_acoes_contato
+      (empresa_id,lead_id,usuario_id,acao,canal,id_externo)
+      VALUES ($1,$2,NULL,'mensagem_enviada','aurox-whatsapp',$3)
+      ON CONFLICT (empresa_id,id_externo) WHERE id_externo IS NOT NULL DO NOTHING
+      RETURNING id`,[ev.empresa_id,leadId,ev.message_id]);
+    if(!gravado.rowCount) {await db.query('COMMIT');return {ok:true,duplicate:true};}
+    const marcado=await db.query(`UPDATE public.leads l SET respondeu=TRUE WHERE l.id=$1 AND l.empresa_id=$2
+      AND NOT EXISTS(SELECT 1 FROM public.chat_geral_mensagens m WHERE m.lead_id=l.id
+       AND m.remetente_id IS NULL AND m.mensagem NOT ILIKE 'Transferido de %'
+       AND m.created_at>to_timestamp($3::double precision)) RETURNING l.id`,
+      [leadId,ev.empresa_id,ev.sent_at]);
+    if(!marcado.rowCount) {await db.query('COMMIT');return {ok:true,lead_id:leadId,atendido:false,reason:'Mensagem do cliente posterior ao envio'};}
+    await db.query(`INSERT INTO public.manu_lead_atendimento_estado
+      (lead_id,empresa_id,ultimo_cliente_id,ultimo_lido_id,ultima_mensagem_enviada_em)
+      SELECT l.id,l.empresa_id,COALESCE(MAX(m.id),0),COALESCE(MAX(m.id),0),now()
+      FROM public.leads l LEFT JOIN public.chat_geral_mensagens m ON m.lead_id=l.id
+        AND m.remetente_id IS NULL AND m.mensagem NOT ILIKE 'Transferido de %'
+      WHERE l.id=$1 AND l.empresa_id=$2 GROUP BY l.id,l.empresa_id
+      ON CONFLICT (lead_id) DO UPDATE SET
+        ultimo_cliente_id=GREATEST(manu_lead_atendimento_estado.ultimo_cliente_id,EXCLUDED.ultimo_cliente_id),
+        ultimo_lido_id=GREATEST(manu_lead_atendimento_estado.ultimo_lido_id,EXCLUDED.ultimo_lido_id),
+        ultima_mensagem_enviada_em=now()`,[leadId,ev.empresa_id]);
+    await db.query('COMMIT');
+    return {ok:true,lead_id:leadId,atendido:true,remetente:'whatsapp_empresa'};
+  }catch(err){await db.query('ROLLBACK').catch(()=>{});throw err;}
+  finally{db.release();}
+}
+

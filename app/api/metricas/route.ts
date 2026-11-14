@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const FONTES = ['empresas','vendedores','leads','triagem','origens_lead','fichas_credito','ficha_bancos',
-  'estoque_carros','faturamentos','manu_movimentos_caixa','manu_atendimento_transferencias','usuarios','manu_integracoes','manu_integracao_eventos'];
+  'estoque_carros','faturamentos','oficina_carros','manu_movimentos_caixa','manu_atendimento_transferencias','usuarios','manu_integracoes','manu_integracao_eventos'];
 
 type Caps = Map<string, Set<string>>;
 const existe = (caps: Caps, tabela: string, ...colunas: string[]) => !!caps.get(tabela) && colunas.every(c => caps.get(tabela)!.has(c));
@@ -200,6 +200,56 @@ export async function GET(req: NextRequest) {
       return {entradas:n(total?.entradas),saidas:n(total?.saidas),saldo:n(total?.entradas)-n(total?.saidas),
         lancamentos:n(total?.lancamentos),por_categoria:porCategoria};
     });
+    // Documentos fiscais e de faturamento sao indicadores proprios, nunca presumem pagamento.
+    const faturamento = await executar('Faturamentos documentados',
+      existe(caps,'faturamentos','id','empresa_id','loja','status','created_at','entrada_total'),async()=>{
+      const p:unknown[]=[empresaId];let w=`f.empresa_id=$1 AND LOWER(COALESCE(f.status,'')) NOT IN ('cancelado','excluido','excluído')`;
+      if(loja){p.push(loja);w+=` AND UPPER(COALESCE(f.loja,''))=$${p.length}`;}
+      w+=dateRange('f.created_at',inicio,fim,p);
+      const r=await queryOne<any>(`SELECT COUNT(DISTINCT f.id)::int AS documentos,
+        COALESCE(SUM(COALESCE(f.entrada_total,0)),0)::numeric AS entradas_documentadas
+        FROM public.faturamentos f WHERE ${w}`,p);
+      return {documentos:n(r?.documentos),entradas_documentadas:n(r?.entradas_documentadas)};
+    });
+    const vendasCrmPeriodo=await executar('Vendas do CRM por data da venda',
+      leadOk&&existe(caps,'leads','data_venda'),async()=>{
+      const p:unknown[]=[empresaId];let w=`l.empresa_id=$1 AND (l.venda_concluida IS TRUE OR l.data_venda IS NOT NULL)`;
+      if(loja){p.push(loja);w+=` AND UPPER(COALESCE(v.loja,''))=$${p.length}`;}
+      w+=dateRange('COALESCE(l.data_venda,l.data_lead)',inicio,fim,p);
+      const x=await queryOne<any>(`SELECT COUNT(DISTINCT l.id)::int AS total
+        FROM public.leads l LEFT JOIN public.vendedores v ON v.id=l.vendedor_id AND v.empresa_id=l.empresa_id
+        WHERE ${w}`,p);
+      return {total:n(x?.total)};
+    });
+    // Custos de oficina sao previstos ate que usuario marque explicitamente "Pago".
+    // A trigger de banco transfere SOMENTE gastos pagos para manu_movimentos_caixa.
+    const oficinaFinanceiro=await executar('Custos de oficina',
+      existe(caps,'oficina_carros','empresa_id','loja','valor_final','custo_pago','updated_at') &&
+        existe(caps,'manu_movimentos_caixa','empresa_id','origem_tipo','tipo','status','valor','data_movimento'),async()=>{
+      const p:unknown[]=[empresaId];let w=`o.empresa_id=$1`;
+      if(loja){p.push(loja);w+=` AND UPPER(COALESCE(o.loja,''))=$${p.length}`;}
+      w+=dateRange('o.updated_at',inicio,fim,p);
+      const x=await queryOne<any>(`WITH custos AS (
+         SELECT o.custo_pago,
+           CASE
+             WHEN regexp_replace(COALESCE(o.valor_final::text,''),'[^0-9,.]','','g') ~ '^[0-9]{1,3}(\\.[0-9]{3})+,[0-9]{1,2}$'
+                OR regexp_replace(COALESCE(o.valor_final::text,''),'[^0-9,.]','','g') ~ '^[0-9]+,[0-9]{1,2}$'
+               THEN replace(replace(regexp_replace(o.valor_final::text,'[^0-9,.]','','g'),'.',''),',','.')::numeric
+             WHEN regexp_replace(COALESCE(o.valor_final::text,''),'[^0-9,.]','','g') ~ '^[0-9]+(\\.[0-9]{1,2})?$'
+               THEN regexp_replace(o.valor_final::text,'[^0-9,.]','','g')::numeric
+             ELSE NULL END AS custo
+         FROM public.oficina_carros o WHERE ${w}
+       ) SELECT COUNT(*) FILTER(WHERE custo IS NOT NULL)::int AS registros,
+         COALESCE(SUM(custo),0)::numeric AS custos_cadastrados
+       FROM custos`,p);
+      // Pagamento e filtrado pela data financeira, nao pela ultima edicao do veiculo.
+      const pc:unknown[]=[empresaId];let wc=`empresa_id=$1 AND origem_tipo='oficina' AND tipo='saida' AND status='confirmado'`;
+      if(loja){pc.push(loja);wc+=` AND UPPER(loja)=$${pc.length}`;}
+      wc+=dateRange('data_movimento',inicio,fim,pc);
+      const pago=await queryOne<any>(`SELECT COALESCE(SUM(valor),0)::numeric AS total
+        FROM public.manu_movimentos_caixa WHERE ${wc}`,pc);
+      return {registros:n(x?.registros),custos_cadastrados:n(x?.custos_cadastrados),custos_pagos:n(pago?.total)};
+    });
     const vendasCarroceria = await executar('Vendas identificadas por carroceria',leadOk && existe(caps,'leads','placa_carro','data_venda') && existe(caps,'estoque_carros','placa','carroceria','empresa_id'),async()=>{
       const p:unknown[]=[empresaId];let lojaFiltro='';if(loja){p.push(loja);lojaFiltro=` AND UPPER(COALESCE(v.loja,''))=$${p.length}`;}
       const r=await query(`SELECT to_char(l.data_venda::date,'YYYY-MM') AS mes,
@@ -262,6 +312,7 @@ export async function GET(req: NextRequest) {
       atualizado_em:new Date().toISOString(),
       funil, vendedores, funcionarios, transferencias_disponiveis:disponibilidade['Transferências por atraso'],
       origens,triagem_por_origem:triagem,integracoes,bancos,caixa,estoque,vendas_por_carroceria:vendasCarroceria,
+      faturamento,oficina_financeiro:oficinaFinanceiro,vendas_crm_periodo:vendasCrmPeriodo,
       por_loja:porLoja,historico_mensal:historico,caixa_mensal:recebimentoMes,
       disponibilidade,alertas,
       definicoes:{

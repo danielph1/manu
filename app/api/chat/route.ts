@@ -157,6 +157,33 @@ export async function POST(req: NextRequest) {
     } else {
       whatsapp = {ok:false,status:'not_configured',message:'Mensagem salva no MANU; envio externo indisponível.'};
     }
+    // Apenas provedor que aceitou o envio externo confirma o atendimento.
+    // Uma nota interna ou mensagem salva no MANU sem entrega NAO conta.
+    if (lead.empresaId && whatsapp.ok && whatsapp.status==='sent_to_provider') {
+      try {
+        const {rows:marcados}=await query<{id:number}>(`UPDATE public.leads l SET respondeu=TRUE
+          WHERE l.id=$1 AND l.empresa_id=$2
+          AND NOT EXISTS (SELECT 1 FROM public.chat_geral_mensagens m
+            WHERE m.lead_id=l.id AND m.remetente_id IS NULL AND m.mensagem NOT ILIKE 'Transferido de %'
+              AND m.created_at>$3::timestamptz) RETURNING l.id`,[leadId,lead.empresaId,row.created_at]);
+        if(marcados.length){
+          await query(`INSERT INTO public.manu_lead_atendimento_estado
+            (lead_id,empresa_id,ultimo_cliente_id,ultimo_lido_id,ultima_mensagem_enviada_em)
+            SELECT l.id,l.empresa_id,
+              COALESCE(MAX(m.id),0),COALESCE(MAX(m.id),0),now()
+            FROM public.leads l LEFT JOIN public.chat_geral_mensagens m
+              ON m.lead_id=l.id AND m.remetente_id IS NULL AND m.created_at<=$3::timestamptz
+              AND m.mensagem NOT ILIKE 'Transferido de %'
+            WHERE l.id=$1 AND l.empresa_id=$2 GROUP BY l.id,l.empresa_id
+            ON CONFLICT(lead_id) DO UPDATE SET
+              ultimo_cliente_id=GREATEST(manu_lead_atendimento_estado.ultimo_cliente_id,EXCLUDED.ultimo_cliente_id),
+              ultimo_lido_id=GREATEST(manu_lead_atendimento_estado.ultimo_lido_id,EXCLUDED.ultimo_lido_id),
+              ultima_mensagem_enviada_em=EXCLUDED.ultima_mensagem_enviada_em`,[leadId,lead.empresaId,row.created_at]);
+          await query(`INSERT INTO public.manu_lead_acoes_contato (empresa_id,lead_id,usuario_id,acao)
+            VALUES($1,$2,$3,'mensagem_enviada')`,[lead.empresaId,leadId,u.id]);
+        }
+      } catch(e){ console.error('[atendimento] falha ao contabilizar envio',e instanceof Error?e.message:'erro'); }
+    }
     if (lead.empresaId) {
       notificar({ titulo: 'Nova mensagem no chat', mensagem: `${u.nome || u.login}: ${texto.slice(0, 80)}`,
         tipo: 'chat', broadcast: true, empresa_id: lead.empresaId, url: `/chat?lead=${leadId}` }).catch(() => {});

@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     const b = await req.json();
     const empresaId = u.tipo === 'superadmin' ? Number(b.empresa_id) : Number(u.empresa_id);
     if (!empresaPermitida(u, empresaId)) return NextResponse.json({error:'Empresa obrigatória e autorizada'}, {status:403});
-    const loja = (u.tipo === 'superadmin' || ['admin','marketing'].includes(u.tipo))
+    const loja = (['superadmin','admin'].includes(u.tipo))
       ? String(b.loja || u.loja || '').toUpperCase().trim() : String(u.loja || '').toUpperCase().trim();
     const lojaValida = await queryOne(`SELECT id FROM public.lojas WHERE empresa_id=$1 AND UPPER(codigo)=$2`,[empresaId,loja]);
     if (!lojaValida) return NextResponse.json({error:'Selecione uma loja desta empresa'}, {status:400});

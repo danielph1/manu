@@ -131,10 +131,18 @@ export default function PainelPage() {
     enabled:Boolean(user?.id),
   });
   const empresaAtiva = user?.tipo === 'superadmin' ? Number(empresaFiltro||0) : Number(user?.empresa_id||0);
-  const empresasEscopo = useMemo(() => Array.from(new Map(vendedoresEscopo.filter(v=>Number(v.empresa_id)>0)
-    .map(v=>[String(v.empresa_id),{id:String(v.empresa_id),nome:String(v.empresa_nome||`Empresa ${v.empresa_id}`)}] as const)).values()), [vendedoresEscopo]);
-  const lojasEscopo = useMemo(() => Array.from(new Set(vendedoresEscopo
-    .filter(v=>Number(v.empresa_id)===empresaAtiva).map(v=>String(v.loja||'').trim()).filter(Boolean))).sort(), [vendedoresEscopo,empresaAtiva]);
+  // Fonte canonica: empresas e lojas cadastradas, nunca apenas os vendedores.
+  // A API /faturamento/empresas ja limita a resposta para o proprio tenant.
+  const {data:empresasCadastro=[]} = useQuery<Array<{id:number;nome:string;lojas:Array<{codigo:string;nome:string}>}>>({
+    queryKey:['painel-empresas-cadastro',user?.id,user?.empresa_id],
+    queryFn:async()=>{const {data}=await api.get('/faturamento/empresas');return Array.isArray(data)?data:[];},
+    enabled:Boolean(user?.id),
+  });
+  const empresasEscopo=useMemo(()=>empresasCadastro.map(e=>({id:String(e.id),nome:String(e.nome)})),[empresasCadastro]);
+  const lojasEscopo=useMemo(()=>{
+    const empresa=empresasCadastro.find(e=>Number(e.id)===empresaAtiva);
+    return (empresa?.lojas||[]).map(x=>String(x.codigo||'').trim()).filter(Boolean).sort();
+  },[empresasCadastro,empresaAtiva]);
   const podeCarregarLeads = Boolean(user?.id && empresaAtiva);
 
   const { data: leads = [], isLoading } = useQuery({
@@ -340,8 +348,8 @@ export default function PainelPage() {
       <section className="aurox-kpis" aria-label="Indicadores — clique para filtrar leads">
         {([
           {key:'todos', title:'Todos os leads', number:totalLeads, context:'Visão geral'},
-          {key:'responderam', title:'Respondidos', number:totalResp, context:'Contatos atendidos'},
-          {key:'nao_responderam', title:'Aguardando', number:Math.max(0,totalLeads-totalResp), context:'Precisam de resposta'},
+          {key:'responderam', title:'Respondidos', number:totalResp, context:'Respostas confirmadas pelo canal'},
+          {key:'nao_responderam', title:'Aguardando', number:Math.max(0,totalLeads-totalResp), context:'Contato pendente / mensagem nova'},
           {key:'fichas', title:'Fichas', number:totalFichas, context:'Crédito em análise'},
           {key:'aprovados', title:'Aprovados', number:totalAprov, context:'Crédito aprovado'},
           {key:'vendidos', title:'Vendas', number:totalVend, context:'Negócios concluídos'},
@@ -389,7 +397,7 @@ export default function PainelPage() {
               <option value="todas">Todas</option><option value="hatch">Hatch</option><option value="sedan">Sedan</option><option value="suv">SUV</option><option value="pickup">Picape</option>
             </select>
           </div>
-          {['admin','marketing','superadmin'].includes(user?.tipo || '') && <div>
+          {['admin','superadmin'].includes(user?.tipo || '') && <div>
             <label htmlFor="aurox-loja" className="aurox-field-label">Loja / Pátio</label>
             <select id="aurox-loja" className="aurox-control" value={loja} onChange={e=>{setLoja(e.target.value);setVendedorId('');}} disabled={!empresaAtiva}>
               <option value="">Todas as lojas</option>
@@ -448,7 +456,7 @@ export default function PainelPage() {
             <button type="button" className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted" onClick={()=>{setSelecionados([]);setModoSelecao(false)}}>Concluir <X className="inline h-3.5 w-3.5"/></button>
           </div>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-            <Button size="sm" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>acaoMassa('marcar_respondido')}>Atendido</Button>
+            <Button size="sm" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled title="Apenas envio pelo WhatsApp confirmado pelo canal marca como atendido">Atendido (automático)</Button>
             <Button size="sm" variant="outline" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>acaoMassa('marcar_pendente')}>Não atendido</Button>
             <Button size="sm" variant="destructive" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>acaoMassa('excluir')}><Trash2 className="mr-1 h-3.5 w-3.5"/>Excluir</Button>
             <Button size="sm" variant="outline" className="h-auto min-h-11 whitespace-normal px-1 py-2 text-[11px] sm:text-xs" disabled={busyAcao} onClick={()=>setListaEmMassa(true)}><ListPlus className="mr-1 h-3.5 w-3.5"/>Adicionar à lista</Button>
@@ -1065,8 +1073,10 @@ function LeadCard({
               <div className="flex items-center gap-1">
                 <Phone className="h-3.5 w-3.5" />
                 <a
-                  href={`https://wa.me/55${String(lead.telefone).replace(/\D/g, '')}`}
-                  onClick={(e) => e.stopPropagation()}
+                  href={`https://wa.me/${String(lead.telefone).replace(/\D/g, '').replace(/^(?!55)/, '55')}`}
+                  target="_blank" rel="noopener noreferrer"
+                  onClick={(e) => { e.stopPropagation(); void api.post('/leads/atendimento',
+                    {lead_id:Number(lead.id),acao:'abrir_whatsapp'}).catch(()=>{}); }}
                   className="text-primary underline-offset-2 hover:underline"
                 >
                   {lead.telefone}

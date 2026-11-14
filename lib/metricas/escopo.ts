@@ -19,7 +19,7 @@ export function resolverEscopoMetricas(
   const empresaId = papel === 'superadmin' ? Number(empresaSolicitada) : Number(usuario.empresa_id);
   if (!Number.isSafeInteger(empresaId) || empresaId < 1) throw new Error('EMPRESA_OBRIGATORIA');
   if (papel !== 'superadmin' && Number(usuario.empresa_id) !== empresaId) throw new Error('PERMISSAO');
-  const loja = papel === 'gerente' ? String(usuario.loja || '').trim().toUpperCase() : String(lojaSolicitada || '').trim().toUpperCase();
+  const loja = papel === 'gerente' ? String(usuario.loja || '').trim().toUpperCase() : (papel === 'superadmin' || papel === 'admin') ? String(lojaSolicitada || '').trim().toUpperCase() : '';
   if (papel === 'gerente' && !loja) throw new Error('LOJA_OBRIGATORIA');
   if (loja && (loja.length > 40 || !/^[\p{L}\p{N}_ .-]+$/u.test(loja))) throw new Error('LOJA_INVALIDA');
   return { empresaId, loja: loja && loja !== 'GERAL' && loja !== 'TODAS' ? loja : null, papel };
